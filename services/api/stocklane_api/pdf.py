@@ -1,53 +1,131 @@
-"""A tiny PDF writer (Courier so columns line up, A4, plain text). No third-party package.
-A line that starts with '#' is printed in bold."""
-import textwrap
+"""A small PDF page writer: A4, Helvetica and Helvetica-Bold, text, rules and filled boxes. No third-party package.
 
-WIDTH, PER_PAGE = 84, 50
+Coordinates are in points from the TOP-LEFT of the page (y grows downwards), which is how a layout is read.
+Only printable ASCII is drawn; anything else becomes '?' (names are validated to English letters upstream).
+"""
+W, H, MARGIN = 595, 842, 40
+
+# Glyph widths per 1000 units for ASCII 32..126 (Helvetica, Helvetica-Bold).
+REGULAR = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584]
+BOLD = [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584]
+
+INK, MUTED, LINE, ACCENT, WASH = (0.1, 0.12, 0.11), (0.42, 0.45, 0.44), (0.82, 0.85, 0.83), (0.2, 0.41, 0.31), (0.94, 0.96, 0.94)
 
 
-def _escape(line):
-    clean = ''.join(c if 32 <= ord(c) < 127 else '?' for c in line)
-    return clean.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
+def clean(s):
+    return ''.join(c if 32 <= ord(c) < 127 else '?' for c in str(s))
 
 
-def _wrap(lines):
+def width(s, size=10, bold=False):
+    table = BOLD if bold else REGULAR
+    return sum(table[ord(c) - 32] for c in clean(s)) * size / 1000.0
+
+
+def fit(s, max_width, size=10, bold=False):
+    """Cut a single line with '...' so it fits."""
+    s = clean(s)
+    if width(s, size, bold) <= max_width:
+        return s
+    while s and width(s + '...', size, bold) > max_width:
+        s = s[:-1]
+    return s + '...'
+
+
+def wrap(s, max_width, size=10, bold=False):
+    """Word-wrap; a line break in the text starts a new line."""
     out = []
-    for line in lines:
-        bold = line.startswith('#')
-        text = line[1:] if bold else line
-        for part in (textwrap.wrap(text, WIDTH, subsequent_indent='  ', drop_whitespace=False) or ['']):
-            out.append(('#' if bold else '') + part)
-    return out
+    for paragraph in str(s).split('\n'):
+        out += _wrap_line(paragraph, max_width, size, bold)
+    return out or ['']
 
 
-def document(title, lines):
-    lines = _wrap(lines)
-    pages = [lines[i:i + PER_PAGE] for i in range(0, len(lines), PER_PAGE)] or [[]]
-    count = len(pages)
-    objects = [b'<< /Type /Catalog /Pages 2 0 R >>',
-               ('<< /Type /Pages /Kids [' + ' '.join(str(3 + i * 2) + ' 0 R' for i in range(count)) + '] /Count ' + str(count) + ' >>').encode()]
-    regular, bold = 3 + count * 2, 4 + count * 2
-    for number, page in enumerate(pages):
-        content = ['BT /F2 15 Tf 45 805 Td (' + _escape(title) + ') Tj ET']
-        y = 778
-        for line in page:
-            font, text = ('F2', line[1:]) if line.startswith('#') else ('F1', line)
-            content.append('BT /' + font + ' 10 Tf 45 ' + str(y) + ' Td (' + _escape(text) + ') Tj ET')
-            y -= 14
-        content.append('BT /F1 8 Tf 45 28 Td (Page ' + str(number + 1) + ' of ' + str(count) + ') Tj ET')
-        stream = '\n'.join(content).encode()
-        objects.append(('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ' + str(regular) + ' 0 R /F2 ' + str(bold) + ' 0 R >> >> /Contents ' + str(4 + number * 2) + ' 0 R >>').encode())
-        objects.append(b'<< /Length ' + str(len(stream)).encode() + b' >>\nstream\n' + stream + b'\nendstream')
-    objects.append(b'<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>')
-    objects.append(b'<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>')
-    out = bytearray(b'%PDF-1.4\n')
-    offsets = []
-    for index, body in enumerate(objects, 1):
-        offsets.append(len(out))
-        out += str(index).encode() + b' 0 obj\n' + body + b'\nendobj\n'
-    start = len(out)
-    out += b'xref\n0 ' + str(len(objects) + 1).encode() + b'\n0000000000 65535 f \n'
-    for offset in offsets:
-        out += ('%010d 00000 n \n' % offset).encode()
-    out += b'trailer\n<< /Size ' + str(len(objects) + 1).encode() + b' /Root 1 0 R >>\nstartxref\n' + str(start).encode() + b'\n%%EOF\n'
-    return bytes(out)
+def _wrap_line(s, max_width, size, bold):
+    lines, line = [], ''
+    for word in clean(s).split():
+        trial = (line + ' ' + word).strip()
+        if width(trial, size, bold) <= max_width or not line:
+            line = trial
+        else:
+            lines.append(line)
+            line = word
+        while width(line, size, bold) > max_width and len(line) > 1:  # one very long word
+            cut = len(line) - 1
+            while cut > 1 and width(line[:cut], size, bold) > max_width:
+                cut -= 1
+            lines.append(line[:cut])
+            line = line[cut:]
+    return lines + ([line] if line else []) or ['']
+
+
+def _esc(s):
+    return clean(s).replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
+
+
+def _rgb(c):
+    return '%.3f %.3f %.3f' % c
+
+
+class Doc:
+    def __init__(self, footer=''):
+        self.pages, self.footer = [[]], footer
+        self.y = MARGIN
+
+    @property
+    def ops(self):
+        return self.pages[-1]
+
+    def new_page(self):
+        self.pages.append([])
+        self.y = MARGIN
+
+    def room(self, needed):
+        """Start a new page when `needed` points do not fit above the bottom margin."""
+        if self.y + needed > H - MARGIN - 18:
+            self.new_page()
+            return True
+        return False
+
+    def text(self, x, y, s, size=10, bold=False, align='l', color=INK):
+        s = clean(s)
+        w = width(s, size, bold)
+        x = x - w if align == 'r' else x - w / 2 if align == 'c' else x
+        self.ops.append('BT /%s %.1f Tf %s rg %.1f %.1f Td (%s) Tj ET' % ('F2' if bold else 'F1', size, _rgb(color), x, H - y, _esc(s)))
+
+    def line(self, x1, y1, x2, y2, w=0.6, color=LINE):
+        self.ops.append('%s RG %.2f w %.1f %.1f m %.1f %.1f l S' % (_rgb(color), w, x1, H - y1, x2, H - y2))
+
+    def rect(self, x, y, w, h, fill=WASH, stroke=None):
+        if fill is not None:
+            self.ops.append('%s rg %.1f %.1f %.1f %.1f re f' % (_rgb(fill), x, H - y - h, w, h))
+        if stroke is not None:
+            self.ops.append('%s RG 0.6 w %.1f %.1f %.1f %.1f re S' % (_rgb(stroke), x, H - y - h, w, h))
+
+    def paragraph(self, x, s, max_width, size=10, bold=False, color=INK, lead=1.35):
+        for part in wrap(s, max_width, size, bold):
+            self.room(size * lead)
+            self.text(x, self.y + size, part, size, bold, color=color)
+            self.y += size * lead
+
+    def render(self):
+        count = len(self.pages)
+        objects = [b'<< /Type /Catalog /Pages 2 0 R >>',
+                   ('<< /Type /Pages /Kids [' + ' '.join(str(3 + i * 2) + ' 0 R' for i in range(count)) + '] /Count ' + str(count) + ' >>').encode()]
+        regular, bold = 3 + count * 2, 4 + count * 2
+        for number, ops in enumerate(self.pages):
+            foot = ['BT /F1 8 Tf %s rg %.1f %.1f Td (%s) Tj ET' % (_rgb(MUTED), MARGIN, 24, _esc(self.footer)),
+                    'BT /F1 8 Tf %s rg %.1f %.1f Td (Page %d of %d) Tj ET' % (_rgb(MUTED), W - MARGIN - width('Page %d of %d' % (number + 1, count), 8), 24, number + 1, count)]
+            stream = '\n'.join(ops + foot).encode()
+            objects.append(('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Resources << /Font << /F1 %d 0 R /F2 %d 0 R >> >> /Contents %d 0 R >>' % (W, H, regular, bold, 4 + number * 2)).encode())
+            objects.append(b'<< /Length ' + str(len(stream)).encode() + b' >>\nstream\n' + stream + b'\nendstream')
+        objects.append(b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>')
+        objects.append(b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>')
+        out, offsets = bytearray(b'%PDF-1.4\n'), []
+        for index, body in enumerate(objects, 1):
+            offsets.append(len(out))
+            out += str(index).encode() + b' 0 obj\n' + body + b'\nendobj\n'
+        start = len(out)
+        out += b'xref\n0 ' + str(len(objects) + 1).encode() + b'\n0000000000 65535 f \n'
+        for offset in offsets:
+            out += ('%010d 00000 n \n' % offset).encode()
+        out += b'trailer\n<< /Size ' + str(len(objects) + 1).encode() + b' /Root 1 0 R >>\nstartxref\n' + str(start).encode() + b'\n%%EOF\n'
+        return bytes(out)

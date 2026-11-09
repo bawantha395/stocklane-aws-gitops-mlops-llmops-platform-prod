@@ -55,7 +55,12 @@ route('POST', '/api/workshop/invoices/([^/]+)/void', OWNER, lambda e, p, b, k: w
 route('GET', '/api/workshop/vehicles', STAFF, lambda e, p, b, k: workshop.vehicles(q(e, 'search')))
 route('GET', '/api/workshop/vehicles/([^/]+)', STAFF, lambda e, p, b, k: workshop.vehicle(p[0]))
 route('GET', '/api/workshop/vehicles/([^/]+)/history.pdf', STAFF, lambda e, p, b, k: ('pdf',) + workshop.vehicle_pdf(p[0]))
+route('PATCH', '/api/workshop/vehicles/([^/]+)', STAFF, lambda e, p, b, k: workshop.edit_vehicle(p[0], k, actor(e), b))
 route('GET', '/api/workshop/service-due', STAFF, lambda e, p, b, k: workshop.service_due())
+route('GET', '/api/workshop/dashboard', STAFF, lambda e, p, b, k: workshop.dashboard())
+route('GET', '/api/workshop/suggestions', STAFF, lambda e, p, b, k: workshop.suggestions())
+route('GET', '/api/workshop/settings', STAFF, lambda e, p, b, k: workshop.business())
+route('PUT', '/api/workshop/settings', OWNER, lambda e, p, b, k: workshop.save_business(k, actor(e), b))
 route('GET', '/api/workshop/report', OWNER, lambda e, p, b, k: workshop.report(q(e, 'from'), q(e, 'until')))
 route('GET', '/api/workshop/report.pdf', OWNER, lambda e, p, b, k: ('pdf',) + workshop.report_pdf(q(e, 'from'), q(e, 'until')))
 

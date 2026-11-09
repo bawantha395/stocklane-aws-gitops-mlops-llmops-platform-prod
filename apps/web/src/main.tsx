@@ -42,9 +42,10 @@ const Scanner = React.lazy(() =>
   import("./Scanner").then((module) => ({ default: module.Scanner })),
 );
 import { StockReport } from "./StockReport";
-import { Workshop } from "./Workshop";
+import { Workshop } from "./workshop";
 import { ReorderCard } from "./ReorderCard";
 import { Counter, type Mode as CounterMode } from "./Counter";
+import { dock } from "./dock";
 import { suggestFields, type Field, type Suggestion } from "./suggestions";
 import {
   emptyTask,
@@ -307,6 +308,10 @@ function App() {
     } finally {
       setLoading(false);
     }
+  }, []);
+  useEffect(() => {
+    const nav = document.querySelector<HTMLElement>(".stock-sidebar");
+    return nav ? dock(nav) : undefined;
   }, []);
   useEffect(() => {
     if (location.pathname === "/auth/callback" && auth) {
@@ -736,7 +741,7 @@ function App() {
             {session?.name.slice(0, 1).toUpperCase() || "S"}
           </span>
           <strong>{owner ? "Owner workspace" : "Stock team"}</strong>
-          <small>Montero Workshop</small>
+          <small>Ganga Motors</small>
         </div>
       </aside>
       <main className="stock-main">

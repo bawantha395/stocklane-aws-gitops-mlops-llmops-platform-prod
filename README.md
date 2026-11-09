@@ -107,22 +107,26 @@ any push turns them back on.
 
 ### 7. Using the workshop (every day)
 
-Open **Workshop** in the left menu.
+Open **Workshop** in the menu (bottom Dock bar on a phone, left menu on a laptop). The tabs are Home, Jobs, Vehicles,
+Service due, Invoices, and for the owner Reports and Settings.
 
-1. **New job.** Type the vehicle number first: if the vehicle has been here before, the owner, phone and model fill
-   in by themselves and you see how many earlier jobs it has. Add the odometer, the complaint and the mechanic.
-2. **Fill the job.** On the job page add **parts** (name, quantity, price) and **labour** lines by hand, an optional
-   discount, and, if you like, the **next service** date or km. Press **Save** any time.
-3. **Create invoice.** The job becomes **Invoiced** by itself and can no longer be edited. Download the **PDF**.
-   (A job has only two states: *Open* and *Invoiced*.)
-4. **Payments.** On the invoice press *Add a payment*: cash, card or bank, full or part. The invoice moves from
-   *Unpaid* to *Part paid* to *Paid*. The **Invoices** tab shows what customers still owe.
-5. **Vehicle file.** The **Vehicles** tab (or *Vehicle file* on a job) shows the owner, last km, next service and
-   every earlier repair with its total. *Download history PDF* prints the whole history for the customer.
-6. **Service due.** The tab lists vehicles whose next service date is within 14 days (or already past), or whose
-   odometer is within 300 km of the service km, with the phone number to call.
-7. **Owner only.** *Cancel job*, *Void invoice* (only when nothing was paid; the job opens again so you can fix it)
-   and the **Report** tab (billed, received, unpaid, per mechanic, PDF). The report counts invoices by date.
+0. **First time (owner).** *Settings*: business name, address, phone, bank details, footer and the tax name and rate
+   (leave the rate 0 for no tax). The bill header comes from here. Each invoice keeps the header of the day it was issued.
+1. **Home.** Search a vehicle by number, name or phone. Shows open jobs, billed today and this month, what customers owe.
+2. **New job.** Type the vehicle number first: a known vehicle fills owner, phone and model and shows its earlier
+   repairs. A lower odometer than last time gives a warning.
+3. **Fill the job.** Add **parts** (name, quantity, price) and **labour** by hand. Names and prices you used before are
+   suggested, tap one to add it. Optional discount and next service (quick buttons: +3 months, +6 months, +5000 km).
+   *Preview bill* shows the bill exactly as it will print. Press **Save** any time.
+4. **Create invoice.** The job becomes **Invoiced** by itself and is locked. Download the **PDF**, **Print**, or send
+   a **WhatsApp** message to the customer. (A job has two states, *Open* and *Invoiced*; the owner can *Cancel* an open job.)
+5. **Payments.** *Add a payment* (cash, card, bank, full or part). Unpaid, Part paid, Paid. Never more than the balance.
+6. **Vehicle file.** Owner, last km, next service and every earlier repair with parts and labour, filled in by itself
+   after each job. *Download history PDF* for the customer. Call and WhatsApp buttons are on the page.
+7. **Service due.** Vehicles whose next service is within 14 days or 300 km, with call and WhatsApp buttons.
+8. **Reports (owner).** Pick Today, Last 7 days, This month, Last month, This year or your own dates: billed, received,
+   unpaid and its age, daily chart, per mechanic, payment methods, top parts and labour, unpaid list. **PDF** and **CSV**.
+   *Void invoice* (owner, only when nothing was paid) opens the job again so you can fix it.
 
 Names, models and part names must be typed in English letters (the PDFs are English only). A vehicle number is
 matched ignoring spaces and dashes, so `CAB-1234` and `cab 1234` are the same vehicle. If the owner changes, type the
