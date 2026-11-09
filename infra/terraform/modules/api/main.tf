@@ -42,6 +42,7 @@ resource "aws_iam_role_policy" "api" {
     { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.api.arn}:*" },
     { Effect = "Allow", Action = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:BatchGetItem"], Resource = var.table_arn },
     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${var.models_bucket.arn}/forecast/*"] },
+    { Effect = "Allow", Action = ["s3:ListBucket"], Resource = var.models_bucket.arn, Condition = { StringLike = { "s3:prefix" = ["forecast/*"] } } },
     { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = var.kms_key_arn }
     ], local.with_vision ? [
     { Effect = "Allow", Action = ["lambda:InvokeFunction"], Resource = aws_lambda_function.vision[0].arn }
@@ -193,8 +194,8 @@ resource "aws_apigatewayv2_stage" "default" {
     destination_arn = aws_cloudwatch_log_group.access.arn
     format = jsonencode({
       requestId = "$context.requestId", time = "$context.requestTime", method = "$context.httpMethod", path = "$context.path", status = "$context.status",
-      ip        = "$context.identity.sourceIp", user = "$context.authorizer.claims.username", latency = "$context.responseLatency",
-      error     = "$context.authorizer.error"
+      ip    = "$context.identity.sourceIp", user = "$context.authorizer.claims.username", latency = "$context.responseLatency",
+      error = "$context.authorizer.error"
     })
   }
 }

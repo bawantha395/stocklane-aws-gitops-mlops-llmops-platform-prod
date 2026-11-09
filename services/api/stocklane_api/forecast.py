@@ -70,7 +70,7 @@ def read_model():
                 raise ValueError('Forecast artifact too large')
             _cache.update(value=json.loads(raw), until=time.monotonic() + 60)
         except ClientError as error:
-            if error.response['Error']['Code'] not in {'NoSuchKey', '404'}:
+            if error.response['Error']['Code'] not in {'NoSuchKey', '404', 'AccessDenied'}:
                 raise
             _cache.update(value=None, until=time.monotonic() + 60)
     return _cache['value']

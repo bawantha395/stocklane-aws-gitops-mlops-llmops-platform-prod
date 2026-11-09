@@ -172,7 +172,7 @@
 }
 
 /* ---- Liquid glass: translucent surfaces with blur (iOS and macOS look) ---- */
-.stock-shell { background: radial-gradient(900px 500px at 10% -5%, rgba(0, 113, 227, .10), transparent 60%), radial-gradient(800px 500px at 100% 10%, rgba(52, 199, 89, .10), transparent 60%), #f5f5f7; background-attachment: fixed; }
+html[data-ws-theme] .stock-shell { background: radial-gradient(900px 500px at 10% -5%, rgba(0, 113, 227, .10), transparent 60%), radial-gradient(800px 500px at 100% 10%, rgba(52, 199, 89, .10), transparent 60%), #f5f5f7; background-attachment: fixed; }
 .ws-glass, .ws-card, .ws-kpi, .ws-item, .ws-visit, .ws-tabs button, .ws-chip, .ws-actionbar, .ws-modal-bar {
   background: rgba(255, 255, 255, .62); border: 1px solid rgba(255, 255, 255, .75);
   -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
@@ -194,7 +194,7 @@
 @media print { .ws-modal, .ws-bill { background: none !important; -webkit-backdrop-filter: none; backdrop-filter: none; } }
 
 /* ---- Stronger glass: vivid backdrop, clearer panes, bright rim light ---- */
-.stock-shell {
+html[data-ws-theme] .stock-shell {
   background:
     radial-gradient(620px 420px at 8% 2%, rgba(0, 122, 255, .38), transparent 65%),
     radial-gradient(560px 420px at 96% 8%, rgba(52, 199, 89, .32), transparent 65%),
@@ -218,17 +218,17 @@
 .ws-modal { background: rgba(15, 20, 40, .38); }
 .ws-bill { background: #fff; }
 .ws-bill * { -webkit-backdrop-filter: none; backdrop-filter: none; }
-.stock-shell .stock-sidebar { background: linear-gradient(135deg, rgba(255, 255, 255, .6), rgba(255, 255, 255, .25)) !important; -webkit-backdrop-filter: saturate(200%) blur(30px); backdrop-filter: saturate(200%) blur(30px); border: 1px solid rgba(255, 255, 255, .85) !important; box-shadow: 0 1px 1px rgba(255, 255, 255, .95) inset, 0 14px 40px rgba(31, 38, 135, .2) !important; }
+html[data-ws-theme] .stock-shell .stock-sidebar { background: linear-gradient(135deg, rgba(255, 255, 255, .6), rgba(255, 255, 255, .25)) !important; -webkit-backdrop-filter: saturate(200%) blur(30px); backdrop-filter: saturate(200%) blur(30px); border: 1px solid rgba(255, 255, 255, .85) !important; box-shadow: 0 1px 1px rgba(255, 255, 255, .95) inset, 0 14px 40px rgba(31, 38, 135, .2) !important; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .ws-card, .ws-kpi, .ws-item, .ws-visit, .ws-tabs button, .ws-chip, .ws-actionbar, .ws-modal-bar, .ws-tabs, .ws-facts > *, .ws-known, .ws-note { background: #fff; }
-  .stock-shell .stock-sidebar { background: #fff !important; }
+  html[data-ws-theme] .stock-shell .stock-sidebar { background: #fff !important; }
 }
-@media print { .stock-shell { background: #fff; } }
-.stock-shell .stock-header { background: transparent !important; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
-.stock-shell .stock-header .icon-button { background: linear-gradient(135deg, rgba(255,255,255,.6), rgba(255,255,255,.25)); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,.85); }
+@media print { html .stock-shell { background: #fff; } }
+html[data-ws-theme] .stock-shell .stock-header { background: transparent !important; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
+html[data-ws-theme] .stock-shell .stock-header .icon-button { background: linear-gradient(135deg, rgba(255,255,255,.6), rgba(255,255,255,.25)); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,.85); }
 
 /* ---- Portfolio palette: dark navy and dark green backdrop, light glass cards, no pink ---- */
-.stock-shell {
+html[data-ws-theme="dark"] .stock-shell {
   background:
     radial-gradient(640px 460px at 6% 0%, rgba(34, 120, 214, .34), transparent 65%),
     radial-gradient(620px 480px at 98% 12%, rgba(30, 140, 100, .36), transparent 65%),
@@ -255,22 +255,22 @@
 .ws-col { fill: #3aa0e8; } .ws-col.on { fill: #7cc3f5; }
 .ws-card .ws-col { fill: #2a78d6; }
 .ws-pill.open, .ws-pill.partial { background: #fdecd6; color: #8a4a1f; }
-.stock-shell .stock-header, .stock-shell .stock-header * { color: #cfe0db; }
-.stock-shell .stock-header .icon-button { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .25); }
-.stock-shell .stock-header .icon-button svg { color: #eaf3f0; }
-.stock-shell .stock-sidebar { background: linear-gradient(135deg, rgba(255, 255, 255, .82), rgba(228, 240, 235, .6)) !important; }
+html[data-ws-theme="dark"] .stock-shell .stock-header, html[data-ws-theme="dark"] .stock-shell .stock-header * { color: #cfe0db; }
+html[data-ws-theme="dark"] .stock-shell .stock-header .icon-button { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .25); }
+html[data-ws-theme="dark"] .stock-shell .stock-header .icon-button svg { color: #eaf3f0; }
+html[data-ws-theme="dark"] .stock-shell .stock-sidebar { background: linear-gradient(135deg, rgba(255, 255, 255, .82), rgba(228, 240, 235, .6)) !important; }
 .ws .stock-notice, .ws .stock-help { color: #cfe0db; }
 .ws .stock-error { color: #ffb4a8; }
 .ws-card .stock-help { color: #5d716b; }
 @media (min-width: 761px) {
-  .stock-shell .stock-sidebar { background: rgba(255, 255, 255, .88) !important; }
-  .stock-shell .stock-main { color: #eaf3f0; }
+  html[data-ws-theme="dark"] .stock-shell .stock-sidebar { background: rgba(255, 255, 255, .88) !important; }
+  html[data-ws-theme="dark"] .stock-shell .stock-main { color: #eaf3f0; }
 }
-@media print { .stock-shell { background: #fff; color: #000; } }
+@media print { html .stock-shell { background: #fff; color: #000; } }
 .ws-section-head h3 { color: #eaf3f0; }
 .ws-card .ws-section-head h3 { color: #14231f; }
-html, body { background-color: #0a1428; }
-.stock-shell { min-height: 100vh; min-height: 100dvh; }
+html[data-ws-theme="dark"], html[data-ws-theme="dark"] body { background-color: #0a1428; }
+html[data-ws-theme] .stock-shell { min-height: 100vh; min-height: 100dvh; }
 
 /* ---- Light mode (toggle in the Workshop header) ---- */
 html[data-ws-theme="light"], html[data-ws-theme="light"] body { background-color: #eef1f7; }
