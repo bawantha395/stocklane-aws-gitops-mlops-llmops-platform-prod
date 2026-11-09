@@ -118,7 +118,7 @@ Service due, Invoices, and for the owner Reports and Settings.
 3. **Fill the job.** Add **parts** (name, quantity, price) and **labour** by hand. Names and prices you used before are
    suggested, tap one to add it. Optional discount and next service (quick buttons: +3 months, +6 months, +5000 km).
    *Preview bill* shows the bill exactly as it will print. Press **Save** any time.
-4. **Create invoice.** The job becomes **Invoiced** by itself and is locked. Download the **PDF**, **Print**, or send
+4. **Create invoice.** The job becomes **Invoiced** by itself and is locked. Download the **PDF**, **Print A4** (opens the PDF in a new tab, print it from there), **Receipt (80 mm)** for a thermal printer (a narrow paper size also switches to the receipt layout by itself), or send
    a **WhatsApp** message to the customer. (A job has two states, *Open* and *Invoiced*; the owner can *Cancel* an open job.)
 5. **Payments.** *Add a payment* (cash, card, bank, full or part). Unpaid, Part paid, Paid. Never more than the balance.
 6. **Vehicle file.** Owner, last km, next service and every earlier repair with parts and labour, filled in by itself
@@ -127,6 +127,25 @@ Service due, Invoices, and for the owner Reports and Settings.
 8. **Reports (owner).** Pick Today, Last 7 days, This month, Last month, This year or your own dates: billed, received,
    unpaid and its age, daily chart, per mechanic, payment methods, top parts and labour, unpaid list. **PDF** and **CSV**.
    *Void invoice* (owner, only when nothing was paid) opens the job again so you can fix it.
+
+**Thermal receipt printer (automatic).** Use Chrome or Edge on the shop computer.
+
+1. Plug in and switch on the printer. At the top of the Workshop press **Connect printer**, choose **USB printer** or
+   **Serial or Bluetooth**, pick the printer in the browser box, and set **Paper** to 80 mm (or 58 mm). Press *Test print*.
+2. Tick **Auto-print receipt** (remembered per device).
+
+The browser remembers the printer, so next time the page finds it by itself (a green dot shows "Printer: ...") and the
+receipt prints straight to it, with no dialog, when an invoice is created and after each payment. **Print receipt** prints
+the same way.
+
+If no printer is connected, or printing fails, the normal print preview opens instead, so nothing is ever lost.
+
+Notes. USB printers need Chrome or Edge, and on Windows the printer must use the WinUSB driver (use the free Zadig tool)
+because the normal Windows printer driver blocks the browser. If USB will not open, use the printer's Bluetooth or serial
+mode with **Serial or Bluetooth**. Network (Ethernet) printers cannot be reached by a web page. Safari cannot connect
+printers. Another way that needs no driver change: set the thermal printer as the default printer, start Chrome with
+`--kiosk-printing` (Mac: `open -na "Google Chrome" --args --kiosk-printing`, Windows: add it to the shortcut Target),
+and **Receipt (80 mm)** then prints without a dialog.
 
 Names, models and part names must be typed in English letters (the PDFs are English only). A vehicle number is
 matched ignoring spaces and dashes, so `CAB-1234` and `cab 1234` are the same vehicle. If the owner changes, type the
