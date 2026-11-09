@@ -28,7 +28,7 @@ resource "aws_acm_certificate_validation" "web" {
   # The DNS records above are what ACM checks; waiting on them is enough, so no name matching here.
   depends_on = [aws_route53_record.validation]
   timeouts {
-    create = "15m"
+    create = "45m"
   }
 }
 
