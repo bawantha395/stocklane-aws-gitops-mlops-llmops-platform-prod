@@ -1,0 +1,130 @@
+name: Train photo model
+# Weekly self-learning loop. On Sundays the photo function exports the photos staff confirmed;
+# this workflow trains on them in a short SageMaker job. A model that passes the quality gate AND
+# beats the served model is approved and released automatically (config/model.json in the models
+# bucket; the photo function picks it up within five minutes). Otherwise it is rejected with the
+# reason and the served model stays. SageMaker only costs money while the job runs. Run it by hand any time.
+on:
+  schedule:
+    - cron: '0 21 * * 6'   # Sunday 02:30 Asia/Colombo, after the 01:00 photo export
+  workflow_dispatch:
+    inputs:
+      dataset_uri:
+        description: Optional versioned S3 dataset prefix; empty uses the latest confirmed-photo export
+        required: false
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: stocklane-training
+  cancel-in-progress: false
+env:
+  AWS_REGION: ap-southeast-2
+  AWS_DEFAULT_REGION: ap-southeast-2
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  PROJECT_NAME: stocklane-prod
+jobs:
+  train:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with: {python-version: '3.12'}
+      - uses: ./.github/actions/aws-credentials
+        id: aws
+        continue-on-error: ${{ github.event_name == 'schedule' }}
+        with:
+          role: train
+          access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - run: pip install boto3==1.43.118
+      - name: Check the environment is deployed
+        id: deployed
+        env:
+          AWS_READY: ${{ steps.aws.outcome }}
+          SCHEDULED: ${{ github.event_name == 'schedule' }}
+        run: |
+          bucket="${PROJECT_NAME}-models-${AWS_ACCOUNT_ID}"
+          mkdir -p artifacts
+          if [ "$AWS_READY" = "success" ] && aws s3 cp "s3://$bucket/config/current.json" artifacts/aws.json --quiet \
+             && aws s3 cp "s3://$bucket/config/images.json" artifacts/images.json --quiet; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          elif [ "$SCHEDULED" = "true" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Prod is not deployed (or has no credentials); weekly photo training skipped."
+          else
+            exit 1
+          fi
+      - name: Choose the dataset
+        id: dataset
+        if: steps.deployed.outputs.ready == 'true'
+        env:
+          DATASET_URI: ${{ inputs.dataset_uri }}
+        run: |
+          if [ -n "$DATASET_URI" ]; then echo "uri=$DATASET_URI" >> "$GITHUB_OUTPUT"; exit 0; fi
+          python mlops/vision/workshop_dataset.py next --config artifacts/aws.json
+      - name: Train, evaluate and register
+        id: train
+        if: steps.dataset.outputs.uri != ''
+        continue-on-error: ${{ github.event_name == 'schedule' }}
+        env:
+          DATASET_URI: ${{ steps.dataset.outputs.uri }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, sys, boto3
+          sys.path.insert(0, "mlops/vision")
+          from stage_encoder import stage
+          c = json.load(open('artifacts/aws.json'))['deployment']['value']
+          s3 = boto3.client('s3', region_name=c['region'])
+          pointer = json.loads(s3.get_object(Bucket=c['model_bucket'], Key='config/model.json')['Body'].read())
+          encoder = stage({'model': pointer}, c['model_bucket'], s3)
+          image = json.load(open('artifacts/images.json'))['ml-training']
+          subprocess.run(['python', 'mlops/vision/run_training.py', '--region', c['region'],
+              '--name', c['name'], '--role', c['training_role_arn'],
+              '--image', image, '--dataset', os.environ['DATASET_URI'],
+              '--encoder', encoder, '--output', 's3://' + c['model_bucket'] + '/training',
+              '--group', c['model_package_group'], '--report', 'artifacts/training-report.json'], check=True)
+          PY
+      - name: Remember that this dataset was trained
+        if: always() && steps.train.outcome != 'skipped' && steps.dataset.outputs.uri != ''
+        env:
+          DATASET_URI: ${{ steps.dataset.outputs.uri }}
+        run: python mlops/vision/workshop_dataset.py mark --config artifacts/aws.json --dataset "$DATASET_URI"
+      - name: Approve automatically when it beats the served model
+        id: decide
+        if: steps.train.outcome == 'success'
+        run: |
+          bucket=$(jq -r .deployment.value.model_bucket artifacts/aws.json)
+          python mlops/vision/auto_promote.py --report artifacts/training-report.json --bucket "$bucket" --output artifacts/decision.json
+      - name: Release the approved model
+        if: steps.decide.outputs.approved != ''
+        env:
+          MODEL_PACKAGE: ${{ steps.decide.outputs.approved }}
+        run: |
+          d() { jq -r ".deployment.value.$1" artifacts/aws.json; }
+          bucket=$(d model_bucket)
+          python mlops/vision/promote.py --package-arn "$MODEL_PACKAGE" --region "$AWS_REGION" --destination "s3://$bucket/releases" > /tmp/model.json
+          aws s3 cp /tmp/model.json "s3://$bucket/config/model.json" --only-show-errors
+          aws lambda invoke --function-name "$(d vision_function)" --payload '{"action":"reindex"}' --cli-binary-format raw-in-base64-out \
+            --cli-read-timeout 330 /tmp/reindex.json >/dev/null
+      - name: Publish training result in summary
+        if: always() && steps.deployed.outputs.ready == 'true'
+        env:
+          TRAIN_OUTCOME: ${{ steps.train.outcome }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write('## Photo model\n\n')
+              if os.environ['TRAIN_OUTCOME'] in ('', 'skipped'):
+                  f.write('No new confirmed photos to train on; the served model stays.\n'); raise SystemExit
+              if not Path('artifacts/decision.json').exists():
+                  f.write('The new model did not pass the quality gate (or training failed); the served model stays. See the step log.\n'); raise SystemExit
+              r = json.load(open('artifacts/training-report.json')); d = json.load(open('artifacts/decision.json'))
+              f.write('**' + d['decision'] + '**: ' + d['reason'] + '\n\n`' + r['modelPackageArn'] + '`\n\n```json\n' + json.dumps(r['metrics'], indent=2) + '\n```\n')
+              if d['decision'] == 'approved':
+                  f.write('Released: the photo function now serves it.\n')
+          PY

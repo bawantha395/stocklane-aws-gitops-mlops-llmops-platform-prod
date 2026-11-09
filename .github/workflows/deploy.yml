@@ -1,0 +1,144 @@
+# ONE-CLICK DEPLOY of the serverless prod environment (about 10 minutes the first time, 3-4 after):
+#
+#   test -> keys and registries -> build images -> plan and apply -> first model -> web app -> photo index
+#
+# Run it again after any change; it only changes what changed. Run "Destroy" to remove everything.
+name: Deploy
+on:
+  workflow_dispatch:
+    inputs:
+      allow_deletions:
+        description: Allow the plan to delete or replace resources (read the plan first)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: stocklane-aws
+  cancel-in-progress: false
+env:
+  AWS_REGION: ap-southeast-2
+  AWS_DEFAULT_REGION: ap-southeast-2
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  PROJECT_NAME: stocklane-prod
+  TF_DIR: infra/terraform/environments/prod
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with: {terraform_version: '1.13.5', terraform_wrapper: false}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with: {python-version: '3.12'}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: ./.github/actions/aws-credentials
+        with:
+          role: deploy
+          access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - uses: ./.github/actions/terraform
+        with:
+          tfvars-json: ${{ secrets.TFVARS_JSON }}
+
+      - name: Create the key, table, buckets and image registries first
+        run: terraform -chdir="$TF_DIR" apply -input=false -auto-approve -target=module.data
+
+      - name: Build and push the two images
+        run: |
+          registry="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          tag="${GITHUB_SHA::12}-${GITHUB_RUN_ID}"
+          mkdir -p artifacts
+          # Lambda needs a plain image manifest, so provenance and SBOM attestations are switched off.
+          for pair in vision:services/vision/Dockerfile ml-training:mlops/vision/Dockerfile; do
+            name="${pair%%:*}"; file="${pair#*:}"
+            docker buildx build --platform linux/amd64 --provenance=false --sbom=false -f "$file" \
+              --tag "$registry/${PROJECT_NAME}/$name:$tag" --metadata-file "artifacts/$name.json" --push .
+            echo "$name=$registry/${PROJECT_NAME}/$name@$(jq -r '."containerimage.digest"' "artifacts/$name.json")" >> artifacts/images.env
+          done
+          cat artifacts/images.env
+          jq -Rn '[inputs | split("=") | {(.[0]): .[1]}] | add' < artifacts/images.env > artifacts/images.json
+          echo "TF_VAR_vision_image_uri=$(grep '^vision=' artifacts/images.env | cut -d= -f2)" >> "$GITHUB_ENV"
+
+      - name: Plan
+        run: |
+          terraform -chdir="$TF_DIR" plan -input=false -out=tfplan
+          terraform -chdir="$TF_DIR" show -json tfplan > /tmp/plan.json
+          jq -r '.resource_changes[] | select(.change.actions | index("delete")) | .change.actions[0] + " " + .address' /tmp/plan.json | tee /tmp/deletions
+          if [ -s /tmp/deletions ] && [ "${{ inputs.allow_deletions }}" != "true" ]; then
+            echo "::error::The plan deletes or replaces the resources above. Read them, then run again with allow_deletions ticked."
+            exit 1
+          fi
+      - name: Apply
+        run: terraform -chdir="$TF_DIR" apply -input=false tfplan
+
+      - name: Publish this deployment's settings for Train and Forecast
+        run: |
+          terraform -chdir="$TF_DIR" output -json > artifacts/aws.json
+          bucket=$(jq -r .deployment.value.model_bucket artifacts/aws.json)
+          aws s3 cp artifacts/aws.json "s3://$bucket/config/current.json" --only-show-errors
+          aws s3 cp artifacts/images.json "s3://$bucket/config/images.json" --only-show-errors
+
+      - name: Release the first photo model (a pretrained baseline, only when none exists yet)
+        run: |
+          bucket=$(jq -r .deployment.value.model_bucket artifacts/aws.json)
+          if aws s3api head-object --bucket "$bucket" --key config/model.json >/dev/null 2>&1; then
+            echo "A model is already released; leaving it alone."; exit 0
+          fi
+          pip install --quiet onnx==1.23.2
+          python models/download_model.py
+          tar -czf /tmp/baseline.tar.gz -C models/baseline encoder.onnx model.json
+          sha=$(sha256sum /tmp/baseline.tar.gz | cut -d' ' -f1)
+          aws s3api put-object --bucket "$bucket" --key "releases/baseline/$sha.tar.gz" --body /tmp/baseline.tar.gz --if-none-match '*' >/dev/null 2>&1 || true
+          jq -n --arg uri "s3://$bucket/releases/baseline/$sha.tar.gz" --arg sha "$sha" '{uri: $uri, sha256: $sha, version: "baseline"}' > /tmp/model.json
+          aws s3 cp /tmp/model.json "s3://$bucket/config/model.json" --only-show-errors
+
+      - name: Build and publish the web app
+        run: |
+          d() { jq -r ".deployment.value.$1" artifacts/aws.json; }
+          npm ci --prefix apps/web
+          npm run build --prefix apps/web
+          cat > apps/web/dist/config.js <<JS
+          window.STOCKLANE_CONFIG = {
+            authMode: 'cognito',
+            authority: 'https://cognito-idp.${AWS_REGION}.amazonaws.com/$(d user_pool_id)',
+            clientId: '$(d web_client_id)',
+            scope: 'openid email profile',
+            logoutUrl: 'https://$(d cognito_domain).auth.${AWS_REGION}.amazoncognito.com/logout'
+          };
+          JS
+          web="s3://$(d web_bucket)"
+          aws s3 sync apps/web/dist "$web" --delete --exclude index.html --exclude config.js --cache-control "public,max-age=31536000,immutable" --only-show-errors
+          aws s3 cp apps/web/dist/index.html "$web/index.html" --cache-control "no-cache" --only-show-errors
+          aws s3 cp apps/web/dist/config.js "$web/config.js" --cache-control "no-cache" --only-show-errors
+          aws cloudfront create-invalidation --distribution-id "$(d distribution_id)" --paths "/index.html" "/config.js" >/dev/null
+
+      - name: Index the confirmed photos for the current model
+        run: |
+          fn=$(jq -r .deployment.value.vision_function artifacts/aws.json)
+          aws lambda invoke --function-name "$fn" --payload '{"action":"reindex"}' --cli-binary-format raw-in-base64-out \
+            --cli-read-timeout 330 /tmp/reindex.json >/dev/null
+          cat /tmp/reindex.json; echo
+
+      - name: Summary
+        run: |
+          {
+            echo "## Stocklane prod is deployed"
+            echo
+            echo "App: **$(jq -r .deployment.value.web_url artifacts/aws.json)**"
+            echo
+            echo "The first owner gets a Cognito invitation email; the first sign-in sets a password and an authenticator app (MFA)."
+            echo "Confirm the AWS alert subscription email so budget and alarm messages reach you."
+          } >> "$GITHUB_STEP_SUMMARY"

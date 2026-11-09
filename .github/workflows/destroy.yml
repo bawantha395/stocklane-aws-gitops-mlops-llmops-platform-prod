@@ -1,0 +1,50 @@
+# Removes the whole prod environment: data included. Type the project name to confirm.
+# The foundation (state bucket, CI user and roles) stays; see the README to remove it too.
+name: Destroy
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type stocklane-prod to delete the app, its data, the user pool and the buckets
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: stocklane-aws
+  cancel-in-progress: false
+env:
+  AWS_REGION: ap-southeast-2
+  AWS_DEFAULT_REGION: ap-southeast-2
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  PROJECT_NAME: stocklane-prod
+  TF_DIR: infra/terraform/environments/prod
+jobs:
+  destroy:
+    if: github.ref == 'refs/heads/main' && inputs.confirm == 'stocklane-prod'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with: {terraform_version: '1.13.5', terraform_wrapper: false}
+      - uses: ./.github/actions/aws-credentials
+        with:
+          role: deploy
+          access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - uses: ./.github/actions/terraform
+        with:
+          tfvars-json: ${{ secrets.TFVARS_JSON }}
+      - name: Switch deletion protection off
+        run: terraform -chdir="$TF_DIR" apply -input=false -auto-approve -var deletion_protection=false -target=module.data -target=module.auth -target=module.observability
+      - name: Destroy
+        run: terraform -chdir="$TF_DIR" destroy -input=false -auto-approve -var deletion_protection=false
+      - name: Summary
+        run: |
+          {
+            echo "## Stocklane prod destroyed"
+            echo
+            echo "The KMS key is scheduled for deletion in 30 days (AWS minimum wait) and costs about \$1 until then; cancel nothing, it goes by itself."
+            echo "To remove the foundation too, delete the CloudFormation stacks ${PROJECT_NAME}-identity and ${PROJECT_NAME}-state (empty the state bucket first)."
+          } >> "$GITHUB_STEP_SUMMARY"

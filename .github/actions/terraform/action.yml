@@ -1,0 +1,31 @@
+name: Terraform inputs and init
+description: >-
+  Writes this deployment's Terraform inputs (the TFVARS_JSON secret plus project name and region)
+  and initialises the S3 backend. Credentials must already be configured.
+inputs:
+  tfvars-json:
+    description: The TFVARS_JSON secret
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Write the Terraform inputs
+      shell: bash
+      env:
+        TFVARS_JSON: ${{ inputs.tfvars-json }}
+      run: |
+        for value in $(echo "$TFVARS_JSON" | jq -r '.owner_email, .alert_email, .web_domain'); do
+          echo "::add-mask::$value"
+        done
+        echo "$TFVARS_JSON" | jq --arg region "$AWS_REGION" --arg name "$PROJECT_NAME" '. + {region: $region, name: $name}' \
+          > "$TF_DIR/pipeline.auto.tfvars.json"
+        chmod 600 "$TF_DIR/pipeline.auto.tfvars.json"
+    - name: Terraform init
+      shell: bash
+      run: |
+        terraform -chdir="$TF_DIR" init -input=false -reconfigure \
+          -backend-config="bucket=${PROJECT_NAME}-tfstate-${AWS_ACCOUNT_ID}-${AWS_REGION}" \
+          -backend-config="key=state/prod/terraform.tfstate" \
+          -backend-config="region=${AWS_REGION}" \
+          -backend-config="encrypt=true" -backend-config="use_lockfile=true"
+        terraform -chdir="$TF_DIR" validate
