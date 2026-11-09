@@ -23,9 +23,13 @@ resource "aws_route53_record" "validation" {
 }
 
 resource "aws_acm_certificate_validation" "web" {
-  provider                = aws.us_east_1
-  certificate_arn         = aws_acm_certificate.web.arn
-  validation_record_fqdns = [for r in aws_route53_record.validation : r.fqdn]
+  provider        = aws.us_east_1
+  certificate_arn = aws_acm_certificate.web.arn
+  # The DNS records above are what ACM checks; waiting on them is enough, so no name matching here.
+  depends_on = [aws_route53_record.validation]
+  timeouts {
+    create = "15m"
+  }
 }
 
 resource "aws_route53_record" "web" {

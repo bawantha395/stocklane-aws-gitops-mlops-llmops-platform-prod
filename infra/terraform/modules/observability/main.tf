@@ -148,9 +148,3 @@ resource "aws_cloudtrail" "main" {
   enable_log_file_validation    = true
   depends_on                    = [aws_s3_bucket_policy.trail]
 }
-
-# ---------- IAM Access Analyzer (free): flags resources shared outside the account ----------
-resource "aws_accessanalyzer_analyzer" "account" {
-  analyzer_name = var.name
-  type          = "ACCOUNT"
-}

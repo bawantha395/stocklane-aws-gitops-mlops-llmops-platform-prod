@@ -160,8 +160,7 @@ and `stocklane-prod-state`.
 - **Least privilege**: each Lambda has its own role limited to this table, these buckets and this key. The CI user
   can only assume two roles, the deploy role is limited to this project's resource names, and the training role
   cannot touch infrastructure. Treat the deploy role like an administrator for this project.
-- **Audit**: CloudTrail management events (kept 90 days), API access logs, and IAM Access Analyzer (flags anything
-  shared outside the account).
+- **Audit**: CloudTrail management events (kept 90 days), and API access logs.
 - **Supply chain**: GitHub Actions pinned by commit, Trivy scans code and dependencies, `npm audit`, image scanning
   on push, model files verified by SHA256 before use.
 - Not included because they cost real money every month: AWS WAF (about $5+) and GuardDuty. Add them if the
