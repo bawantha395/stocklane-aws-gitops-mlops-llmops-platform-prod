@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bill, PrintButton, billTotals, type BillData } from "./Bill";
+import { Bill, PrintButton, ReceiptButton, billTotals, type BillData } from "./Bill";
 import { PastRepairs } from "./Vehicles";
 import { Loading, Pill, addDays, dateOnly, kmText, lkr, num, today, useCommand, useLoad, useWs, type Invoice, type Job } from "./common";
 
@@ -52,6 +52,7 @@ export function JobPage({ id }: { id: string }) {
     void run(async () => {
       const current = dirty ? await save() : job;
       const made = await command<Invoice>("/api/workshop/jobs/" + id + "/invoice", { revision: current.revision });
+      try { sessionStorage.setItem("ws.print", made.id); } catch { /* ignore */ }
       go({ name: "invoice", id: made.id }, "Invoice " + made.invoice_number + " created. Take a payment below.");
     });
   };
@@ -165,7 +166,7 @@ export function JobPage({ id }: { id: string }) {
       </div>
       {preview && (
         <div className="ws-modal" role="dialog" aria-modal="true" aria-label="Bill preview">
-          <div className="ws-modal-bar"><b>{locked ? "Bill" : "Draft bill (not issued yet)"}</b><span><PrintButton /> <button className="button primary small" onClick={() => setPreview(false)}>Close</button></span></div>
+          <div className="ws-modal-bar"><b>{locked ? "Bill" : "Draft bill (not issued yet)"}</b><span><PrintButton /> <ReceiptButton /> <button className="button primary small" onClick={() => setPreview(false)}>Close</button></span></div>
           <div className="ws-print"><Bill d={bill} /></div>
         </div>
       )}

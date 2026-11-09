@@ -28,5 +28,7 @@ Invoice numbers look like `INV-20261110-9AC7CC` (Colombo date plus a random part
 | `GET /api/workshop/service-due` | staff | vehicles due within 14 days or 300 km |
 | `GET /api/workshop/report`, `/report.pdf` | owner | totals for `?from=YYYY-MM-DD&until=YYYY-MM-DD` |
 
+The PDF routes answer JSON `{filename, pdf}` (base64), so a PDF travels like every other call and the browser saves it.
+
 Every write needs an `Idempotency-Key` header (the app sends one), so a retry after a bad connection never creates a
 second job, invoice or payment.

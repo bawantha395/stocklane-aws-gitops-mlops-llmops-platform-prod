@@ -30,7 +30,25 @@ export async function api<T=any>(path:string,options:RequestInit={},key?:string)
  if(response.status===204)return undefined as T;
  return response.json();
 }
-export async function download(path:string,name:string){const response=await fetch((config.apiBase||'')+path,{headers:await headers()});if(!response.ok)throw new Error('The file could not be downloaded');const url=URL.createObjectURL(await response.blob());const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+async function pdfBlob(path:string,name:string):Promise<{blob:Blob;name:string}>{
+ const file=await api<{filename?:string;pdf:string}>(path);
+ const bytes=Uint8Array.from(atob(file.pdf),c=>c.charCodeAt(0));
+ return {blob:new Blob([bytes],{type:'application/pdf'}),name:file.filename||name};
+}
+/** Save a PDF from the API. It travels as JSON, so it behaves like every other call (auth, errors, retries). */
+export async function download(path:string,name:string){
+ const {blob,name:file}=await pdfBlob(path,name);
+ const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=file;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+}
+/** Open a PDF in a new tab so the browser's own viewer can print it on A4. */
+export async function openPdf(path:string,name:string){
+ const tab=window.open('','_blank');
+ try{
+  const {blob}=await pdfBlob(path,name);const url=URL.createObjectURL(blob);
+  if(tab)tab.location.href=url;else{const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove();}
+  setTimeout(()=>URL.revokeObjectURL(url),120000);
+ }catch(e){tab?.close();throw e;}
+}
 export type Product={id:string;sku:string;name:string;category:string;brand:string;grade:string;capacity:string;barcode:string|null;unit:string;quantity:number;selling_price:number;reorder_level:number;image_id:string|null};
 export type Job={id:string;customer:string;vehicle:string;registration:string;phone:string;summary:string;status:string;created_at:string};
 export type Movement={id:string;product_id:string;sku:string;name:string;unit:string;kind:string;quantity:number;unit_price:number;balance?:number;job_id:string|null;issue_id:string|null;actor:string;receiver_name?:string|null;note:string;created_at:string};

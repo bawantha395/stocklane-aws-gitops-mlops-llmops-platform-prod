@@ -227,51 +227,6 @@ html[data-ws-theme] .stock-shell .stock-sidebar { background: linear-gradient(13
 html[data-ws-theme] .stock-shell .stock-header { background: transparent !important; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
 html[data-ws-theme] .stock-shell .stock-header .icon-button { background: linear-gradient(135deg, rgba(255,255,255,.6), rgba(255,255,255,.25)); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,.85); }
 
-/* ---- Portfolio palette: dark navy and dark green backdrop, light glass cards, no pink ---- */
-html[data-ws-theme="dark"] .stock-shell {
-  background:
-    radial-gradient(640px 460px at 6% 0%, rgba(34, 120, 214, .34), transparent 65%),
-    radial-gradient(620px 480px at 98% 12%, rgba(30, 140, 100, .36), transparent 65%),
-    radial-gradient(700px 520px at 70% 100%, rgba(18, 90, 70, .5), transparent 65%),
-    linear-gradient(160deg, #0a1428 0%, #0c1f33 48%, #0a2a24 100%);
-  background-attachment: fixed; color: #14231f;
-}
-.ws-glass, .ws-card, .ws-kpi, .ws-item, .ws-visit, .ws-actionbar, .ws-modal-bar, .ws-facts > *, .ws-known, .ws-note, .ws-empty {
-  background: linear-gradient(135deg, rgba(255, 255, 255, .86), rgba(235, 244, 240, .7));
-  border: 1px solid rgba(255, 255, 255, .55); color: #14231f;
-  box-shadow: 0 1px 1px rgba(255, 255, 255, .8) inset, 0 12px 34px rgba(0, 0, 0, .28);
-}
-.ws-item:hover { background: linear-gradient(135deg, rgba(255, 255, 255, .96), rgba(240, 248, 244, .85)); }
-.ws-tabs { background: rgba(10, 20, 40, .45); border-bottom: 1px solid rgba(255, 255, 255, .12); }
-.ws-tabs button, .ws-chip { background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .22); color: #e8f1ee; box-shadow: none; }
-.ws-tabs button.chosen, .ws-chip.chosen { background: linear-gradient(180deg, #3aa07a, #247a5a); border-color: transparent; color: #fff; box-shadow: 0 4px 16px rgba(36, 122, 90, .5); }
-.ws-top h1, .ws-top .eyebrow, .ws-dates label, .ws > .ws-section-head h3, .ws > .ws-past h3, .ws > .ws-past .ws-section-head h3, .ws-past > p, .ws-past .muted { color: #eaf3f0; }
-.ws-top .eyebrow { color: #7fd1ae; }
-.ws-past > .muted, .ws-dates label { color: #b6c9c3; }
-.ws-card .muted, .ws-card small, .ws-kpi small, .ws-kpi span, .ws-item small { color: #5d716b; }
-.ws-form input, .ws-card input, .ws-card select, .ws-card textarea, .ws-toolbar input, .ws-search input, .ws input, .ws select, .ws textarea { background: rgba(255, 255, 255, .92); color: #14231f; border-color: rgba(255, 255, 255, .6); }
-.ws-search input::placeholder { color: #6b7d77; }
-.ws-kpi.warn b, .ws-owed { color: #b4531f; }
-.ws-col { fill: #3aa0e8; } .ws-col.on { fill: #7cc3f5; }
-.ws-card .ws-col { fill: #2a78d6; }
-.ws-pill.open, .ws-pill.partial { background: #fdecd6; color: #8a4a1f; }
-html[data-ws-theme="dark"] .stock-shell .stock-header, html[data-ws-theme="dark"] .stock-shell .stock-header * { color: #cfe0db; }
-html[data-ws-theme="dark"] .stock-shell .stock-header .icon-button { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .25); }
-html[data-ws-theme="dark"] .stock-shell .stock-header .icon-button svg { color: #eaf3f0; }
-html[data-ws-theme="dark"] .stock-shell .stock-sidebar { background: linear-gradient(135deg, rgba(255, 255, 255, .82), rgba(228, 240, 235, .6)) !important; }
-.ws .stock-notice, .ws .stock-help { color: #cfe0db; }
-.ws .stock-error { color: #ffb4a8; }
-.ws-card .stock-help { color: #5d716b; }
-@media (min-width: 761px) {
-  html[data-ws-theme="dark"] .stock-shell .stock-sidebar { background: rgba(255, 255, 255, .88) !important; }
-  html[data-ws-theme="dark"] .stock-shell .stock-main { color: #eaf3f0; }
-}
-@media print { html .stock-shell { background: #fff; color: #000; } }
-.ws-section-head h3 { color: #eaf3f0; }
-.ws-card .ws-section-head h3 { color: #14231f; }
-html[data-ws-theme="dark"], html[data-ws-theme="dark"] body { background-color: #0a1428; }
-html[data-ws-theme] .stock-shell { min-height: 100vh; min-height: 100dvh; }
-
 /* ---- Light mode (toggle in the Workshop header) ---- */
 html[data-ws-theme="light"], html[data-ws-theme="light"] body { background-color: #eef1f7; }
 html[data-ws-theme="light"] .stock-shell {
@@ -302,7 +257,103 @@ html[data-ws-theme="light"] .stock-shell .stock-header, html[data-ws-theme="ligh
 html[data-ws-theme="light"] .stock-shell .stock-header .icon-button { background: rgba(255, 255, 255, .6); border-color: rgba(255, 255, 255, .85); }
 html[data-ws-theme="light"] .stock-shell .stock-header .icon-button svg { color: #233d38; }
 @media (min-width: 761px) { html[data-ws-theme="light"] .stock-shell .stock-main { color: #14231f; } }
-.ws-theme { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .14); color: inherit; font: 600 13px inherit; font-family: inherit; cursor: pointer; }
-html[data-ws-theme="light"] .ws-theme { background: rgba(255, 255, 255, .6); color: #14231f; }
-.ws-top-actions { display: flex; align-items: center; gap: 8px; }
+html[data-ws-theme="light"] .ws-top-actions { display: flex; align-items: center; gap: 8px; }
 html[data-ws-theme="light"] .ws-tabs button.chosen, html[data-ws-theme="light"] .ws-chip.chosen { background: linear-gradient(180deg, #3aa07a, #247a5a); border-color: transparent; color: #fff; }
+
+/* ---- Printing: plain white A4, no glass, no page chrome ---- */
+@media print {
+  html, body, html[data-ws-theme] body, html[data-ws-theme] .stock-shell, .stock-shell { background: #fff !important; background-image: none !important; color: #000 !important; }
+  * { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; box-shadow: none !important; text-shadow: none !important; }
+  body * { visibility: hidden !important; }
+  .ws-print, .ws-print * { visibility: visible !important; }
+  .ws-print { position: absolute !important; left: 0; top: 0; width: 100%; background: #fff !important; }
+  .ws-modal { position: static !important; background: none !important; padding: 0 !important; overflow: visible !important; }
+  .ws-bill { background: #fff !important; border: 0 !important; margin: 0 !important; padding: 0 !important; max-width: none !important; border-radius: 0 !important; color: #000 !important; }
+  .ws-bill-table th { background: #f1f3f1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ws-bill-totals .grand { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ws-bill-table { min-width: 0 !important; }
+  .ws-bill-scroll { overflow: visible !important; }
+  .ws-bill-head, .ws-bill-parties { display: flex !important; flex-direction: row !important; justify-content: space-between !important; }
+  .ws-bill-title { text-align: right; }
+  .ws-bill-table tr, .ws-bill-totals, .ws-bill footer { break-inside: avoid; }
+  .ws-modal-bar, .ws-actionbar, .ws-tabs, .stock-sidebar, .stock-header { display: none !important; }
+}
+
+/* ---- Thermal receipt: automatic on narrow paper (58 to 80 mm) or with the Receipt button ---- */
+@media print and (max-width: 110mm) {
+  html, body, .stock-shell { background: #fff !important; background-image: none !important; }
+  * { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; box-shadow: none !important; }
+  body * { visibility: hidden !important; }
+  .ws-print, .ws-print * { visibility: visible !important; }
+  .ws-print { position: absolute !important; left: 0; top: 0; width: 100%; background: #fff !important; }
+  .ws-modal { position: static !important; background: none !important; padding: 0 !important; overflow: visible !important; }
+  .ws-modal-bar, .ws-actionbar, .ws-tabs, .stock-sidebar, .stock-header { display: none !important; }
+  .ws-bill { font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace !important; padding: 0 !important; margin: 0 !important; border: 0 !important; max-width: none !important; width: 100% !important; color: #000 !important; background: #fff !important; }
+  .ws-bill h2 { font-size: 15px; text-align: center; margin: 0; }
+  .ws-bill-head { display: block !important; border-bottom: 1px dashed #000 !important; padding-bottom: 6px; text-align: center; }
+  .ws-bill-head p { text-align: center; }
+  .ws-bill-title { text-align: center !important; margin-top: 6px; }
+  .ws-bill-title strong { color: #000 !important; font-size: 14px; }
+  .ws-bill-parties { display: block !important; padding: 6px 0; border-bottom: 1px dashed #000; }
+  .ws-bill-parties > div { margin-bottom: 4px; }
+  .ws-bill-reg { font-size: 14px; }
+  .ws-bill-scroll { overflow: visible !important; }
+  .ws-bill-table { min-width: 0 !important; width: 100%; font-size: 11px; }
+  .ws-bill-table th { background: none !important; border-bottom: 1px solid #000; padding: 2px 2px; }
+  .ws-bill-table td { padding: 2px 2px; border-bottom: 1px dotted #999; }
+  .ws-bill-table th:first-child, .ws-bill-table td:first-child { display: none; }
+  .ws-bill-table th:nth-child(4), .ws-bill-table td:nth-child(4) { display: none; }
+  .ws-bill-totals { max-width: none !important; margin: 6px 0 !important; }
+  .ws-bill-totals .grand { background: none !important; color: #000 !important; border-top: 1px solid #000; border-bottom: 1px solid #000; border-radius: 0 !important; padding: 3px 0 !important; font-size: 14px; }
+  .ws-bill-totals .due { color: #000 !important; }
+  .ws-bill-next { border: 1px dashed #000 !important; background: none !important; }
+  .ws-bill footer { text-align: center; border-top: 1px dashed #000 !important; }
+  .ws-bill-sign { display: none !important; }
+}
+@media print {
+}
+@media print {
+  html.ws-receipt-mode html, html.ws-receipt-mode body, html.ws-receipt-mode .stock-shell { background: #fff !important; background-image: none !important; }
+  html.ws-receipt-mode * { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; box-shadow: none !important; }
+  html.ws-receipt-mode body * { visibility: hidden !important; }
+  html.ws-receipt-mode .ws-print, html.ws-receipt-mode .ws-print * { visibility: visible !important; }
+  html.ws-receipt-mode .ws-print { position: absolute !important; left: 0; top: 0; width: 100%; background: #fff !important; }
+  html.ws-receipt-mode .ws-modal { position: static !important; background: none !important; padding: 0 !important; overflow: visible !important; }
+  html.ws-receipt-mode .ws-modal-bar, html.ws-receipt-mode .ws-actionbar, html.ws-receipt-mode .ws-tabs, html.ws-receipt-mode .stock-sidebar, html.ws-receipt-mode .stock-header { display: none !important; }
+  html.ws-receipt-mode .ws-bill { font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace !important; padding: 0 !important; margin: 0 !important; border: 0 !important; max-width: none !important; width: 100% !important; color: #000 !important; background: #fff !important; }
+  html.ws-receipt-mode .ws-bill h2 { font-size: 15px; text-align: center; margin: 0; }
+  html.ws-receipt-mode .ws-bill-head { display: block !important; border-bottom: 1px dashed #000 !important; padding-bottom: 6px; text-align: center; }
+  html.ws-receipt-mode .ws-bill-head p { text-align: center; }
+  html.ws-receipt-mode .ws-bill-title { text-align: center !important; margin-top: 6px; }
+  html.ws-receipt-mode .ws-bill-title strong { color: #000 !important; font-size: 14px; }
+  html.ws-receipt-mode .ws-bill-parties { display: block !important; padding: 6px 0; border-bottom: 1px dashed #000; }
+  html.ws-receipt-mode .ws-bill-parties > div { margin-bottom: 4px; }
+  html.ws-receipt-mode .ws-bill-reg { font-size: 14px; }
+  html.ws-receipt-mode .ws-bill-scroll { overflow: visible !important; }
+  html.ws-receipt-mode .ws-bill-table { min-width: 0 !important; width: 100%; font-size: 11px; }
+  html.ws-receipt-mode .ws-bill-table th { background: none !important; border-bottom: 1px solid #000; padding: 2px 2px; }
+  html.ws-receipt-mode .ws-bill-table td { padding: 2px 2px; border-bottom: 1px dotted #999; }
+  html.ws-receipt-mode .ws-bill-table th:first-child, html.ws-receipt-mode .ws-bill-table td:first-child { display: none; }
+  html.ws-receipt-mode .ws-bill-table th:nth-child(4), html.ws-receipt-mode .ws-bill-table td:nth-child(4) { display: none; }
+  html.ws-receipt-mode .ws-bill-totals { max-width: none !important; margin: 6px 0 !important; }
+  html.ws-receipt-mode .ws-bill-totals .grand { background: none !important; color: #000 !important; border-top: 1px solid #000; border-bottom: 1px solid #000; border-radius: 0 !important; padding: 3px 0 !important; font-size: 14px; }
+  html.ws-receipt-mode .ws-bill-totals .due { color: #000 !important; }
+  html.ws-receipt-mode .ws-bill-next { border: 1px dashed #000 !important; background: none !important; }
+  html.ws-receipt-mode .ws-bill footer { text-align: center; border-top: 1px dashed #000 !important; }
+  html.ws-receipt-mode .ws-bill-sign { display: none !important; }
+}
+
+.ws-top-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.ws-autoprint { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #4a5a55; cursor: pointer; }
+.ws-autoprint input { width: 18px; min-height: 18px; height: 18px; padding: 0; }
+@media print { .ws-top-actions, .ws-autoprint { display: none !important; } }
+
+.ws-printer { position: relative; }
+.ws-printer > summary { list-style: none; cursor: pointer; min-height: 38px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .85); background: linear-gradient(135deg, rgba(255, 255, 255, .6), rgba(255, 255, 255, .25)); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); font-size: 13px; font-weight: 600; color: #14231f; }
+.ws-printer > summary::-webkit-details-marker { display: none; }
+.ws-printer > summary.on { color: #1c6b3a; }
+.ws-printer > summary.on::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #34c759; margin-right: 8px; }
+.ws-printer-menu { position: absolute; right: 0; top: 44px; z-index: 40; width: 260px; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 16px; background: rgba(255, 255, 255, .92); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); border: 1px solid rgba(255, 255, 255, .9); box-shadow: 0 14px 40px rgba(0, 0, 0, .2); color: #14231f; }
+.ws-printer-menu label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.ws-printer-menu select { width: auto; min-height: 36px; }
+@media print { .ws-printer { display: none !important; } }

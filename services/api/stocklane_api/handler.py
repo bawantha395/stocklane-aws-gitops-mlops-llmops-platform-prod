@@ -104,9 +104,8 @@ def handler(event, _context=None):
             headers = {k.lower(): v for k, v in (event.get('headers') or {}).items()}
             result = fn(event, match.groups(), body, headers.get('idempotency-key'))
             if isinstance(result, tuple) and result[0] == 'pdf':
-                return {'statusCode': 200, 'isBase64Encoded': True, 'body': base64.b64encode(result[1]).decode(),
-                        'headers': {'Content-Type': 'application/pdf', 'Cache-Control': 'no-store',
-                                    'Content-Disposition': 'attachment; filename=' + re.sub(r'[^A-Za-z0-9_-]', '', result[2]) + '.pdf'}}
+                name = re.sub(r'[^A-Za-z0-9_-]', '', result[2]) or 'document'
+                return reply(200, {'filename': name + '.pdf', 'pdf': base64.b64encode(result[1]).decode()})
             return reply(200, result)
         raise ApiError(404, 'Not found')
     except ApiError as error:
