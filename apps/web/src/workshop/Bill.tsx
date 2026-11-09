@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { dateOnly, kmText, lkr, num, round2, type Business, type Labour, type Part, type Payment } from "./common";
 
 export type BillData = {
@@ -81,27 +80,5 @@ export function PrintButton() {
   return <button className="button secondary small" onClick={() => window.print()}>Print</button>;
 }
 
-/** Prints the bill as a narrow receipt for a thermal printer (80 mm). Narrow paper also switches to this layout by itself. */
-export function printReceipt() {
-  const sheet = document.createElement("style");
-  sheet.textContent = "@page { size: 80mm auto; margin: 3mm; }";
-  document.head.appendChild(sheet);
-  document.documentElement.classList.add("ws-receipt-mode");
-  const done = () => { document.documentElement.classList.remove("ws-receipt-mode"); sheet.remove(); window.removeEventListener("afterprint", done); };
-  window.addEventListener("afterprint", done);
-  window.print();
-}
-export function ReceiptButton() {
-  return <button className="button secondary small" onClick={printReceipt}>Receipt (80 mm)</button>;
-}
-
 /** Per device: print the receipt by itself after an invoice is created or a payment is taken. */
-export const autoPrintOn = () => { try { return localStorage.getItem("ws.autoprint") === "on"; } catch { return false; } };
-export function AutoPrintToggle() {
-  const [on, setOn] = useState(autoPrintOn);
-  return (
-    <label className="ws-autoprint" title="Needs the browser to print without a dialog (see the README, thermal printer)">
-      <input type="checkbox" checked={on} onChange={(e) => { setOn(e.target.checked); try { localStorage.setItem("ws.autoprint", e.target.checked ? "on" : "off"); } catch { /* keep for this visit */ } }} /> Auto-print receipt
-    </label>
-  );
-}
+export const autoPrintOn = () => { try { return localStorage.getItem("ws.autoprint") !== "off"; } catch { return true; } };

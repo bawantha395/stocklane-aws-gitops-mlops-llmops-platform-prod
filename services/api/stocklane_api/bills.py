@@ -135,7 +135,7 @@ def invoice(i):
         d.text(MARGIN, d.y + 8, 'PAYMENTS RECEIVED', 8, True, color=MUTED)
         d.y += 14
         for p in i['payments']:
-            d.text(MARGIN, d.y + 9, p['date'] + '   ' + p['method'].title() + (('   ' + p['note']) if p['note'] else ''), 9, color=INK)
+            d.text(MARGIN, d.y + 9, p.get('date', '') + '   ' + str(p.get('method') or '').title() + (('   ' + p['note']) if p.get('note') else ''), 9, color=INK)
             d.text(R - 6, d.y + 9, m(p['amount']), 9, align='r')
             d.y += 14
         d.y += 6

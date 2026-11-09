@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { download, openPdf } from "../api";
-import { Bill, autoPrintOn, printReceipt } from "./Bill";
+import { Bill, autoPrintOn } from "./Bill";
+import { downloadInvoicePdf } from "./invoicePdf";
 import { printerConnected, receiptBytes, sendToPrinter } from "./printer";
 import { Empty, Loading, Pill, dateOnly, lkr, num, today, useCommand, useLoad, useWs, waLink, type Invoice } from "./common";
 
@@ -47,14 +47,14 @@ export function InvoicePage({ id }: { id: string }) {
   const [amount, setAmount] = useState(""), [method, setMethod] = useState("CASH"), [note, setNote] = useState("");
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const command = useCommand();
-  /** Straight to the thermal printer when one is connected. If that fails, or none is connected, the normal print preview opens. */
+  /** One Print action. A connected thermal printer prints straight away. Otherwise the browser print preview opens, and it lays the bill out for whatever paper is chosen (A4 or a narrow roll). */
   const printNow = async () => {
     if (!inv) return;
     if (printerConnected()) {
       try { await sendToPrinter(receiptBytes(inv, inv.business ? { ...business, ...inv.business } : business)); return; }
       catch (e) { setError((e as Error).message + " The print preview was opened instead."); }
     }
-    printReceipt();
+    window.print();
   };
   const ready = !!inv;
   useEffect(() => {
@@ -72,9 +72,8 @@ export function InvoicePage({ id }: { id: string }) {
   return (
     <div>
       <div className="ws-bar">
-        <button className="button primary small" onClick={() => void download("/api/workshop/invoices/" + id + "/pdf", inv.invoice_number + ".pdf").catch((e) => setError(e.message))}>Download PDF</button>
-        <button className="button secondary small" onClick={() => void openPdf("/api/workshop/invoices/" + id + "/pdf", inv.invoice_number + ".pdf").catch((e) => setError(e.message))}>Print A4</button>
-        <button className="button secondary small" onClick={() => void printNow()}>{printerConnected() ? "Print receipt" : "Receipt (80 mm)"}</button>
+        <button className="button primary small" onClick={() => void printNow()}>Print</button>
+        <button className="button secondary small" onClick={() => { try { downloadInvoicePdf(inv, shop); } catch (e) { setError((e as Error).message); } }}>Download PDF</button>
         <button className="button secondary small" onClick={() => go({ name: "job", id: inv.job_id })}>View job</button>
         <button className="button secondary small" onClick={() => go({ name: "vehicle", id: inv.registration.replace(/[^A-Za-z0-9]/g, "").toUpperCase() })}>Vehicle file</button>
         {inv.phone && <a className="button secondary small" target="_blank" rel="noreferrer" href={waLink(inv.phone, "Hello " + inv.customer + ", your invoice " + inv.invoice_number + " from " + shop.name + " is LKR " + lkr(inv.total) + (balance > 0 ? ", balance LKR " + lkr(balance) : ", paid in full") + ". Thank you.")}>WhatsApp</a>}

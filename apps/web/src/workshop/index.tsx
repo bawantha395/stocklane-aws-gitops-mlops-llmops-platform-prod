@@ -8,7 +8,6 @@ import { Jobs, NewJob } from "./Jobs";
 import { Reports } from "./Reports";
 import { Settings } from "./Settings";
 import { Due, VehiclePage, Vehicles } from "./Vehicles";
-import { AutoPrintToggle } from "./Bill";
 import { PrinterPanel } from "./PrinterPanel";
 import { reconnectPrinter } from "./printer";
 import { WsContext, type Business, type Page, type PageName } from "./common";
@@ -34,7 +33,7 @@ export function Workshop({ owner }: { owner: boolean }) {
       <section className="ws" aria-label="Workshop">
         <div className="ws-top">
           <div><p className="eyebrow">WORKSHOP</p><h1>{business.name}</h1></div>
-          <div className="ws-top-actions"><PrinterPanel /><AutoPrintToggle /><button className="button primary" onClick={() => go({ name: "new" })}>+ New job</button></div>
+          <div className="ws-top-actions"><PrinterPanel /><button className="button primary" onClick={() => go({ name: "new" })}>+ New job</button></div>
         </div>
         <nav className="ws-tabs" role="tablist" aria-label="Workshop sections">
           {tabs.map(([key, label]) => <button key={key} role="tab" aria-selected={tab === key} className={tab === key ? "chosen" : ""} onClick={() => go({ name: key })}>{label}</button>)}
