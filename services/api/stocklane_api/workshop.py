@@ -23,7 +23,7 @@ LATIN = re.compile(r'[\x20-\x7e]*')
 MONEY, ZERO, HUNDRED = Decimal('0.01'), Decimal('0'), Decimal('100')
 METHODS = ('CASH', 'CARD', 'BANK', 'OTHER')
 CHANGED = 'Someone changed this just now. Reload it and try again.'
-DEFAULT_BUSINESS = {'name': 'Ganga Motors', 'address': 'No 566, Anuradhapura 50000', 'phone': '', 'email': '', 'reg_no': '', 'bank': '',
+DEFAULT_BUSINESS = {'name': 'Workshop Suite', 'address': '', 'phone': '', 'email': '', 'reg_no': '', 'bank': '',
                     'footer': 'Thank you for your business.', 'tax_name': 'VAT', 'tax_rate': ZERO, 'mechanic_discount_pct': Decimal('10')}
 
 

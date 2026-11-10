@@ -105,7 +105,7 @@ def create_app():
         try:
             return {'value': await asyncio.to_thread(product_qr, data)}
         except (ValueError, OSError):
-            raise HTTPException(422, 'Use a clear photo with a valid Stocklane QR') from None
+            raise HTTPException(422, 'Use a clear photo with a valid Lifta QR') from None
 
     @app.get('/api/vision/barcodes/{barcode}')
     def barcode_lookup(barcode: str, request: Request):
