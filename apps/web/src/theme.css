@@ -22,3 +22,49 @@ html[data-glass] .stock-sidebar .stock-brand span { color: #0e2f6b; }
 .si-brand .si-word { font-size: 34px; }
 .si-brand .si-word span { color: #0e2f6b; }
 .shop-logo { display: block; width: 100px; height: auto; margin: 0 0 8px; filter: drop-shadow(0 6px 10px rgba(14, 47, 107, .25)); }
+/* Dialogs sit above the mobile dock and scroll fully, including on iPhone Safari */
+.stock-modal-shade, .ws-dialog-back { z-index: 90 !important; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+@media (max-width: 760px) {
+  .stock-modal-shade { align-items: flex-start !important; padding: max(12px, env(safe-area-inset-top)) 10px calc(14px + env(safe-area-inset-bottom)) !important; }
+  .stock-modal, .scanner-dialog { max-height: none !important; overflow: visible !important; margin: 0 auto; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+  .ws-dialog-back { align-items: flex-start !important; overflow-y: auto; padding: 12px 10px calc(14px + env(safe-area-inset-bottom)) !important; }
+  .ws-dialog { max-height: none !important; margin: 0 auto; }
+  .stock-form-actions { position: static; }
+}
+/* Mobile: the dock sits at the top of the screen */
+@media (max-width: 760px) {
+  .stock-shell .stock-sidebar { top: calc(8px + env(safe-area-inset-top)) !important; bottom: auto !important; align-items: flex-start !important; }
+  .stock-shell .stock-sidebar > button { transform-origin: 50% 0 !important; }
+  .stock-shell .stock-sidebar > button.chosen::after { bottom: auto; top: -5px; }
+  .stock-shell .stock-main { padding: calc(84px + env(safe-area-inset-top)) 14px calc(24px + env(safe-area-inset-bottom)) !important; }
+  .ws-actionbar { bottom: calc(12px + env(safe-area-inset-bottom)) !important; }
+  .ws-tabs { top: calc(84px + env(safe-area-inset-top)) !important; }
+}
+/* Mobile dock: clear glass, content blurs as it scrolls underneath */
+@media (max-width: 760px) {
+  html[data-glass] body .stock-shell .stock-sidebar {
+    background: linear-gradient(135deg, rgba(255, 255, 255, .46), rgba(255, 255, 255, .2)) !important;
+    border: 1px solid rgba(255, 255, 255, .7) !important;
+    -webkit-backdrop-filter: saturate(220%) blur(26px) !important; backdrop-filter: saturate(220%) blur(26px) !important;
+    box-shadow: 0 1px 1px rgba(255, 255, 255, .9) inset, 0 -1px 1px rgba(255, 255, 255, .3) inset, 0 10px 30px rgba(31, 38, 135, .16) !important;
+  }
+  .stock-shell .stock-sidebar > button { color: #14231f; font-weight: 600; text-shadow: 0 1px 0 rgba(255, 255, 255, .55); }
+  .stock-shell .stock-sidebar > button.chosen { background: rgba(14, 47, 107, .14); color: #0e2f6b; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (max-width: 760px) { html[data-glass] body .stock-shell .stock-sidebar { background: rgba(255, 255, 255, .95) !important; } }
+}
+/* Mobile dock: swipe the line up to hide, down (or tap) to show */
+.dock-grab { display: none; }
+@media (max-width: 760px) {
+  .dock-grab { display: block; position: absolute; left: 50%; top: 100%; width: 96px; height: 30px; margin-left: -48px; cursor: pointer; touch-action: none; -webkit-tap-highlight-color: transparent; }
+  .dock-grab::before { content: ""; position: absolute; left: 50%; top: 9px; width: 44px; height: 5px; margin-left: -22px; border-radius: 99px; background: rgba(20, 35, 31, .38); box-shadow: 0 1px 0 rgba(255, 255, 255, .7); }
+  .stock-shell .stock-sidebar { transition: transform .32s cubic-bezier(.2, .8, .3, 1); }
+  .stock-shell[data-dock="hidden"] .stock-sidebar { transform: translateY(calc(-100% - 8px - env(safe-area-inset-top) + 2px)); box-shadow: none !important; }
+  .stock-shell[data-dock="hidden"] .stock-sidebar > button { pointer-events: none; }
+  .stock-shell[data-dock="hidden"] .dock-grab::before { background: rgba(20, 35, 31, .5); width: 52px; margin-left: -26px; }
+  .stock-shell .stock-main { transition: padding-top .32s cubic-bezier(.2, .8, .3, 1); }
+  .stock-shell[data-dock="hidden"] .stock-main { padding-top: calc(30px + env(safe-area-inset-top)) !important; }
+  .stock-shell[data-dock="hidden"] .ws-tabs { top: calc(30px + env(safe-area-inset-top)) !important; }
+}
+@media (prefers-reduced-motion: reduce) { .stock-shell .stock-sidebar, .stock-shell .stock-main { transition: none !important; } }

@@ -186,6 +186,24 @@ async function apiPhoto(id: string) {
 function App() {
   const [view, setView] = useState<View>("home");
   const [counterMode, setCounterMode] = useState<CounterMode>("receive");
+  const [dockHidden, setDockHidden] = useState(() => {
+    try { return localStorage.getItem("lifta.dock") === "hidden"; } catch { return false; }
+  });
+  const swipeY = useRef<number | null>(null);
+  function setDock(hidden: boolean) {
+    setDockHidden(hidden);
+    try { localStorage.setItem("lifta.dock", hidden ? "hidden" : "shown"); } catch { /* private mode */ }
+  }
+  const swipe = {
+    onTouchStart: (e: React.TouchEvent) => { swipeY.current = e.touches[0].clientY; },
+    onTouchEnd: (e: React.TouchEvent) => {
+      if (swipeY.current === null) return;
+      const dy = e.changedTouches[0].clientY - swipeY.current;
+      swipeY.current = null;
+      if (dy < -24) setDock(true);
+      else if (dy > 24) setDock(false);
+    },
+  };
   const [items, setItems] = useState<Item[]>([]),
     [moves, setMoves] = useState<Movement[]>([]);
   const [activitySearch, setActivitySearch] = useState("");
@@ -724,8 +742,8 @@ function App() {
       );
   }
   return (
-    <div className="stock-shell">
-      <aside className="stock-sidebar">
+    <div className="stock-shell" data-dock={dockHidden ? "hidden" : "shown"}>
+      <aside className="stock-sidebar" {...swipe}>
         <a
           className="stock-brand"
           href="#"
@@ -764,6 +782,14 @@ function App() {
           <strong>{owner ? "Owner workspace" : "Stock team"}</strong>
           <small>Ganga Motors</small>
         </div>
+        <div
+          className="dock-grab"
+          role="button"
+          tabIndex={0}
+          aria-label={dockHidden ? "Show menu" : "Hide menu"}
+          onClick={() => setDock(!dockHidden)}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setDock(!dockHidden); }}
+        />
       </aside>
       <main className="stock-main">
         <header className="stock-header">
