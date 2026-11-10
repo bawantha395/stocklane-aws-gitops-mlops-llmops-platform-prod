@@ -1,10 +1,20 @@
-import {UserManager, WebStorageStateStore} from 'oidc-client-ts';
+import {UserManager, WebStorageStateStore, type User} from 'oidc-client-ts';
 declare global {interface Window {STOCKLANE_CONFIG:{authMode:string;authority:string;clientId:string;scope:string;apiBase?:string;logoutUrl?:string}}}
 export const config=window.STOCKLANE_CONFIG;
-export const auth=config.authMode==='cognito'?new UserManager({authority:config.authority,client_id:config.clientId,redirect_uri:location.origin+'/auth/callback',post_logout_redirect_uri:location.origin,response_type:'code',scope:config.scope,userStore:new WebStorageStateStore({store:sessionStorage}),automaticSilentRenew:true}):null;
+export const auth=config.authMode==='cognito'?new UserManager({authority:config.authority,client_id:config.clientId,redirect_uri:location.origin+'/auth/callback',post_logout_redirect_uri:location.origin,response_type:'code',scope:config.scope,userStore:new WebStorageStateStore({store:localStorage}),automaticSilentRenew:true}):null;
+/** The signed-in user, renewed quietly with the refresh token when the 15 minute access token has run out or is about to. Sign-in is only asked for when the refresh token is gone too. One renewal is shared by calls made at the same moment. */
+let renewing:Promise<User|null>|null=null;
+async function freshUser():Promise<User|null>{
+ if(!auth)return null;
+ const user=await auth.getUser();
+ if(user&&!user.expired&&(user.expires_in??0)>60)return user;
+ if(!user?.refresh_token)return user&&!user.expired?user:null;
+ renewing??=auth.signinSilent().catch(()=>null).finally(()=>{renewing=null;});
+ return renewing;
+}
 export async function headers(){
  const result:Record<string,string>={};
- if(auth){const user=await auth.getUser();if(user&&!user.expired)result.Authorization='Bearer '+user.access_token;}
+ if(auth){const user=await freshUser();if(user)result.Authorization='Bearer '+user.access_token;}
  else result['X-Demo-User']=localStorage.getItem('stocklane.role')||'owner';
  return result;
 }

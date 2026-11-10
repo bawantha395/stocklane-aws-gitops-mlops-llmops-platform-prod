@@ -38,6 +38,12 @@ import {
 import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/manrope";
 import "./stock.css";
+import "./glass.css";
+import "./theme.css";
+import { Logo } from "./Logo";
+import { SignIn, type SignInMode } from "./SignIn";
+
+document.documentElement.dataset.glass = "light";
 const Scanner = React.lazy(() =>
   import("./Scanner").then((module) => ({ default: module.Scanner })),
 );
@@ -179,7 +185,7 @@ async function apiPhoto(id: string) {
 }
 function App() {
   const [view, setView] = useState<View>("home");
-  const [counterMode, setCounterMode] = useState<CounterMode>("give");
+  const [counterMode, setCounterMode] = useState<CounterMode>("receive");
   const [items, setItems] = useState<Item[]>([]),
     [moves, setMoves] = useState<Movement[]>([]);
   const [activitySearch, setActivitySearch] = useState("");
@@ -187,6 +193,7 @@ function App() {
   const [session, setSession] = useState<Session | null>(null),
     [status, setStatus] = useState<any>(null),
     [loading, setLoading] = useState(false);
+  const [booted, setBooted] = useState(false), [gate, setGate] = useState<"" | "signedOut" | "noAccess">("");
   const [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false);
@@ -303,10 +310,15 @@ function App() {
         taskRef.current = restored;
         setTasks(restored);
       }
+      setGate("");
     } catch (e) {
-      setError((e as Error).message);
+      const code = e instanceof ApiError ? e.status : 0;
+      if (auth && code === 401) setGate("signedOut");
+      else if (auth && code === 403) setGate("noAccess");
+      else setError((e as Error).message);
     } finally {
       setLoading(false);
+      setBooted(true);
     }
   }, []);
   useEffect(() => {
@@ -327,6 +339,7 @@ function App() {
     },
     [preview],
   );
+  const onCallback = typeof location !== "undefined" && location.pathname === "/auth/callback";
   const resetIdentification = () => {
     photoTarget.current = "";
     sequence.current++;
@@ -349,6 +362,7 @@ function App() {
     setError("");
     setNotice("");
     if (next === "counter") {
+      if (!preserveCounterPick) setCounterMode("receive");
       setCounterKey((key) => key + 1);
     }
   };
@@ -367,7 +381,7 @@ function App() {
         )
       ) {
         setError(
-          "This is not a Stocklane item QR. Use a product photo or search by part number.",
+          "This is not a Lifta item QR. Use a product photo or search by part number.",
         );
         return;
       }
@@ -700,6 +714,15 @@ function App() {
         </b>
       </button>
     ));
+  if (auth && !session) {
+    const signIn = auth;
+    const mode: SignInMode | "" = onCallback ? (error ? "failed" : "callback") : !booted ? "checking" : gate === "noAccess" ? "noAccess" : gate === "signedOut" ? "signedOut" : "";
+    if (mode)
+      return (
+        <SignIn mode={mode} error={mode === "failed" ? error : ""} onSignIn={() => { setError(""); void signIn.signinRedirect(); }}
+          onSignOut={() => void signOut()} />
+      );
+  }
   return (
     <div className="stock-shell">
       <aside className="stock-sidebar">
@@ -711,9 +734,9 @@ function App() {
             navigate("home");
           }}
         >
-          stocklane<span>.</span>
+          <Logo size={34} /> <b>lifta<span>.</span></b>
         </a>
-        <p>WORKSHOP STOCK</p>
+        <p>WORKSHOP SUITE</p>
         {(
           [
             ["home", "Workspace", Home],
@@ -737,9 +760,7 @@ function App() {
           </button>
         ))}
         <div className="stock-sidebar-foot">
-          <span className="user-avatar">
-            {session?.name.slice(0, 1).toUpperCase() || "S"}
-          </span>
+          <img className="shop-logo" src="/shop-logo.png" alt="Ganga Motors" />
           <strong>{owner ? "Owner workspace" : "Stock team"}</strong>
           <small>Ganga Motors</small>
         </div>
@@ -747,7 +768,7 @@ function App() {
       <main className="stock-main">
         <header className="stock-header">
           <span>
-            <span className="online-dot" /> Workshop inventory
+            <span className="online-dot" /> Ganga Motors
           </span>
           <div>
             <button
@@ -799,7 +820,7 @@ function App() {
         {view === "home" && (
           <>
             <div className="workspace-intro">
-              <p className="eyebrow">YOUR STOCK. UNDER CONTROL.</p>
+              <p className="eyebrow">YOUR WORKSHOP. UNDER CONTROL.</p>
               <h1>What are we doing today?</h1>
               <p>Point the camera at a part. That is all.</p>
             </div>
@@ -1680,6 +1701,7 @@ function App() {
           <Counter
             key={counterKey}
             items={items}
+            photo={(p) => <ItemPhoto item={p} />}
             initialMode={counterMode}
             picked={counterPick}
             onNewItem={newItemFromCounter}
@@ -1884,7 +1906,7 @@ function LabelDialog({ item, onClose }: { item: Item; onClose: () => void }) {
           <img
             className="stock-qr-preview"
             src={data}
-            alt="Generated Stocklane product QR"
+            alt="Generated Lifta product QR"
           />
         )}
         <h3>{item.name}</h3>

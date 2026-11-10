@@ -7,6 +7,11 @@ typed in by the mechanic and never touch stock. This is the low-cost production 
 to keep running**. It costs about **$2-3 a month** at workshop scale and scales to zero when nobody is
 using it.
 
+![Architecture](docs/images/architecture.png)
+
+Read the whole story, with the user flow, in [docs/STORY.md](docs/STORY.md) (also as a [PDF](docs/Stocklane-story.pdf), and in Sinhala: [PDF](docs/Stocklane-story-si.pdf)). The diagram source is
+[docs/images/stocklane-architecture.drawio](docs/images/stocklane-architecture.drawio) (open it at app.diagrams.net).
+
 | Piece | AWS service | Idle cost |
 | --- | --- | --- |
 | App (React PWA) | S3 (private) + CloudFront, your own domain | about 0 |
@@ -118,7 +123,7 @@ Service due, Invoices, and for the owner Reports and Settings.
 3. **Fill the job.** Add **parts** (name, quantity, price) and **labour** by hand. Names and prices you used before are
    suggested, tap one to add it. Optional discount and next service (quick buttons: +3 months, +6 months, +5000 km).
    *Preview bill* shows the bill exactly as it will print. Press **Save** any time.
-4. **Create invoice.** The job becomes **Invoiced** by itself and is locked. Download the **PDF**, **Print A4** (opens the PDF in a new tab, print it from there), **Receipt (80 mm)** for a thermal printer (a narrow paper size also switches to the receipt layout by itself), or send
+4. **Create invoice.** The job becomes **Invoiced** by itself and is locked. Press **Print** (a connected thermal printer prints straight away, otherwise the print preview opens and fits the paper you choose, A4 or a receipt roll), **Download PDF**, or send
    a **WhatsApp** message to the customer. (A job has two states, *Open* and *Invoiced*; the owner can *Cancel* an open job.)
 5. **Payments.** *Add a payment* (cash, card, bank, full or part). Unpaid, Part paid, Paid. Never more than the balance.
 6. **Vehicle file.** Owner, last km, next service and every earlier repair with parts and labour, filled in by itself
@@ -127,15 +132,16 @@ Service due, Invoices, and for the owner Reports and Settings.
 8. **Reports (owner).** Pick Today, Last 7 days, This month, Last month, This year or your own dates: billed, received,
    unpaid and its age, daily chart, per mechanic, payment methods, top parts and labour, unpaid list. **PDF** and **CSV**.
    *Void invoice* (owner, only when nothing was paid) opens the job again so you can fix it.
+9. **Deleting.** Only the owner deletes a job (a reason is asked), and it moves to the **Archive** tab, where it can be restored and where a log shows who did what. A mechanic presses **Request delete**; the owner approves or rejects it on the Home page. **Undo job** takes back a job opened by mistake in the first 10 minutes. A mechanic can give a discount up to the limit set in Settings (10% to start with).
 
 **Thermal receipt printer (automatic).** Use Chrome or Edge on the shop computer.
 
-1. Plug in and switch on the printer. At the top of the Workshop press **Connect printer**, choose **USB printer** or
+1. Plug in and switch on the printer. At the top of the Workshop open **Printer**, press **Connect printer**, choose **USB printer** or
    **Serial or Bluetooth**, pick the printer in the browser box, and set **Paper** to 80 mm (or 58 mm). Press *Test print*.
-2. Tick **Auto-print receipt** (remembered per device).
+2. Leave **Print after an invoice or payment** ticked (remembered per device).
 
 The browser remembers the printer, so next time the page finds it by itself (a green dot shows "Printer: ...") and the
-receipt prints straight to it, with no dialog, when an invoice is created and after each payment. **Print receipt** prints
+receipt prints straight to it, with no dialog, when an invoice is created and after each payment. The **Print** button works
 the same way.
 
 If no printer is connected, or printing fails, the normal print preview opens instead, so nothing is ever lost.
@@ -145,7 +151,7 @@ because the normal Windows printer driver blocks the browser. If USB will not op
 mode with **Serial or Bluetooth**. Network (Ethernet) printers cannot be reached by a web page. Safari cannot connect
 printers. Another way that needs no driver change: set the thermal printer as the default printer, start Chrome with
 `--kiosk-printing` (Mac: `open -na "Google Chrome" --args --kiosk-printing`, Windows: add it to the shortcut Target),
-and **Receipt (80 mm)** then prints without a dialog.
+and **Print** then prints without a dialog.
 
 Names, models and part names must be typed in English letters (the PDFs are English only). A vehicle number is
 matched ignoring spaces and dashes, so `CAB-1234` and `cab 1234` are the same vehicle. If the owner changes, type the
@@ -171,6 +177,8 @@ and `stocklane-prod-state`.
 | `AccessDenied` in a workflow | The foundation was changed. Run `bootstrap.sh` again with `EXECUTE=1` (without `CREATE_ACCESS_KEY`). |
 
 ## Security (all of it free)
+
+- **Staying signed in.** The browser keeps the session and renews the 15 minute access token quietly with the refresh token (valid 30 days), so staff sign in with the password and MFA code about once a month per device, not every visit. *Sign out* ends it at once, and disabling a user in Cognito stops renewal.
 
 - **Sign-in**: Cognito with MFA required, admin-created users only, 15-minute access tokens. API Gateway verifies the
   token; the Lambdas check the role (OWNER or MECHANIC) on every route.
@@ -201,7 +209,7 @@ services/vision     the photo Lambda (container image)
 mlops               nightly forecast job and the weekly photo training pipeline
 models              downloader for the first pretrained photo model
 apps/web            React PWA
-docs                MLOPS.md, OPERATIONS.md, WORKSHOP.md
+docs                STORY.md, MLOPS.md, OPERATIONS.md, WORKSHOP.md, images (architecture, user flow)
 ```
 
 ## Design decisions

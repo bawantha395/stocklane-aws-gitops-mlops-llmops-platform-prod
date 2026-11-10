@@ -1,0 +1,24 @@
+/* Lifta theme: the light glass look from glass.css and workshop.css, with dark green and dark blue buttons. Loaded last. */
+html[data-glass] .stock-shell .button.primary, html[data-glass] .ws .button.primary, html[data-glass] .ws-primary {
+  background: linear-gradient(135deg, #0f5a43, #0b3d30) !important; color: #fff !important; border: 1px solid rgba(255,255,255,.18); box-shadow: 0 8px 20px rgba(5, 40, 30, .3);
+}
+html[data-glass] .stock-shell .button.primary:hover { background: linear-gradient(135deg, #12684d, #0d4a39) !important; }
+html[data-glass] .ws-tabs button.chosen, html[data-glass] .ws-chip.chosen { background: linear-gradient(135deg, #0f5a43, #0b3d30) !important; color: #fff !important; }
+html[data-glass] .counter-tile.receive, html[data-glass] .counter-big, html[data-glass] .scan-launch, html[data-glass] .counter-modes button.chosen.receive {
+  background: linear-gradient(135deg, #1b4fa8, #0e2f6b) !important; color: #fff !important; box-shadow: 0 10px 26px rgba(8, 28, 80, .35);
+}
+html[data-glass] .counter-tile.give, html[data-glass] .counter-modes button.chosen.give { background: linear-gradient(135deg, #14684c, #0a3f2f) !important; color: #fff !important; }
+html[data-glass] .counter-tile.receive *, html[data-glass] .counter-tile.give *, html[data-glass] .counter-big *, html[data-glass] .scan-launch * { color: #fff !important; }
+html[data-glass] .stock-sidebar .stock-brand span { color: #0e2f6b; }
+/* plain light background, as in the original Stocklane */
+html[data-glass] body, html[data-glass] .stock-shell, html[data-glass="light"] .stock-shell { background: #f5f5f7 !important; background-image: none !important; }
+html[data-glass] body .stock-shell .stock-sidebar { background: #fcfcfd !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (max-width: 760px) { html[data-glass] body .stock-shell .stock-sidebar { background: rgba(252,252,253,.9) !important; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); } }
+.stock-brand { display: flex; align-items: center; gap: 10px; }
+.stock-brand b { font: inherit; }
+.lifta-logo { flex: none; border-radius: 10px; box-shadow: 0 6px 16px rgba(14, 47, 107, .3); }
+html[data-glass] .stock-sidebar .stock-brand span { color: #0e2f6b; }
+.si-brand { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.si-brand .si-word { font-size: 34px; }
+.si-brand .si-word span { color: #0e2f6b; }
+.shop-logo { display: block; width: 100px; height: auto; margin: 0 0 8px; filter: drop-shadow(0 6px 10px rgba(14, 47, 107, .25)); }

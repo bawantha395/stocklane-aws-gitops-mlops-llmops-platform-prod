@@ -3,13 +3,13 @@ import { useCommand, useWs, num, type Business } from "./common";
 
 export function Settings() {
   const { business, reloadBusiness } = useWs();
-  const [f, setF] = useState({ ...business, tax_rate: String(business.tax_rate) });
+  const [f, setF] = useState({ ...business, tax_rate: String(business.tax_rate), mechanic_discount_pct: String(business.mechanic_discount_pct ?? 10) });
   const [msg, setMsg] = useState(""), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const command = useCommand();
   const set = (k: keyof typeof f, v: string) => { setF((x) => ({ ...x, [k]: v })); setMsg(""); };
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError("");
-    try { await command<Business>("/api/workshop/settings", { ...f, tax_rate: num(f.tax_rate) }, "PUT"); reloadBusiness(); setMsg("Saved. New invoices use these details; old invoices keep the details they were issued with."); }
+    try { await command<Business>("/api/workshop/settings", { ...f, tax_rate: num(f.tax_rate), mechanic_discount_pct: num(f.mechanic_discount_pct) }, "PUT"); reloadBusiness(); setMsg("Saved. New invoices use these details; old invoices keep the details they were issued with."); }
     catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   };
   return (
@@ -28,6 +28,8 @@ export function Settings() {
         </div>
       </div>
       <p className="muted">Tax rate 0 means no tax line. A rate above 0 adds the tax to every new bill and prints "Tax invoice".</p>
+      <label className="ws-field">Mechanic discount limit (%)<input inputMode="decimal" value={f.mechanic_discount_pct} onChange={(e) => set("mechanic_discount_pct", e.target.value)} /></label>
+      <p className="muted">A mechanic can give a discount up to this percent of parts and labour. Anything higher needs the owner. 0 means mechanics cannot give discounts.</p>
       <label className="ws-field">Bank details for payments<textarea rows={3} value={f.bank} onChange={(e) => set("bank", e.target.value)} placeholder={"Bank of Ceylon\nAccount 1234567"} /></label>
       <label className="ws-field">Footer note<textarea rows={2} value={f.footer} onChange={(e) => set("footer", e.target.value)} /></label>
       {error && <p role="alert" className="stock-error">{error}</p>}

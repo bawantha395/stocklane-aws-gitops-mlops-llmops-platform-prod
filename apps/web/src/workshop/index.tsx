@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import "./workshop.css";
 import { api } from "../api";
+import { Archive } from "./Archive";
 import { Dashboard } from "./Dashboard";
 import { InvoicePage, Invoices } from "./Invoices";
 import { JobPage } from "./JobPage";
@@ -12,21 +13,17 @@ import { PrinterPanel } from "./PrinterPanel";
 import { reconnectPrinter } from "./printer";
 import { WsContext, type Business, type Page, type PageName } from "./common";
 
-const FALLBACK: Business = { name: "Ganga Motors", address: "No 566, Anuradhapura 50000", phone: "", email: "", reg_no: "", bank: "", footer: "", tax_name: "VAT", tax_rate: 0 };
+const FALLBACK: Business = { name: "Ganga Motors", address: "No 566, Anuradhapura 50000", phone: "", email: "", reg_no: "", bank: "", footer: "", tax_name: "VAT", tax_rate: 0, mechanic_discount_pct: 10 };
 
 export function Workshop({ owner }: { owner: boolean }) {
   const [page, setPage] = useState<Page>({ name: "home" });
   const [notice, setNotice] = useState("");
-  useEffect(() => {
-    document.documentElement.dataset.wsTheme = "light";
-    return () => { delete document.documentElement.dataset.wsTheme; };
-  }, []);
   const [business, setBusiness] = useState<Business>(FALLBACK);
   const reloadBusiness = useCallback(() => { api<Business>("/api/workshop/settings").then(setBusiness).catch(() => undefined); }, []);
   useEffect(reloadBusiness, [reloadBusiness]);
   useEffect(() => { void reconnectPrinter(); }, []);
   const go = useCallback((next: Page, message = "") => { setPage(next); setNotice(message); window.scrollTo({ top: 0 }); }, []);
-  const tabs: [PageName, string][] = [["home", "Home"], ["jobs", "Jobs"], ["vehicles", "Vehicles"], ["due", "Service due"], ["invoices", "Invoices"], ...(owner ? ([["report", "Reports"], ["settings", "Settings"]] as [PageName, string][]) : [])];
+  const tabs: [PageName, string][] = [["home", "Home"], ["jobs", "Jobs"], ["vehicles", "Vehicles"], ["due", "Service due"], ["invoices", "Invoices"], ...(owner ? ([["archive", "Archive"], ["report", "Reports"], ["settings", "Settings"]] as [PageName, string][]) : [])];
   const tab: PageName = page.name === "job" || page.name === "new" ? "jobs" : page.name === "vehicle" ? "vehicles" : page.name === "invoice" ? "invoices" : page.name;
   return (
     <WsContext.Provider value={{ owner, business, go, reloadBusiness }}>
@@ -48,6 +45,7 @@ export function Workshop({ owner }: { owner: boolean }) {
         {page.name === "due" && <Due />}
         {page.name === "invoices" && <Invoices />}
         {page.name === "invoice" && page.id && <InvoicePage key={page.id} id={page.id} />}
+        {page.name === "archive" && owner && <Archive />}
         {page.name === "report" && owner && <Reports />}
         {page.name === "settings" && owner && <Settings />}
       </section>

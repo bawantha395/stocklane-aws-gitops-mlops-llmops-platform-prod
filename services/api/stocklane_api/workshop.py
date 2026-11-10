@@ -17,14 +17,14 @@ from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from . import bills
-from .core import COLOMBO, bad, batch_get, command, conflict, get, missing, now, num, public, put, query
+from .core import COLOMBO, bad, batch_get, command, conflict, delete, get, missing, now, num, public, put, query
 
 LATIN = re.compile(r'[\x20-\x7e]*')
 MONEY, ZERO, HUNDRED = Decimal('0.01'), Decimal('0'), Decimal('100')
 METHODS = ('CASH', 'CARD', 'BANK', 'OTHER')
 CHANGED = 'Someone changed this just now. Reload it and try again.'
 DEFAULT_BUSINESS = {'name': 'Ganga Motors', 'address': 'No 566, Anuradhapura 50000', 'phone': '', 'email': '', 'reg_no': '', 'bank': '',
-                    'footer': 'Thank you for your business.', 'tax_name': 'VAT', 'tax_rate': ZERO}
+                    'footer': 'Thank you for your business.', 'tax_name': 'VAT', 'tax_rate': ZERO, 'mechanic_discount_pct': Decimal('10')}
 
 
 # ---------- input checks ----------
@@ -150,11 +150,14 @@ def save_business(key, who, body):
         rate = num(b.get('tax_rate') or 0, 'Tax rate')
         if rate < 0 or rate > 50 or rate.as_tuple().exponent < -2:
             raise bad('Tax rate must be between 0 and 50 (at most 2 decimals)')
+        limit = num(b.get('mechanic_discount_pct', 10) if b.get('mechanic_discount_pct') not in (None, '') else 10, 'Mechanic discount limit')
+        if limit < 0 or limit > 100 or limit.as_tuple().exponent < -2:
+            raise bad('The mechanic discount limit must be between 0 and 100 percent')
         item = {'pk': 'WSET', 'sk': 'business', 'name': text(b.get('name'), 'Business name', 60, True),
                 'address': lines_text(b.get('address'), 'Address', 200), 'phone': text(b.get('phone'), 'Phone', 60),
                 'email': text(b.get('email'), 'Email', 80), 'reg_no': text(b.get('reg_no'), 'Registration / tax number', 60),
                 'bank': lines_text(b.get('bank'), 'Bank details', 300), 'footer': lines_text(b.get('footer'), 'Footer', 300),
-                'tax_name': text(b.get('tax_name') or 'VAT', 'Tax name', 12, True), 'tax_rate': rate, 'updated_at': now(), 'updated_by': who}
+                'tax_name': text(b.get('tax_name') or 'VAT', 'Tax name', 12, True), 'tax_rate': rate, 'mechanic_discount_pct': limit, 'updated_at': now(), 'updated_by': who}
         return [put(item)], [None], public(item)
     return command(key, 'save-business', who, body, build)
 
@@ -200,7 +203,7 @@ def vehicle(key):
     v = get('VEHICLE', key)
     if not v:
         raise missing('Vehicle not found')
-    history = sorted(query('VJOB#' + key), key=lambda h: h['sk'], reverse=True)
+    history = sorted((h for h in query('VJOB#' + key) if h['status'] != 'ARCHIVED'), key=lambda h: h['sk'], reverse=True)
     stored = {j['id']: j for j in batch_get([('WJOB', h['id']) for h in history[:40]])}
     visits, spent, dates = [], ZERO, []
     for h in history:
@@ -265,16 +268,27 @@ def view(j, rate=ZERO):
 
 def jobs():
     rate = business()['tax_rate']
+    asked = {r['sk'] for r in query('WREQ') if r['status'] == 'PENDING'}
     out = []
     for j in sorted(query('WJOB'), key=lambda j: j['created_at'], reverse=True):
+        if j['status'] == 'ARCHIVED':
+            continue
         v = view(j, rate)
+        v['delete_requested'] = j['id'] in asked
         v['lines'] = len(v.pop('parts')) + len(v.pop('labour'))
         out.append(v)
     return out
 
 
-def get_job(job_id):
-    return view(job(job_id), business()['tax_rate'])
+def get_job(job_id, who='', owner=False):
+    current = job(job_id)
+    out = view(current, business()['tax_rate'])
+    left = UNDO_SECONDS - (datetime.now(COLOMBO) - datetime.fromisoformat(current['created_at'])).total_seconds()
+    out['undo_seconds_left'] = int(left) if current['status'] == 'OPEN' and left > 0 and (owner or current.get('created_by') == who) else 0
+    req = get('WREQ', job_id)
+    if req:
+        out['delete_request'] = public(req)
+    return out
 
 
 def create_job(key, who, body):
@@ -292,7 +306,7 @@ def create_job(key, who, body):
     return command(key, 'create-job', who, body, build)
 
 
-def save_job(job_id, key, who, body):
+def save_job(job_id, key, who, body, owner=True):
     """Save details and lines of an OPEN job. The body carries the revision it was loaded at."""
     def build():
         current, b = job(job_id), body or {}
@@ -321,6 +335,11 @@ def save_job(job_id, key, who, body):
             j['next_service_km'] = km(b['next_service_km'], 'Next service km')
         if totals(j)['subtotal'] < 0:
             raise bad('The discount is more than the bill')
+        if not owner and j.get('discount', ZERO) != current.get('discount', ZERO):
+            pct = business()['mechanic_discount_pct']
+            base = totals(j)['parts_total'] + totals(j)['labour_total']
+            if j['discount'] > (base * pct / HUNDRED).quantize(MONEY, ROUND_HALF_UP):
+                raise bad('A discount above %s%% needs the owner. Ask the owner to apply it.' % pct.normalize())
         j['revision'], j['updated_at'] = int(current['revision']) + 1, now()
         j = clean(j)
         rate = business()['tax_rate']
@@ -338,8 +357,102 @@ def cancel_job(job_id, key, who, body):
         j = dict(current, status='CANCELLED', revision=int(current['revision']) + 1, updated_at=now())
         op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
                  ExpressionAttributeValues={':r': current['revision'], ':open': 'OPEN'})
-        return [op, history_put(j)], [CHANGED, None], view(j)
+        return [op, history_put(j), audit('CANCELLED', j, who, text((body or {}).get('reason'), 'Reason', 200))], [CHANGED, None, None], view(j)
     return command(key, 'cancel-job:' + job_id, who, body, build)
+
+
+# ---------- delete (archive), requests, undo, audit ----------
+UNDO_SECONDS = 600
+
+
+def audit(action, j, who, reason=''):
+    """One line in the workshop log: who did what to which job, and why."""
+    return put(clean({'pk': 'WAUDIT', 'sk': now() + '#' + uuid.uuid4().hex[:8], 'action': action, 'job_id': j['id'],
+                      'registration': j['registration'], 'customer': j['customer'], 'actor': who, 'reason': reason}))
+
+
+def _archive(current, who, reason, action):
+    if current['status'] == 'ARCHIVED':
+        raise conflict('This job is already deleted')
+    if current['status'] == 'INVOICED':
+        raise conflict('A job with an invoice cannot be deleted. Void the invoice first (only when nothing was paid)')
+    j = clean(dict(current, status='ARCHIVED', prior_status=current['status'], archived_by=who, archived_at=now(),
+                   archive_reason=reason, revision=int(current['revision']) + 1, updated_at=now()))
+    op = put(j, ConditionExpression='revision = :r and #s <> :done', ExpressionAttributeNames={'#s': 'status'},
+             ExpressionAttributeValues={':r': current['revision'], ':done': 'INVOICED'})
+    return [op, history_put(j), audit(action, j, who, reason), delete('WREQ', j['id'])], [CHANGED, None, None, None], view(j)
+
+
+def archive_job(job_id, key, who, body):
+    """Owner only. Delete moves the job to the Archive: hidden everywhere, kept for the log, and it can be restored."""
+    def build():
+        return _archive(job(job_id), who, text((body or {}).get('reason'), 'Reason', 200, True), 'ARCHIVED')
+    return command(key, 'archive-job:' + job_id, who, body, build)
+
+
+def undo_job(job_id, key, who, body, owner=False):
+    """For a job opened by mistake: whoever opened it can take it back for ten minutes, if it is still open."""
+    def build():
+        current = job(job_id)
+        if current['status'] != 'OPEN':
+            raise conflict('Only an open job can be undone')
+        if not owner and current.get('created_by') != who:
+            raise conflict('Only the person who opened the job can undo it')
+        if (datetime.now(COLOMBO) - datetime.fromisoformat(current['created_at'])).total_seconds() > UNDO_SECONDS:
+            raise conflict('The 10 minutes to undo this job are over. Use Request delete instead')
+        return _archive(current, who, 'Opened by mistake, undone by ' + who, 'UNDONE')
+    return command(key, 'undo-job:' + job_id, who, body, build)
+
+
+def restore_job(job_id, key, who, body):
+    def build():
+        current = job(job_id)
+        if current['status'] != 'ARCHIVED':
+            raise conflict('This job is not in the archive')
+        j = clean({k: v for k, v in current.items() if k not in ('archived_by', 'archived_at', 'archive_reason', 'prior_status')})
+        j.update(status=current.get('prior_status') or 'OPEN', revision=int(current['revision']) + 1, updated_at=now())
+        op = put(j, ConditionExpression='revision = :r and #s = :a', ExpressionAttributeNames={'#s': 'status'},
+                 ExpressionAttributeValues={':r': current['revision'], ':a': 'ARCHIVED'})
+        return [op, history_put(j), audit('RESTORED', j, who)], [CHANGED, None, None], view(j)
+    return command(key, 'restore-job:' + job_id, who, body, build)
+
+
+def request_delete(job_id, key, who, body):
+    """A mechanic asks the owner to delete an open job. The owner approves (archive) or rejects with a note."""
+    def build():
+        current = job(job_id)
+        if current['status'] != 'OPEN':
+            raise conflict('Only an open job can be sent for deletion')
+        asked = get('WREQ', job_id)
+        if asked and asked['status'] == 'PENDING':
+            raise conflict('A delete request is already waiting for the owner')
+        req = clean({'pk': 'WREQ', 'sk': job_id, 'job_id': job_id, 'registration': current['registration'], 'customer': current['customer'],
+                     'reason': text((body or {}).get('reason'), 'Reason', 200, True), 'requested_by': who, 'requested_at': now(), 'status': 'PENDING'})
+        return [put(req), audit('DELETE_REQUESTED', current, who, req['reason'])], [None, None], public(req)
+    return command(key, 'request-delete:' + job_id, who, body, build)
+
+
+def reject_delete(job_id, key, who, body):
+    def build():
+        asked = get('WREQ', job_id)
+        if not asked or asked['status'] != 'PENDING':
+            raise conflict('There is no waiting delete request for this job')
+        note = text((body or {}).get('note'), 'Note', 200)
+        req = clean(dict(asked, status='REJECTED', decided_by=who, decided_at=now(), note=note))
+        return [put(req), audit('REQUEST_REJECTED', job(job_id), who, note)], [None, None], public(req)
+    return command(key, 'reject-delete:' + job_id, who, body, build)
+
+
+def archive():
+    """The Archive tab: deleted jobs, and the log of who did what."""
+    rate = business()['tax_rate']
+    deleted = []
+    for j in sorted((j for j in query('WJOB') if j['status'] == 'ARCHIVED'), key=lambda j: j['archived_at'], reverse=True):
+        v = view(j, rate)
+        v['lines'] = len(v.pop('parts')) + len(v.pop('labour'))
+        deleted.append(v)
+    log = [public(a) for a in sorted(query('WAUDIT'), key=lambda a: a['sk'], reverse=True)[:150]]
+    return {'jobs': deleted, 'log': log}
 
 
 # ---------- invoices ----------
@@ -367,7 +480,7 @@ def finalise(job_id, key, who, body):
         invoice = clean({'pk': 'WINV', 'sk': invoice_id, 'id': invoice_id, 'invoice_number': number, 'job_id': job_id,
                          **{k: current.get(k) for k in keep}, **t, 'tax_name': shop['tax_name'], 'tax_rate': rate, 'currency': 'LKR',
                          'paid': ZERO, 'payments': [], 'status': invoice_status(t['total'], ZERO), 'revision': 0, 'approved_by': who,
-                         'created_at': created, 'business': {k: v for k, v in shop.items() if k in DEFAULT_BUSINESS}})
+                         'created_at': created, 'business': {k: v for k, v in shop.items() if k in DEFAULT_BUSINESS and k != 'mechanic_discount_pct'}})
         j = clean(dict(stamped, status='INVOICED', invoice_id=invoice_id, invoice_number=number,
                        revision=int(current['revision']) + 1, updated_at=created))
         op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
@@ -437,8 +550,9 @@ def void_invoice(invoice_id, key, who, body):
         reopened.update(status='OPEN', revision=int(j['revision']) + 1, updated_at=now())
         ops = [put(new, ConditionExpression='revision = :r', ExpressionAttributeValues={':r': current['revision']}),
                put(reopened, ConditionExpression='revision = :r and #s = :done', ExpressionAttributeNames={'#s': 'status'},
-                   ExpressionAttributeValues={':r': j['revision'], ':done': 'INVOICED'}), history_put(reopened, business()['tax_rate'])]
-        return ops, [CHANGED, CHANGED, None], public(new)
+                   ExpressionAttributeValues={':r': j['revision'], ':done': 'INVOICED'}), history_put(reopened, business()['tax_rate']),
+               audit('INVOICE_VOIDED', reopened, who, current['invoice_number'])]
+        return ops, [CHANGED, CHANGED, None, None], public(new)
     return command(key, 'void:' + invoice_id, who, body, build)
 
 
@@ -493,7 +607,8 @@ def dashboard():
         j.pop('parts'), j.pop('labour')
     return {**out, 'open_jobs': open_jobs[:12], 'open_count': len(open_jobs), 'unpaid_count': len(unpaid),
             'unpaid_total': sum((i['total'] - i['paid'] for i in unpaid), ZERO),
-            'oldest_unpaid_days': max((age_days(i['created_at']) for i in unpaid), default=0), 'due_count': len(service_due())}
+            'oldest_unpaid_days': max((age_days(i['created_at']) for i in unpaid), default=0), 'due_count': len(service_due()),
+            'delete_requests': sorted((public(r) for r in query('WREQ') if r['status'] == 'PENDING'), key=lambda r: r['requested_at'])}
 
 
 # ---------- reports (owner) ----------

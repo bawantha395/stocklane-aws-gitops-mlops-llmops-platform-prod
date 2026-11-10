@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bill, PrintButton, billTotals, type BillData } from "./Bill";
 import { PastRepairs } from "./Vehicles";
-import { Loading, Pill, addDays, dateOnly, kmText, lkr, num, today, useCommand, useLoad, useWs, type Invoice, type Job } from "./common";
+import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, today, useCommand, useLoad, useWs, type Invoice, type Job } from "./common";
 
 type PartRow = { name: string; quantity: string; unit_price: string };
 type LabourRow = { description: string; amount: string };
@@ -14,7 +14,7 @@ export function JobPage({ id }: { id: string }) {
   const [job, setJob] = useState<Job | null>(null);
   const [f, setF] = useState<Record<string, string>>({});
   const [parts, setParts] = useState<PartRow[]>([]), [labour, setLabour] = useState<LabourRow[]>([]);
-  const [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState(""), [preview, setPreview] = useState(false);
+  const [dialog, setDialog] = useState<"" | "delete" | "request" | "reject" | "approve">(""), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState(""), [preview, setPreview] = useState(false);
   const command = useCommand();
 
   const adopt = (j: Job) => {
@@ -56,6 +56,11 @@ export function JobPage({ id }: { id: string }) {
       go({ name: "invoice", id: made.id }, "Invoice " + made.invoice_number + " created. Take a payment below.");
     });
   };
+  const req = job.delete_request;
+  const waiting = req?.status === "PENDING";
+  const base = "/api/workshop/jobs/" + id;
+  const removed = (message: string) => go({ name: owner ? "archive" : "jobs" }, message);
+  const undo = () => { if (confirm("Undo this job? Use this only for a job opened by mistake.")) void run(async () => { await command(base + "/undo", {}); go({ name: "jobs" }, "Job undone."); }); };
   const cancel = () => { if (confirm("Cancel this job? It stays in the vehicle history as cancelled.")) void run(async () => { await command("/api/workshop/jobs/" + id + "/cancel", {}); await reload(); }); };
 
   const part = (i: number, patch: Partial<PartRow>) => { setParts(parts.map((x, k) => (k === i ? { ...x, ...patch } : x))); setDirty(true); };
@@ -84,6 +89,14 @@ export function JobPage({ id }: { id: string }) {
           {job.invoice_id && <button className="button primary small" onClick={() => go({ name: "invoice", id: job.invoice_id! })}>Invoice {job.invoice_number}</button>}
         </div>
       </div>
+
+      {waiting && (
+        <div className="ws-note" role="status">
+          <b>Delete requested</b> by {req!.requested_by}: {req!.reason}. {owner ? "Approve it to move this job to the Archive." : "Waiting for the owner."}
+          {owner && <span className="ws-note-actions"><button className="button primary small" onClick={() => setDialog("approve")}>Approve and delete</button><button className="button secondary small" onClick={() => setDialog("reject")}>Reject</button></span>}
+        </div>
+      )}
+      {req?.status === "REJECTED" && <div className="ws-note" role="status">The owner did not approve the earlier delete request{req.note ? ": " + req.note : ""}.</div>}
 
       <section className="ws-card">
         <h3>Customer and vehicle</h3>
@@ -133,7 +146,7 @@ export function JobPage({ id }: { id: string }) {
         <dl className="ws-sum">
           <div><dt>Parts</dt><dd>{lkr(totals.parts)}</dd></div>
           <div><dt>Labour</dt><dd>{lkr(totals.labour)}</dd></div>
-          <div><dt>Discount</dt><dd><input disabled={locked} inputMode="decimal" aria-label="Discount" placeholder="0" value={f.discount || ""} onChange={(e) => set("discount", e.target.value)} /></dd></div>
+          <div><dt>Discount{!owner && !locked && business.mechanic_discount_pct != null ? <small> (up to {business.mechanic_discount_pct}%)</small> : null}</dt><dd><input disabled={locked} inputMode="decimal" aria-label="Discount" placeholder="0" value={f.discount || ""} onChange={(e) => set("discount", e.target.value)} /></dd></div>
           {totals.tax > 0 && <div><dt>{business.tax_name} ({rate}%)</dt><dd>{lkr(totals.tax)}</dd></div>}
           <div className="grand"><dt>Total (LKR)</dt><dd>{lkr(totals.total)}</dd></div>
         </dl>
@@ -160,10 +173,21 @@ export function JobPage({ id }: { id: string }) {
       <div className="ws-actionbar">
         <span className="ws-actionbar-total"><small>{dirty ? "Unsaved changes" : "Total"}</small><b>LKR {lkr(totals.total)}</b></span>
         <button className="button secondary" disabled={busy} onClick={() => setPreview(true)}>Preview bill</button>
+        {!!job.undo_seconds_left && !waiting && <button className="button secondary" disabled={busy} onClick={undo}>Undo job</button>}
+        {!locked && !owner && !waiting && <button className="button secondary" disabled={busy} onClick={() => setDialog("request")}>Request delete</button>}
+        {owner && (job.status === "OPEN" || job.status === "CANCELLED") && <button className="button secondary" disabled={busy} onClick={() => setDialog("delete")}>Delete job</button>}
         {!locked && owner && <button className="button secondary" disabled={busy} onClick={cancel}>Cancel job</button>}
         {!locked && <button className="button secondary" disabled={busy || !dirty} onClick={() => void run(async () => { await save(); setSaved("Saved."); })}>Save</button>}
         {!locked && <button className="button primary" disabled={busy || (!lines.parts.length && !lines.labour.length)} onClick={invoice}>Create invoice</button>}
       </div>
+      {dialog === "delete" && <ReasonDialog title="Delete this job?" help="It moves to the Archive and disappears from jobs and the vehicle history. You can restore it later." label="Reason" confirm="Delete job"
+        onDone={async (reason) => { await command(base + "/archive", { reason }); removed("Job deleted. It is in the Archive."); }} onClose={() => setDialog("")} />}
+      {dialog === "approve" && <ReasonDialog title="Delete this job?" help="Approving moves the job to the Archive." label="Reason" confirm="Approve and delete" onClose={() => setDialog("")}
+        onDone={async (note) => { await command(base + "/archive", { reason: ("Approved: " + (note || req!.reason)).slice(0, 200) }); removed("Job deleted. It is in the Archive."); }} />}
+      {dialog === "request" && <ReasonDialog title="Ask the owner to delete this job" help="The owner sees your request on the Home page and approves or rejects it." label="Why should it be deleted?" confirm="Send request"
+        onDone={async (reason) => { await command(base + "/delete-request", { reason }); setDialog(""); setSaved("Sent to the owner."); await reload(); }} onClose={() => setDialog("")} />}
+      {dialog === "reject" && <ReasonDialog title="Reject the delete request" label="Note for the mechanic (optional)" confirm="Reject" required={false}
+        onDone={async (note) => { await command(base + "/delete-request/reject", { note }); setDialog(""); setSaved("Request rejected."); await reload(); }} onClose={() => setDialog("")} />}
       {preview && (
         <div className="ws-modal" role="dialog" aria-modal="true" aria-label="Bill preview">
           <div className="ws-modal-bar"><b>{locked ? "Bill" : "Draft bill (not issued yet)"}</b><span><PrintButton /> <button className="button primary small" onClick={() => setPreview(false)}>Close</button></span></div>

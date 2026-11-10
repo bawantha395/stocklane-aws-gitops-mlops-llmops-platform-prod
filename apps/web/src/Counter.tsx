@@ -15,7 +15,7 @@ export function partFromCode(value: string, items: Item[]) {
   return items.find((p) => p.id === id) || null;
 }
 
-export function Counter({ items, initialMode = "give", picked = null, onNewItem, onBarcodeSuggestion, onChanged }: { items: Item[]; initialMode?: Mode; picked?: Item | null; onNewItem?: (imageId: string) => void; onBarcodeSuggestion?: (barcode: string, suggestions: Record<string, string>) => void; onChanged: () => void }) {
+export function Counter({ items, initialMode = "receive", picked = null, photo, onNewItem, onBarcodeSuggestion, onChanged }: { items: Item[]; initialMode?: Mode; picked?: Item | null; photo?: (item: Item) => React.ReactNode; onNewItem?: (imageId: string) => void; onBarcodeSuggestion?: (barcode: string, suggestions: Record<string, string>) => void; onChanged: () => void }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [part, setPart] = useState<Item | null>(null);
   const [candidates, setCandidates] = useState<Item[]>([]);
@@ -102,7 +102,7 @@ export function Counter({ items, initialMode = "give", picked = null, onNewItem,
     } catch (e) { setError((e as Error).message); commandKey.current = key(); }
     finally { setBusy(false); }
   };
-  const matches = search.trim().length >= 2 ? items.filter((i) => (i.name + " " + i.sku + " " + i.brand).toLowerCase().includes(search.trim().toLowerCase())).slice(0, 6) : [];
+  const matches = search.trim().length >= 2 ? items.filter((i) => (i.name + " " + i.sku + " " + i.brand + " " + (i.part_number || "")).toLowerCase().includes(search.trim().toLowerCase())).slice(0, 8) : [];
   const choosePart = (item: Item) => { setPart(item); setCandidates([]); setPhotoId(""); setError(""); };
   return (
     <section className="counter-screen" aria-label="Storeroom counter">
@@ -128,7 +128,7 @@ export function Counter({ items, initialMode = "give", picked = null, onNewItem,
             ) : (
               <>
                 <button className="counter-big wide" disabled={busy} onClick={() => setCamera(true)}><CameraIcon size={30} /> {busy ? "Checking the photo…" : "Open camera"}</button>
-                <p className="stock-help">Scan a Stocklane QR or original product barcode. You can also take a photo or search manually.</p>
+                <p className="stock-help">Scan a Lifta QR or original product barcode. You can also take a photo or search manually.</p>
                 {candidates.length > 0 && (
                   <div className="counter-candidates">
                     <p>Is it one of these?</p>
@@ -139,7 +139,8 @@ export function Counter({ items, initialMode = "give", picked = null, onNewItem,
                   <button className="counter-new" onClick={() => onNewItem(photoId)}><Plus size={20} /> {candidates.length ? "None of these: add as a new item" : "Add as a new item (reads the label)"}</button>
                 )}
                 <label className="stock-field counter-search">Or search<input value={search} placeholder="Oil filter" onChange={(e) => setSearch(e.target.value)} /></label>
-                {matches.map((m) => <button key={m.id} className="counter-result" onClick={() => choosePart(m)}>{m.name} <small>Part no. {m.part_number || "Not set"} · System no. {m.sku}</small></button>)}
+                {matches.map((m) => <button key={m.id} className="counter-result" onClick={() => choosePart(m)}>{photo && <span className="counter-result-photo">{photo(m)}</span>}<span className="counter-result-text">{m.name} <small>Part no. {m.part_number || "Not set"} · System no. {m.sku}</small></span></button>)}
+                {search.trim().length >= 2 && !matches.length && <p className="stock-help">No part matches "{search.trim()}".</p>}
               </>
             )}
           </div>

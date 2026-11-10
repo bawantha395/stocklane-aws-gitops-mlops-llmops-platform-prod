@@ -2477,3 +2477,9 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .stock-shell .stock-sidebar > button { transition: none; transform: none; animation: none !important; }
 }
+
+.counter-result { flex-direction: row; align-items: center; gap: 12px; }
+.counter-result-photo { flex: 0 0 48px; width: 48px; height: 48px; border-radius: 10px; overflow: hidden; display: grid; place-items: center; background: rgba(255,255,255,.6); }
+.counter-result-photo .item-photo { width: 100%; height: 100%; object-fit: cover; }
+.counter-result-photo .photo-placeholder { width: 100%; height: 100%; display: grid; place-items: center; }
+.counter-result-text { display: flex; flex-direction: column; min-width: 0; }
