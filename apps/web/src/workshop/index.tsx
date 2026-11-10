@@ -13,13 +13,14 @@ import { PrinterPanel } from "./PrinterPanel";
 import { reconnectPrinter } from "./printer";
 import { WsContext, type Business, type Page, type PageName } from "./common";
 
-const FALLBACK: Business = { name: "Ganga Motors", address: "No 566, Anuradhapura 50000", phone: "", email: "", reg_no: "", bank: "", footer: "", tax_name: "VAT", tax_rate: 0, mechanic_discount_pct: 10 };
+import { getBusinessName, setBusinessName } from "../businessName";
+const FALLBACK: Business = { name: "Workshop Suite", address: "", phone: "", email: "", reg_no: "", bank: "", footer: "", tax_name: "VAT", tax_rate: 0, mechanic_discount_pct: 10 };
 
 export function Workshop({ owner }: { owner: boolean }) {
   const [page, setPage] = useState<Page>({ name: "home" });
   const [notice, setNotice] = useState("");
-  const [business, setBusiness] = useState<Business>(FALLBACK);
-  const reloadBusiness = useCallback(() => { api<Business>("/api/workshop/settings").then(setBusiness).catch(() => undefined); }, []);
+  const [business, setBusiness] = useState<Business>({ ...FALLBACK, name: getBusinessName() });
+  const reloadBusiness = useCallback(() => { api<Business>("/api/workshop/settings").then((b) => { setBusiness(b); setBusinessName(b.name); }).catch(() => undefined); }, []);
   useEffect(reloadBusiness, [reloadBusiness]);
   useEffect(() => { void reconnectPrinter(); }, []);
   const go = useCallback((next: Page, message = "") => { setPage(next); setNotice(message); window.scrollTo({ top: 0 }); }, []);

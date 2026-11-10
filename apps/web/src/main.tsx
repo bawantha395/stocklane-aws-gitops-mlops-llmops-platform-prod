@@ -40,6 +40,7 @@ import "@fontsource-variable/manrope";
 import "./stock.css";
 import "./glass.css";
 import "./theme.css";
+import { setBusinessName, useBusinessName } from "./businessName";
 import { Logo } from "./Logo";
 import { SignIn, type SignInMode } from "./SignIn";
 
@@ -186,6 +187,7 @@ async function apiPhoto(id: string) {
 function App() {
   const [view, setView] = useState<View>("home");
   const [counterMode, setCounterMode] = useState<CounterMode>("receive");
+  const businessName = useBusinessName();
   const [dockHidden, setDockHidden] = useState(() => {
     try { return localStorage.getItem("lifta.dock") === "hidden"; } catch { return false; }
   });
@@ -310,6 +312,7 @@ function App() {
       setMoves(m);
       setSession(s);
       setStatus(v);
+      api<{ name: string }>("/api/workshop/settings").then((b) => setBusinessName(b.name)).catch(() => undefined);
       const key = "stocklane.tasks.v2." + s.name;
       if (storageKey.current !== key) {
         storageKey.current = key;
@@ -752,7 +755,7 @@ function App() {
             navigate("home");
           }}
         >
-          <Logo size={34} /> <b>lifta<span>.</span></b>
+          <Logo size={34} /> <b>Lifta<span>.</span></b>
         </a>
         <p>WORKSHOP SUITE</p>
         {(
@@ -778,9 +781,9 @@ function App() {
           </button>
         ))}
         <div className="stock-sidebar-foot">
-          <img className="shop-logo" src="/shop-logo.png" alt="Ganga Motors" />
+          <img className="shop-logo" src="/shop-logo.png" alt={businessName} />
           <strong>{owner ? "Owner workspace" : "Stock team"}</strong>
-          <small>Ganga Motors</small>
+          <small>{businessName}</small>
         </div>
         <div
           className="dock-grab"
@@ -794,7 +797,7 @@ function App() {
       <main className="stock-main">
         <header className="stock-header">
           <span>
-            <span className="online-dot" /> Ganga Motors
+            <span className="online-dot" /> {businessName}
           </span>
           <div>
             <button

@@ -107,7 +107,7 @@ export function receiptBytes(inv: Invoice, shop: Business, width = paperColumns(
 
 export function testBytes(width = paperColumns()): Uint8Array {
   const out: number[] = [ESC, 0x40, ESC, 0x61, 1, ESC, 0x45, 1];
-  out.push(...ascii("PRINTER OK"), 0x0a, ESC, 0x45, 0, ...ascii("Ganga Motors workshop"), 0x0a, ...ascii("-".repeat(width)), 0x0a, ...ascii("1234567890".repeat(5).slice(0, width)), 0x0a, 0x0a, 0x0a, 0x0a, GS, 0x56, 0x42, 0x00);
+  out.push(...ascii("PRINTER OK"), 0x0a, ESC, 0x45, 0, ...ascii("Lifta workshop suite"), 0x0a, ...ascii("-".repeat(width)), 0x0a, ...ascii("1234567890".repeat(5).slice(0, width)), 0x0a, 0x0a, 0x0a, 0x0a, GS, 0x56, 0x42, 0x00);
   return Uint8Array.from(out);
 }
 
