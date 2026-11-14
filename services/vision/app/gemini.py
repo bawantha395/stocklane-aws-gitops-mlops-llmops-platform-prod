@@ -13,6 +13,7 @@ from .bedrock import LIMITS, SYSTEM, BedrockUnavailable, user_text
 URL = 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
 LIST_URL = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200'
 _found = {'at': 0.0, 'models': []}
+LAST = {'model': ''}  # the model that answered the latest request, for the form's banner
 SCHEMA = {'type': 'OBJECT', 'properties': {k: {'type': 'STRING'} for k in LIMITS}}
 
 def _small(image):
@@ -120,6 +121,7 @@ def propose(settings, image, context=None):
                     break
         if data is None:
             raise last or TimeoutError()
+        LAST['model'] = tried[-1] if tried else ''
         fields = json.loads(data['candidates'][0]['content']['parts'][0]['text'])
         if not isinstance(fields, dict):
             raise ValueError('Expected a label JSON object')

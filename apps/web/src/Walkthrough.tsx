@@ -7,8 +7,8 @@ const hot = (text: string) => <span className="wt-hot">{text}</span>;
 const Line = ({ a, b, c }: { a: string; b?: string; c?: string }) => (
   <div className="wt-line"><span>{a}{b && <small>{b}</small>}</span>{c && <em>{c}</em>}</div>
 );
-const Field = ({ label, value, use }: { label: string; value?: string; use?: boolean }) => (
-  <div className="wt-field"><small>{label}</small><div>{value || ""}{use && <span className="wt-chip">{t("Use")}</span>}</div></div>
+const Field = ({ label, value, ai }: { label: string; value?: string; ai?: boolean }) => (
+  <div className="wt-field"><small>{label}</small><div className={ai ? "wt-ai" : ""}>{value || ""}{ai && <span className="wt-chip">AI</span>}</div></div>
 );
 
 const HomeScreen = ({ owner }: { owner: boolean }) => (
@@ -27,9 +27,9 @@ const HomeScreen = ({ owner }: { owner: boolean }) => (
 const AddPartScreen = () => (
   <div className="wt-screen-body">
     <div className="wt-photo">🛢️</div>
-    <div className="wt-note">{t("2 suggestions ready for the empty fields")}</div>
-    <Field label={t("Item name")} value="Engine oil 5W-30 1L" use />
-    <Field label={t("Manufacturer / brand")} value="Demo Oil Co" use />
+    <div className="wt-note">{t("AI filled the blue fields ({model}). Please check them.", { model: "Gemini" })}</div>
+    <Field label={t("Item name")} value="Engine oil 5W-30 1L" ai />
+    <Field label={t("Manufacturer / brand")} value="Demo Oil Co" ai />
     <span className="wt-btn">{hot(t("Save item"))}</span>
   </div>
 );

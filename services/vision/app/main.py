@@ -26,7 +26,7 @@ from .config import Settings
 from .qr import product_qr
 from .storage import Store
 
-DRAFT_FIELDS = ('name', 'brand', 'partNumber', 'category', 'grade', 'capacity')
+DRAFT_FIELDS = ('name', 'brand', 'partNumber', 'category', 'grade', 'capacity', 'unit')
 log = logging.getLogger('stocklane.vision')
 settings = Settings()
 store = Store(settings) if settings.table else None
@@ -215,8 +215,9 @@ def create_app():
                     except Exception:
                         categories, brands = [], []
                     proposed, used_by = propose(settings, image_bytes, {'text': ' '.join(lines), 'categories': categories, 'brands': brands})
-                    suggestions = {k: v for k, v in proposed.items() if k in DRAFT_FIELDS and v}
-                    ai = {'status': 'used'}
+                    from . import ai_clean, gemini as gemini_module
+                    suggestions = {k: v for k, v in ai_clean.clean(proposed, ' '.join(lines)).items() if k in DRAFT_FIELDS and v}
+                    ai = {'status': 'used', 'provider': used_by, 'model': gemini_module.LAST['model'] if used_by == 'gemini' else (settings.bedrock_model_id or '')}
                     source = used_by
                     # The AI reads every field. Label text only fills what it left out, and only for fields a rule can read reliably.
                     fields = {k: v for k, v in rule_fields.items() if k in ('partNumber', 'capacity', 'grade') and k not in suggestions}

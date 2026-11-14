@@ -48,6 +48,8 @@ import "./theme.css";
 import { setBusinessName, useBusinessName } from "./businessName";
 import { t, useLang, setLang } from "./i18n";
 import { Walkthrough } from "./Walkthrough";
+import { isPractice, samplePhotoBlob, usePractice, startPractice, probe } from "./practice";
+import { PracticeCoach } from "./PracticeCoach";
 import { Logo } from "./Logo";
 import { SignIn, type SignInMode } from "./SignIn";
 import type { Page as WsPage } from "./workshop/common";
@@ -91,11 +93,11 @@ type View =
   | "counter"
   | "workshop";
 const uid = () => crypto.randomUUID();
-function aiMessage(ai?: { status: string; code?: string; message?: string; detail?: string }) {
+function aiMessage(ai?: { status: string; code?: string; message?: string; detail?: string; provider?: string; model?: string }) {
   if (!ai || ai.status === "not_needed") return "";
-  if (ai.status === "used") return "AI suggestions are included (shown in blue). Check them before saving.";
-  if (ai.status === "not_configured") return "AI suggestions are switched off. Showing what the label says and similar items only.";
-  if (ai.status === "limit_reached") return "Today's AI suggestion limit is reached. Showing what the label says and similar items only.";
+  if (ai.status === "used") return "";
+  if (ai.status === "not_configured") return "AI suggestions are switched off.";
+  if (ai.status === "limit_reached") return "Today's AI suggestion limit is reached.";
   const why =
     ai.code === "AI_PROVIDER_QUOTA"
       ? " (the AWS Bedrock quota for this account is not approved yet)"
@@ -104,7 +106,13 @@ function aiMessage(ai?: { status: string; code?: string; message?: string; detai
         : ai.detail
           ? " (" + ai.detail + ")"
           : "";
-  return "AI suggestions are not available right now" + why + ". Showing what the label says and similar items only.";
+  return "AI suggestions are not available right now" + why + ".";
+}
+function prettyModel(ai?: { provider?: string; model?: string }) {
+  if (ai?.provider === "bedrock") return "Amazon Bedrock";
+  const m = (ai?.model || "").replace(/^models\//, "");
+  if (!m) return ai?.provider === "gemini" ? "Gemini" : "AI";
+  return m.split("-").map((w) => (/^\d/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(" ");
 }
 const number = (n: number) =>
   new Intl.NumberFormat("en", { maximumFractionDigits: 3 }).format(Number(n));
@@ -209,6 +217,7 @@ function Photo({ id, zoom = false }: { id: string; zoom?: boolean }) {
   );
 }
 async function apiPhoto(id: string) {
+  if (isPractice()) { const b = samplePhotoBlob(); if (b) return b; throw new Error("Photo unavailable"); }
   const r = await fetch(
     (config.apiBase || "") + "/api/vision/images/" + encodeURIComponent(id),
     { headers: await headers() },
@@ -223,6 +232,9 @@ function App() {
   const businessName = useBusinessName();
   const lang = useLang();
   const [tourOpen, setTourOpen] = useState(false);
+  const [chooser, setChooser] = useState(false);
+  const pr = usePractice();
+  const prevPractice = useRef(false);
   const [dockHidden, setDockHidden] = useState(() => {
     try { return localStorage.getItem("lifta.dock") === "hidden"; } catch { return false; }
   });
@@ -411,6 +423,14 @@ function App() {
     ]).then(([j, i]) => { if (live) setStarted({ jobs: !!j?.length, invoices: !!i?.length }); });
     return () => { live = false; };
   }, [session, startHidden, started]);
+  useEffect(() => { probe.view = view; });
+  // Entering or leaving practice swaps every screen between the dummy data and the real data.
+  useEffect(() => {
+    if (pr.active === prevPractice.current) return;
+    prevPractice.current = pr.active;
+    if (pr.active) { setMenuOpen(false); navigate("home"); void refresh(); }
+    else { setStarted(null); void refresh(); }
+  }, [pr.active]); // eslint-disable-line react-hooks/exhaustive-deps
   const onCallback = typeof location !== "undefined" && location.pathname === "/auth/callback";
   const resetIdentification = () => {
     photoTarget.current = "";
@@ -813,7 +833,7 @@ function App() {
     { group: t("HELP") },
     { key: "tour", full: t("Walkthrough"), short: t("Walkthrough"), sub: t("Show me how it works"), Icon: Compass },
   ];
-  const pickNav = (key: View | "tour") => { if (key === "tour") { setMenuOpen(false); setTourOpen(true); } else navigate(key); };
+  const pickNav = (key: View | "tour") => { if (key === "tour") { setMenuOpen(false); setChooser(true); } else navigate(key); };
   const moreActive = view === "stock" || view === "activity" || view === "analysis";
   return (
     <div className="stock-shell" data-dock={dockHidden ? "hidden" : "shown"}>
@@ -835,6 +855,7 @@ function App() {
           ) : (
             <button
               key={n.key}
+              data-tour={"nav-" + n.key}
               disabled={busy}
               className={(view === n.key ? "chosen" : "") + (n.main ? "" : " nav-more")}
               onClick={() => pickNav(n.key)}
@@ -893,6 +914,16 @@ function App() {
         </div>
       )}
       {tourOpen && <Walkthrough owner={owner} onClose={() => setTourOpen(false)} />}
+      {chooser && (
+        <div className="wt-back" onClick={() => setChooser(false)}>
+          <section className="wt-card chooser" role="dialog" aria-modal="true" aria-label={t("Walkthrough")} onClick={(e) => e.stopPropagation()}>
+            <header><h2>{t("How would you like to learn?")}</h2><button className="icon-button" aria-label={t("Close")} onClick={() => setChooser(false)}><X size={18} /></button></header>
+            <button className="chooser-opt" onClick={() => { setChooser(false); setTourOpen(true); }}><strong>{t("Quick look")}</strong><small>{t("A 1 minute tour with pictures. Just watch.")}</small></button>
+            <button className="chooser-opt primary" onClick={() => { setChooser(false); startPractice(owner); }}><strong>{t("Practice")}</strong><small>{t("Try it yourself with dummy data. Real screens, nothing is saved.")}</small></button>
+          </section>
+        </div>
+      )}
+      <PracticeCoach />
       <main className="stock-main">
         <header className="stock-header">
           <span>
@@ -954,7 +985,7 @@ function App() {
             <div className="workspace-intro">
               <p className="eyebrow">{t("YOUR WORKSHOP. UNDER CONTROL.")}</p>
               <h1>{t("What are we doing today?")}</h1>
-              <p>{t("Pick what you want to do. New here? Follow the steps below.")} <button className="stock-link" onClick={() => setTourOpen(true)}>{t("Take the tour")}</button></p>
+              <p>{t("Pick what you want to do. New here? Follow the steps below.")} <button className="stock-link" onClick={() => setChooser(true)}>{t("Take the tour")}</button></p>
             </div>
             {owner && session && !startHidden && started && (() => {
               const steps = [
@@ -2141,20 +2172,6 @@ function ProductEditor({
   onSaved: (p: Item | null, message: string) => void;
 }) {
   const d = draft?.fields || {};
-  const [name, setName] = useState(item?.name || ""),
-    [brand, setBrand] = useState(item?.brand || ""),
-    [part, setPart] = useState(item?.part_number || ""),
-    [category, setCategory] = useState(item?.category || ""),
-    [spec, setSpec] = useState(item?.grade || ""),
-    [size, setSize] = useState(item?.capacity || ""),
-    [location, setLocation] = useState(item?.location || ""),
-    [quantity, setQuantity] = useState(0),
-    [unit, setUnit] = useState(item?.unit || "UNIT"),
-    [reorder, setReorder] = useState(item ? Number(item.reorder_level) : 5),
-    [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  const sku = useRef("ITEM-" + uid().slice(0, 8).toUpperCase());
-  const command = useCommand();
   const [suggested] = useState(() =>
     item ? {} : suggestFields(
       d as Partial<Record<Field, string>>,
@@ -2162,23 +2179,85 @@ function ProductEditor({
       products,
     ),
   );
+  // Where a suggestion came from: the AI, the label text read directly, or the shop's own history.
+  const sourceOf = (field: Field): "ai" | "label" | "history" => {
+    const s = suggested[field];
+    if (!s) return "history";
+    if (draft?.labelSuggestions?.[field] === s.value) return "label";
+    if (draft?.suggestions?.[field] === s.value) return "ai";
+    return field === "name" && s.why === "built from the label" ? "label" : "history";
+  };
+  const FILLABLE: Field[] = ["name", "brand", "partNumber", "category", "grade", "capacity"];
+  const prefillOk = (f: Field) => !item && FILLABLE.includes(f) && !!suggested[f] && sourceOf(f) !== "history";
+  const pre = (f: Field) => (prefillOk(f) ? suggested[f]!.value : "");
+  const [name, setName] = useState(item?.name || pre("name")),
+    [brand, setBrand] = useState(item?.brand || pre("brand")),
+    [part, setPart] = useState(item?.part_number || pre("partNumber")),
+    [category, setCategory] = useState(item?.category || pre("category")),
+    [spec, setSpec] = useState(item?.grade || pre("grade")),
+    [size, setSize] = useState(item?.capacity || pre("capacity")),
+    [location, setLocation] = useState(item?.location || ""),
+    [quantity, setQuantity] = useState(0),
+    [unit, setUnit] = useState(item?.unit || "UNIT"),
+    [reorder, setReorder] = useState(item ? Number(item.reorder_level) : 5),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  // Fields still showing a value the AI or the label filled in; editing or clearing one removes its badge.
+  const [filled, setFilled] = useState<Partial<Record<Field, "ai" | "label">>>(() =>
+    Object.fromEntries(FILLABLE.filter(prefillOk).map((f) => [f, sourceOf(f) as "ai" | "label"])),
+  );
+  const [moreOpen, setMoreOpen] = useState(() => !!(pre("grade") || pre("capacity")));
+  const sku = useRef("ITEM-" + uid().slice(0, 8).toUpperCase());
+  const command = useCommand();
   const fieldState: Record<Field, [string, (v: string) => void]> = {
     name: [name, setName], brand: [brand, setBrand], partNumber: [part, setPart], category: [category, setCategory],
     grade: [spec, setSpec], capacity: [size, setSize], location: [location, setLocation], unit: [unit, setUnit],
   };
+  const edit = (field: Field, value: string) => {
+    fieldState[field][1](value);
+    setFilled((f) => { if (!f[field]) return f; const next = { ...f }; delete next[field]; return next; });
+  };
+  const clearAll = () => { (Object.keys(filled) as Field[]).forEach((f) => fieldState[f][1]("")); setFilled({}); };
+  const nAi = Object.values(filled).filter((x) => x === "ai").length;
+  const nLabel = Object.values(filled).filter((x) => x === "label").length;
   const open = (Object.entries(suggested) as [Field, Suggestion][]).filter(
-    ([field, s]) => fieldState[field][0] !== s.value && (field === "unit" || !fieldState[field][0].trim()),
+    ([field, s]) => !prefillOk(field) && field !== "unit" && fieldState[field][0] !== s.value && !fieldState[field][0].trim(),
   );
-  const acceptAll = () => open.forEach(([field, s]) => fieldState[field][1](s.value));
   const hint = (field: Field) => {
+    if (field === "unit") {
+      const u = suggested.unit;
+      if (!u) return null;
+      const label = u.value === "LITRE" ? t("Measured litres") : t("Piece / sealed unit / defined set");
+      if (unit !== u.value)
+        return <span className="field-suggestion">{sourceOf("unit") === "ai" ? t("AI suggests") : t("Suggested")}: <b>{label}</b> <button type="button" onClick={() => setUnit(u.value)}>{t("Use")}</button></span>;
+      return sourceOf("unit") === "ai" ? <span className="field-suggestion muted">{t("AI agrees")}: {label}</span> : null;
+    }
     const s = open.find(([f]) => f === field)?.[1];
     return s ? (
       <span className="field-suggestion">
-        Suggested: <b>{field === "unit" ? "Measured litres" : s.value}</b> · {draft?.labelSuggestions?.[field] === s.value ? "Label suggestion" : s.why}{" "}
-        <button type="button" onClick={() => fieldState[field][1](s.value)}>Use</button>
+        {t("Suggested")}: <b>{s.value}</b> <button type="button" onClick={() => fieldState[field][1](s.value)}>{t("Use")}</button>
       </span>
     ) : null;
   };
+  const badge = (field: Field) => filled[field] ? (
+    <>
+      <span className={"fill-badge " + filled[field]}>{filled[field] === "ai" ? "AI" : t("Label")}</span>
+      <button type="button" className="fill-clear" aria-label={t("Clear")} onClick={() => edit(field, "")}>×</button>
+    </>
+  ) : null;
+  const modelName = prettyModel(draft?.ai);
+  let banner = "", bannerKind = "";
+  if (!item && draft) {
+    if (draft.ai?.status === "used") {
+      bannerKind = "used";
+      banner = nAi && nLabel ? t("AI filled the blue fields ({model}). The green ones are read straight from the label. Please check them.", { model: modelName })
+        : nAi ? t("AI filled the blue fields ({model}). Please check them.", { model: modelName })
+        : nLabel ? t("Filled from the label text (green). Please check them.")
+        : t("Nothing could be read from this photo. Type the details from the label.");
+    } else {
+      banner = (aiNote ? aiNote + " " : "") + (nLabel ? t("Filled from the label text (green). Please check them.") : t("Nothing could be read from this photo. Type the details from the label."));
+    }
+  }
   const duplicate = products.find(
     (p) =>
       p.id !== item?.id &&
@@ -2268,31 +2347,17 @@ function ProductEditor({
         </h2>
         <p>
           {draft
-            ? "Label readings and AI suggestions are shown for review. Choose Use for each value; nothing is saved automatically."
+            ? t("Check the filled fields, fix anything wrong, then save. Nothing is saved until you press Save item.")
             : "Use the visible manufacturer and part number where available."}
         </p>
         {imageId && <Photo id={imageId} zoom />}
-        {!item && aiNote && (
-          <p className={"ai-note" + (draft?.ai?.status === "used" ? " used" : "")} role="status">
-            {aiNote}
-          </p>
+        {banner && (
+          <div className={"ai-note" + (bannerKind ? " " + bannerKind : "")} role="status">
+            <span>{banner}</span>
+            {Object.keys(filled).length > 0 && <button type="button" className="stock-link" onClick={clearAll}>{t("Clear all")}</button>}
+          </div>
         )}
         <form onSubmit={(e) => void save(e)}>
-          {!item && Object.keys(suggested).length === 0 && (
-            <p className="ai-note" role="status">
-              No suggestions are available for this photo. Type the details from the label.
-            </p>
-          )}
-          {open.length > 0 && (
-            <div className="suggestion-banner" role="status">
-              <span>
-                <b>{open.length} {open.length === 1 ? "suggestion" : "suggestions"}</b> ready for the empty fields
-              </span>
-              <button type="button" className="button secondary" onClick={acceptAll}>
-                <Check size={16} /> Accept all
-              </button>
-            </div>
-          )}
           {inTask && (
             <p className="stock-help">
               Save the item first, then confirm how many came in.
@@ -2307,10 +2372,10 @@ function ProductEditor({
                 ["Category", category, setCategory, true, "category"],
                 ["Shelf / location", location, setLocation, false, "location"],
               ] as const
-            ).map(([label, value, set, required, field]) => (
-              <label className="stock-field" key={label}>
-                {label}
-                <input
+            ).map(([label, value, , required, field]) => (
+              <label className={"stock-field" + (filled[field] ? " filled-" + filled[field] : "")} key={label}>
+                {t(label)}
+                <span className="input-wrap"><input
                   required={required}
                   maxLength={
                     label === "Manufacturer / brand"
@@ -2322,8 +2387,8 @@ function ProductEditor({
                   value={value}
                   list={field === "category" ? "category-options" : field === "brand" ? "brand-options" : undefined}
                   autoComplete={field === "category" || field === "brand" ? "off" : undefined}
-                  onChange={(e) => set(e.target.value)}
-                />
+                  onChange={(e) => edit(field, e.target.value)}
+                />{badge(field)}</span>
                 {hint(field)}
               </label>
             ))}
@@ -2363,24 +2428,24 @@ function ProductEditor({
                 )}
               </>
             )}
-            <details className="product-more">
-              <summary>More details</summary>
-              <label className="stock-field">
-                Specification
-                <input
+            <details className="product-more" open={moreOpen} onToggle={(e) => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}>
+              <summary>{t("More details")}</summary>
+              <label className={"stock-field" + (filled.grade ? " filled-" + filled.grade : "")}>
+                {t("Specification")}
+                <span className="input-wrap"><input
                   maxLength={80}
                   value={spec}
-                  onChange={(e) => setSpec(e.target.value)}
-                />
+                  onChange={(e) => edit("grade", e.target.value)}
+                />{badge("grade")}</span>
                 {hint("grade")}
               </label>
-              <label className="stock-field">
-                Size / pack description
-                <input
+              <label className={"stock-field" + (filled.capacity ? " filled-" + filled.capacity : "")}>
+                {t("Size / pack description")}
+                <span className="input-wrap"><input
                   maxLength={60}
                   value={size}
-                  onChange={(e) => setSize(e.target.value)}
-                />
+                  onChange={(e) => edit("capacity", e.target.value)}
+                />{badge("capacity")}</span>
                 {hint("capacity")}
               </label>
               <label className="stock-field">
@@ -2407,7 +2472,7 @@ function ProductEditor({
               {error}
             </p>
           )}
-          <div className="stock-form-actions">
+          <div className="stock-form-actions sticky-actions">
             <button
               type="button"
               className="button secondary"
@@ -2417,7 +2482,7 @@ function ProductEditor({
               Cancel
             </button>
             <button className="button primary" disabled={busy || !!duplicate}>
-              {busy ? "Saving…" : item ? "Save changes" : open.length ? "Save without suggestions" : "Save item"}
+              {busy ? t("Saving…") : item ? "Save changes" : t("Save item")}
             </button>
           </div>
         </form>

@@ -3,13 +3,14 @@ import jsQR from "jsqr";
 import { Camera as CameraIcon, X } from "lucide-react";
 import { markNativePick, clearNativePick } from "./resume";
 import { t, useLang } from "./i18n";
+import { isPractice, samplePhoto } from "./practice";
 
 /**
  * One live camera for everything at the counter: a Stocklane QR in view is read by itself,
  * and the big button takes a photo of the part. Frames never leave the device until a photo is taken.
  * Without a camera (or permission) the person can still choose a photo from the device.
  */
-export function Camera({
+function LiveCamera({
   onQR,
   onBarcode,
   onPhoto,
@@ -189,4 +190,39 @@ export function Camera({
       </section>
     </div>
   );
+}
+
+type CameraProps = { onQR: (value: string) => void; onBarcode?: (value: string) => void; onPhoto: (file: File) => void; onClose: () => void };
+
+/** Practice mode: no real camera, one drawn sample part to "photograph". */
+function PracticeCamera({ onPhoto, onClose }: CameraProps) {
+  useLang();
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let made = "";
+    void samplePhoto().then((f) => { made = URL.createObjectURL(f); setUrl(made); });
+    return () => { if (made) URL.revokeObjectURL(made); };
+  }, []);
+  return (
+    <div className="stock-modal-shade">
+      <section className="scanner-dialog" role="dialog" aria-modal="true" aria-labelledby="camera-title">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">{t("CAMERA")}</p>
+            <h2 id="camera-title">{t("Practice camera")}</h2>
+          </div>
+          <button className="icon-button" aria-label={t("Close")} onClick={onClose}><X /></button>
+        </div>
+        <div className="live-video practice-photo">{url && <img src={url} alt="" />}</div>
+        <p className="camera-capability" role="status">{t("In real use this is your phone camera. Here we use a sample oil bottle.")}</p>
+        <button data-tour="sample-photo" className="button primary full camera-shutter" disabled={!url} onClick={() => void samplePhoto().then(onPhoto)}>
+          <CameraIcon size={22} /> {t("Use sample photo")}
+        </button>
+      </section>
+    </div>
+  );
+}
+
+export function Camera(props: CameraProps) {
+  return isPractice() ? <PracticeCamera {...props} /> : <LiveCamera {...props} />;
 }

@@ -124,7 +124,7 @@ export function JobPage({ id }: { id: string }) {
           </div>
         ))}
         {!locked && (
-          <div className="ws-add">
+          <div className="ws-add" data-tour="part-chips">
             <button className="button secondary small" onClick={() => { setParts([...parts, { name: "", quantity: "1", unit_price: "" }]); setDirty(true); }}>+ Add part</button>
             {sugg?.parts?.slice(0, 5).map((s) => <button key={s.name} className="ws-quick" onClick={() => { setParts([...parts, { name: s.name, quantity: "1", unit_price: String(s.price) }]); setDirty(true); }}>{s.name}</button>)}
           </div>
@@ -138,7 +138,7 @@ export function JobPage({ id }: { id: string }) {
           </div>
         ))}
         {!locked && (
-          <div className="ws-add">
+          <div className="ws-add" data-tour="labour-chips">
             <button className="button secondary small" onClick={() => { setLabour([...labour, { description: "", amount: "" }]); setDirty(true); }}>+ Add labour</button>
             {sugg?.labour?.slice(0, 5).map((s) => <button key={s.description} className="ws-quick" onClick={() => { setLabour([...labour, { description: s.description, amount: String(s.amount) }]); setDirty(true); }}>{s.description}</button>)}
           </div>
@@ -178,7 +178,7 @@ export function JobPage({ id }: { id: string }) {
         {owner && (job.status === "OPEN" || job.status === "CANCELLED") && <button className="button secondary" disabled={busy} onClick={() => setDialog("delete")}>Delete job</button>}
         {!locked && owner && <button className="button secondary" disabled={busy} onClick={cancel}>Cancel job</button>}
         {!locked && <button className="button secondary" disabled={busy || !dirty} onClick={() => void run(async () => { await save(); setSaved("Saved."); })}>Save</button>}
-        {!locked && <button className="button primary" disabled={busy || (!lines.parts.length && !lines.labour.length)} onClick={invoice}>Create invoice</button>}
+        {!locked && <button data-tour="create-invoice" className="button primary" disabled={busy || (!lines.parts.length && !lines.labour.length)} onClick={invoice}>Create invoice</button>}
       </div>
       {dialog === "delete" && <ReasonDialog title="Delete this job?" help="It moves to the Archive and disappears from jobs and the vehicle history. You can restore it later." label="Reason" confirm="Delete job"
         onDone={async (reason) => { await command(base + "/archive", { reason }); removed("Job deleted. It is in the Archive."); }} onClose={() => setDialog("")} />}

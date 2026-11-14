@@ -111,7 +111,7 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
     <section className="counter-screen" aria-label={t("Parts counter")}>
       <div className="counter-modes" role="tablist">
         {(([["receive", t("Receive")], ["give", t("Give a part")]]) as [Mode, string][]).map(([m, label]) => (
-          <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? "chosen " + m : m} onClick={() => switchMode(m)}>{label}</button>
+          <button key={m} data-tour={"tab-" + m} role="tab" aria-selected={mode === m} className={mode === m ? "chosen " + m : m} onClick={() => switchMode(m)}>{label}</button>
         ))}
       </div>
       {done && <p className="counter-done" role="status"><Check size={20} /> {done}</p>}
@@ -130,7 +130,7 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
               <div className="counter-chosen"><strong>{part.name}</strong><small>{t("Part no.")} {part.part_number || t("Not set")} · {t("System no.")} {part.sku} · {amount(Number(part.quantity))} {t("in stock")}{part.location ? " · " + part.location : ""}</small><button onClick={() => { setPart(null); setPhotoId(""); }}>{t("Change")}</button></div>
             ) : (
               <>
-                <button className="counter-big wide" disabled={busy} onClick={() => setCamera(true)}><CameraIcon size={30} /> {busy ? t("Checking the photo…") : t("Open camera")}</button>
+                <button data-tour="open-camera" className="counter-big wide" disabled={busy} onClick={() => setCamera(true)}><CameraIcon size={30} /> {busy ? t("Checking the photo…") : t("Open camera")}</button>
                 <p className="stock-help">{t("Scan a Lifta QR or original product barcode. You can also take a photo or search manually.")}</p>
                 {candidates.length > 0 && (
                   <div className="counter-candidates">
@@ -139,9 +139,9 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
                   </div>
                 )}
                 {mode === "receive" && photoId && onNewItem && (
-                  <button className="counter-new" disabled={starting} aria-busy={starting} onClick={() => { setStarting(true); void Promise.resolve(onNewItem(photoId)).finally(() => setStarting(false)); }}>{starting ? <Loader2 size={20} className="spin" /> : <Plus size={20} />} {starting ? t("Reading the label…") : candidates.length ? t("None of these: add as a new item") : t("Add as a new item (reads the label)")}</button>
+                  <button data-tour="add-new" className="counter-new" disabled={starting} aria-busy={starting} onClick={() => { setStarting(true); void Promise.resolve(onNewItem(photoId)).finally(() => setStarting(false)); }}>{starting ? <Loader2 size={20} className="spin" /> : <Plus size={20} />} {starting ? t("Reading the label…") : candidates.length ? t("None of these: add as a new item") : t("Add as a new item (reads the label)")}</button>
                 )}
-                <label className="stock-field counter-search">{t("Or search")}<input value={search} placeholder="Oil filter" onChange={(e) => setSearch(e.target.value)} /></label>
+                <label data-tour="counter-search" className="stock-field counter-search">{t("Or search")}<input value={search} placeholder="Oil filter" onChange={(e) => setSearch(e.target.value)} /></label>
                 {matches.map((m) => <button key={m.id} className="counter-result" onClick={() => choosePart(m)}>{photo && <span className="counter-result-photo">{photo(m)}</span>}<span className="counter-result-text">{m.name} <small>{t("Part no.")} {m.part_number || t("Not set")} · {t("System no.")} {m.sku}</small></span></button>)}
                 {search.trim().length >= 2 && !matches.length && <p className="stock-help">{t("No part matches \"{q}\".", { q: search.trim() })}</p>}
               </>

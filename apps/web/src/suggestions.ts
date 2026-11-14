@@ -20,8 +20,10 @@ function mostCommon(values: (string | null | undefined)[]) {
 export function suggestFields(label: Known, ai: Known, stocked: Stocked[]): Partial<Record<Field, Suggestion>> {
   const out: Partial<Record<Field, Suggestion>> = {};
   const has = (f: Field) => !!(label[f] || "").trim();
-  for (const [field, value] of Object.entries(ai) as [Field, string][])
+  for (const [field, raw] of Object.entries(ai) as [Field, string][]) {
+    const value = field === "unit" ? (/litre|liter/i.test(raw || "") ? "LITRE" : raw && raw.trim() ? "UNIT" : "") : raw;
     if (value && value.trim() && !has(field)) out[field] = { value: value.trim(), why: "AI suggestion" };
+  }
   const value = (f: Field) => (label[f] || out[f]?.value || "").trim();
   const brand = value("brand");
   const sameBrand = brand ? stocked.filter((p) => norm(p.brand) === norm(brand)) : [];
@@ -37,10 +39,10 @@ export function suggestFields(label: Known, ai: Known, stocked: Stocked[]): Part
     if (shelf) out.location = { value: shelf, why: "where similar items are kept" };
   }
   const unit = mostCommon(sameCategory.map((p) => p.unit));
-  if (unit === "LITRE") out.unit = { value: "LITRE", why: "similar items are counted in litres" };
+  if (unit === "LITRE" && !out.unit) out.unit = { value: "LITRE", why: "similar items are counted in litres" };
   if (!has("name") && !out.name) {
     const parts = [brand, value("grade"), value("capacity")].filter(Boolean);
-    if (parts.length >= 2 || (parts.length === 1 && category)) out.name = { value: [...parts, parts.length < 2 ? category : ""].filter(Boolean).join(" "), why: "built from the label" };
+    if (brand && (parts.length >= 2 || (parts.length === 1 && category))) out.name = { value: [...parts, parts.length < 2 ? category : ""].filter(Boolean).join(" "), why: "built from the label" };
   }
   return out;
 }

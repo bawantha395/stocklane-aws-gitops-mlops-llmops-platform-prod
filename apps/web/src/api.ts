@@ -1,3 +1,4 @@
+import {isPractice,demoApi} from './practice';
 import {UserManager, WebStorageStateStore, type User} from 'oidc-client-ts';
 declare global {interface Window {STOCKLANE_CONFIG:{authMode:string;authority:string;clientId:string;scope:string;apiBase?:string;logoutUrl?:string}}}
 export const config=window.STOCKLANE_CONFIG;
@@ -32,6 +33,7 @@ export async function shrink(file:File):Promise<File>{
 }
 export class ApiError extends Error { constructor(message:string,public status:number){super(message);this.name="ApiError";} }
 export async function api<T=any>(path:string,options:RequestInit={},key?:string):Promise<T>{
+ if(isPractice())return demoApi(path,options) as Promise<T>;/* practice mode never reaches the server */
  const h=new Headers(await headers());new Headers(options.headers).forEach((v,k)=>h.set(k,v));
  if(options.body&&!(options.body instanceof FormData))h.set('Content-Type','application/json');
  if(key)h.set('Idempotency-Key',key);
@@ -62,7 +64,7 @@ export async function openPdf(path:string,name:string){
 export type Product={id:string;sku:string;name:string;category:string;brand:string;grade:string;capacity:string;barcode:string|null;unit:string;quantity:number;selling_price:number;reorder_level:number;image_id:string|null};
 export type Job={id:string;customer:string;vehicle:string;registration:string;phone:string;summary:string;status:string;created_at:string};
 export type Movement={id:string;product_id:string;sku:string;name:string;unit:string;kind:string;quantity:number;unit_price:number;balance?:number;job_id:string|null;issue_id:string|null;actor:string;receiver_name?:string|null;note:string;created_at:string};
-export type Draft={id:string;image_id:string;fields:Record<string,string>;suggestions?:Record<string,string>;labelSuggestions?:Record<string,string>;ai?:{status:string;code?:string;message?:string};source:string;status:string;created_at:string;product_id:string|null;captureId?:string};
+export type Draft={id:string;image_id:string;fields:Record<string,string>;suggestions?:Record<string,string>;labelSuggestions?:Record<string,string>;ai?:{status:string;code?:string;message?:string;detail?:string;provider?:string;model?:string};source:string;status:string;created_at:string;product_id:string|null;captureId?:string};
 export type Invoice={id:string;job_id:string;invoice_number:string;labour:number;total:number;created_at:string};
 export type Match={identifiedProductId?:string;qrValue?:string;imageId:string;state:string;modelVersion:string;candidates:{product:Product;imageId:string;similarity:number;sameSkuEstimate?:number|null}[];message:string};
 export type BarcodeLookup={barcode:string;found:boolean;suggestions:Record<string,string>};
