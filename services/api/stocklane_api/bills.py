@@ -154,7 +154,7 @@ def invoice(i):
         what = ' and '.join(x for x in (i.get('next_service_date') and 'on ' + i['next_service_date'], i.get('next_service_km') and 'at ' + kms(i['next_service_km'])) if x)
         d.text(MARGIN + 10, d.y + 17, 'Next service due ' + what, 9.5, True, color=ACCENT)
         d.y += 36
-    if not i.get('tax_rate') and not b.get('tax_rate'):
+    if not i.get('tax_rate') and not b.get('tax_rate') and not b.get('reg_no'):
         d.room(24)
         d.text(MARGIN, d.y + 10, 'This is not a tax invoice.', 9, True, color=MUTED)
         d.y += 20

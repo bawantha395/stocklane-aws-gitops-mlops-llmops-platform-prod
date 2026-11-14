@@ -3,15 +3,16 @@ import { useEffect, useRef, useState } from "react";
 import { JobItem } from "./Dashboard";
 import { PastRepairs } from "./Vehicles";
 import { PhotoSlot, PhotoStrip } from "./Photos";
-import { Empty, Loading, kmText, regKey, useCommand, useDebounced, useLoad, useWs, type Job, type Vehicle } from "./common";
+import { DateChips, SummaryBar, cap, ALL, inRange, useSaved, type Range } from "./DateRange";
+import { Empty, Loading, dateOnly, kmText, lkr, regKey, useCommand, useDebounced, useLoad, useWs, type Job, type Vehicle } from "./common";
 
 export function Jobs() {
   const { go } = useWs();
   const { data, error } = useLoad<Job[]>("/api/workshop/jobs");
-  const [filter, setFilter] = useState("OPEN"), [q, setQ] = useState("");
+  const [filter, setFilter] = useSaved("jobs.status", "OPEN"), [q, setQ] = useState(""), [range, setRange] = useSaved<Range>("jobs.range", ALL);
   if (!data) return <Loading error={error} />;
   const needle = q.trim().toLowerCase();
-  const shown = data.filter((j) => (filter === "ALL" || j.status === filter) && (!needle || (j.registration + " " + j.customer + " " + j.phone + " " + j.summary).toLowerCase().includes(needle)));
+  const shown = data.filter((j) => (filter === "ALL" || j.status === filter) && inRange(j.created_at, range) && (!needle || (j.registration + " " + j.customer + " " + j.phone + " " + j.summary).toLowerCase().includes(needle)));
   const count = (s: string) => data.filter((j) => j.status === s).length;
   return (
     <>
@@ -23,6 +24,9 @@ export function Jobs() {
         </div>
         <input aria-label="Search jobs" placeholder={t("Search number, customer, phone or work")} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
+      <DateChips value={range} onChange={setRange} />
+      <SummaryBar text={cap(t("jobs")) + ": " + shown.length + " · LKR " + lkr(shown.reduce((s, j) => s + (j.total || 0), 0))} file="jobs"
+        rows={shown.map((j) => ({ Date: dateOnly(j.created_at), "Vehicle no.": j.registration, Customer: j.customer, Phone: j.phone, Work: j.summary, Status: j.status, Invoice: j.invoice_number || "", "Total (LKR)": j.total }))} />
       <div className="ws-cards">
         {shown.map((j) => <JobItem key={j.id} j={j} onOpen={() => go({ name: "job", id: j.id })} />)}
         {!shown.length && <Empty action={data.length ? undefined : { label: "+ " + t("New job"), onClick: () => go({ name: "new" }) }}>{data.length ? "No jobs match." : "No jobs yet. Start the first one when a vehicle comes in."}</Empty>}

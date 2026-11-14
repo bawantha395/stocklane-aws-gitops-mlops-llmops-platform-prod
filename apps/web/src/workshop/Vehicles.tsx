@@ -3,6 +3,7 @@ import { DueCard, VehicleCard } from "./Cards";
 import { Face, Photo } from "./Photos";
 import { useState } from "react";
 import { download } from "../api";
+import { DateChips, SummaryBar, cap, ALL, inRange, useSaved, type Range } from "./DateRange";
 import { Empty, Loading, Pill, addDays, dateOnly, kmText, lkr, today, useCommand, useDebounced, useLoad, useWs, waLink, type Vehicle, type Visit } from "./common";
 
 const total = (v: Visit) => lkr(v.total);
@@ -51,16 +52,19 @@ export function PastRepairs({ regKey, skipJob }: { regKey: string; skipJob?: str
 
 export function Vehicles() {
   const { go } = useWs();
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(""), [range, setRange] = useSaved<Range>("vehicles.range", ALL);
   const term = useDebounced(q.trim());
   const { data, error } = useLoad<Vehicle[]>("/api/workshop/vehicles?search=" + encodeURIComponent(term));
+  const shown = (data || []).filter((v) => inRange(v.updated_at, range));
   return (
     <>
       <div className="ws-toolbar"><input aria-label="Search vehicles" placeholder={t("Search number, owner, phone or model")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <DateChips value={range} onChange={setRange} />
+      {data && <SummaryBar text={cap(t("vehicles")) + ": " + shown.length + " · " + t("by last visit")} file="vehicles" rows={shown.map((v) => ({ "Vehicle no.": v.registration, Owner: v.owner || "", Phone: v.phone || "", Model: v.make || "", "Last visit": dateOnly(v.updated_at), "Last km": v.last_km ?? "", "Next service": v.next_service_date || "" }))} />}
       {!data ? <Loading error={error} /> : (
         <div className="ws-cards">
-          {data.map((v) => <VehicleCard key={v.id} v={v} onOpen={() => go({ name: "vehicle", id: v.id })} />)}
-          {!data.length && <Empty action={term ? undefined : { label: "+ " + t("New job"), onClick: () => go({ name: "new" }) }}>{term ? "No vehicle matches." : "No vehicles yet. A vehicle is added by itself when you create its first job."}</Empty>}
+          {shown.map((v) => <VehicleCard key={v.id} v={v} onOpen={() => go({ name: "vehicle", id: v.id })} />)}
+          {!shown.length && <Empty action={term || range.k !== "all" ? undefined : { label: "+ " + t("New job"), onClick: () => go({ name: "new" }) }}>{term || range.k !== "all" ? "No vehicle matches." : "No vehicles yet. A vehicle is added by itself when you create its first job."}</Empty>}
         </div>
       )}
     </>

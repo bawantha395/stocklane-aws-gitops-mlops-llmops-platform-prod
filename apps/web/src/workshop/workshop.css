@@ -697,3 +697,19 @@ button.ws-kpi:hover { transform: translateY(-4px); box-shadow: 0 22px 40px -20px
 @media (min-width: 701px) { .ws-toolbar .ws-chips { flex: 0 0 auto; overflow: visible; flex-wrap: wrap; } }
 /* on phones the app's own dock is fixed at the top, so the workshop bar sticks just below it */
 @media (max-width: 760px) { .ws-sticky { top: calc(env(safe-area-inset-top, 0px) + 84px); } }
+
+/* date chips, summary bar, bill QR, discount quick buttons */
+.ws-dates { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
+.ws-dates .ws-chip { min-height: 40px; }
+.ws-dates-custom { display: flex; flex-wrap: wrap; gap: 10px; flex-basis: 100%; }
+.ws-dates-custom label { display: flex; align-items: center; gap: 6px; font-size: 14px; color: #6e6e73; }
+.ws-dates-custom input { min-height: 44px; padding: 0 10px; border: 1px solid #d2d2d7; border-radius: 12px; font-size: 15px; font-family: inherit; background: #fff; }
+.ws-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; font-size: 14px; font-weight: 600; color: #3a3a3c; }
+.ws-bill-pay-box { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.ws-bill-qr { flex: 0 0 auto; border-radius: 6px; background: #fff; }
+.ws-pcts { display: inline-flex; gap: 6px; margin-left: 8px; }
+.ws-pcts .ws-quick { min-height: 32px; padding: 0 10px; }
+@media (max-width: 700px) { .ws-dates { gap: 6px; } .ws-dates .ws-chip { padding: 0 12px; font-size: 14px; min-height: 40px; } }
+.ws-dates-row { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; max-width: 100%; padding: 4px 2px 8px; margin: -4px -2px -4px; }
+.ws-dates-row::-webkit-scrollbar { display: none; }
+.ws-dates-row .ws-chip { flex: 0 0 auto; }

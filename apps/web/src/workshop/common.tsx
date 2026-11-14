@@ -5,7 +5,7 @@ import { api } from "../api";
 
 export type PageName = "home" | "jobs" | "vehicles" | "due" | "invoices" | "archive" | "report" | "settings" | "new" | "job" | "vehicle" | "invoice";
 export type Page = { name: PageName; id?: string; reg?: string };
-export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string };
+export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string; qr_url?: string };
 export type Part = { name: string; quantity: number; unit_price: number };
 export type Labour = { description: string; amount: number };
 export type Job = {

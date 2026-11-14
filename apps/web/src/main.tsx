@@ -65,6 +65,7 @@ const Scanner = React.lazy(() =>
 );
 import { StockReport } from "./StockReport";
 import { Workshop } from "./workshop";
+import { DateChips, SummaryBar, ALL, inRange, useSaved, type Range } from "./workshop/DateRange";
 import { CommandBar } from "./CommandBar";
 import { ReorderCard } from "./ReorderCard";
 import { Counter, type Mode as CounterMode } from "./Counter";
@@ -272,7 +273,8 @@ function App() {
   const [items, setItems] = useState<Item[]>([]),
     [moves, setMoves] = useState<Movement[]>([]);
   const [activitySearch, setActivitySearch] = useState("");
-  const [activityKind, setActivityKind] = useState("ALL");
+  const [activityKind, setActivityKind] = useSaved("stock.kind", "ALL");
+  const [activityRange, setActivityRange] = useSaved<Range>("stock.range", ALL);
   const [session, setSession] = useState<Session | null>(null),
     [status, setStatus] = useState<any>(null),
     [loading, setLoading] = useState(false);
@@ -333,7 +335,7 @@ function App() {
         .join(" ")
         .toLowerCase()
         .includes(query);
-    return matchesKind && matchesText;
+    return matchesKind && matchesText && inRange(movement.created_at, activityRange);
   });
   const movementDirection = (kind: string) =>
     ["OPENING", "RECEIPT", "RETURN"].includes(kind) ? "IN" : "OUT";
@@ -474,6 +476,7 @@ function App() {
     setCounterPick(picked);
     navigate("counter", true);
   };
+  useEffect(() => { const f = () => navigate("stock"); window.addEventListener("lifta:stock", f); return () => window.removeEventListener("lifta:stock", f); });
   const openWorkshop = (page: WsPage) => {
     setWsStart((w) => ({ page, n: w.n + 1 }));
     navigate("workshop");
@@ -1980,8 +1983,11 @@ function App() {
                   <option value="OUT">Out</option>
                 </select>
               </label>
-              <button className="button secondary small" onClick={() => { setActivitySearch(""); setActivityKind("ALL"); }}>Clear filters</button>
+              <button className="button secondary small" onClick={() => { setActivitySearch(""); setActivityKind("ALL"); setActivityRange(ALL); }}>Clear filters</button>
             </section>
+            <DateChips value={activityRange} onChange={setActivityRange} />
+            <SummaryBar text={"Movements: " + visibleMoves.length} file="stock-history"
+              rows={visibleMoves.map((m) => ({ Time: when(m.created_at), Item: m.name, SKU: m.sku, Direction: movementDirection(m.kind), Movement: m.kind, Quantity: m.quantity, "Recorded by": actorEmail(m.actor) }))} />
             <section className="stock-panel stock-table-wrap">
               <table className="stock-table">
                 <thead>

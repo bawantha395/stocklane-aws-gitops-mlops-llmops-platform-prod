@@ -93,7 +93,7 @@ export async function demoShot(kind: "plate" | "front" | "damage"): Promise<File
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 function business() {
-  return { name: getBusinessName(), address: "12 Demo Road", phone: "011 000 0000", email: "", reg_no: "", bank: "", footer: "", tax_name: "VAT", tax_rate: 0, mechanic_discount_pct: 10, payment_terms_days: 0, warranty: "", ...db.settings };
+  return { name: getBusinessName(), address: "12 Demo Road", phone: "011 000 0000", email: "", reg_no: "", bank: "", footer: "", tax_name: "VAT", tax_rate: 0, mechanic_discount_pct: 10, payment_terms_days: 0, qr_url: "", warranty: "", ...db.settings };
 }
 function priced(j: Row) {
   j.parts_total = round2(j.parts.reduce((s: number, p: Row) => s + Number(p.quantity) * Number(p.unit_price), 0));

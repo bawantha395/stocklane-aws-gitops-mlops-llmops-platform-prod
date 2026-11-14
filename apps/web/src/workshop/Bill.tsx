@@ -1,3 +1,4 @@
+import { QrImg } from "./QrImg";
 import { addDays, dateOnly, kmText, lkr, num, round2, type Business, type Labour, type Part, type Payment } from "./common";
 
 export type BillData = {
@@ -72,11 +73,11 @@ export function Bill({ d }: { d: BillData }) {
           {d.payments.map((p) => <div className="ws-bill-pay" key={p.id}><span>{dateOnly(p.at)}  {p.method.charAt(0) + p.method.slice(1).toLowerCase()}{p.note ? "  " + p.note : ""}</span><b>{lkr(p.amount)}</b></div>)}
         </section>
       )}
-      {!d.tax_rate && !d.draft && <p className="ws-bill-notax">This is not a tax invoice.</p>}
+      {!d.tax_rate && !d.draft && !b.reg_no && <p className="ws-bill-notax">This is not a tax invoice.</p>}
       {(d.next_service_date || d.next_service_km) && (
         <p className="ws-bill-next">Next service due {[d.next_service_date && "on " + d.next_service_date, d.next_service_km && "at " + kmText(d.next_service_km)].filter(Boolean).join(" and ")}</p>
       )}
-      {b.bank && <section className="ws-bill-pay-box"><small>HOW TO PAY</small><p className="ws-pre">{b.bank}</p></section>}
+      {(b.bank || b.qr_url) && <section className="ws-bill-pay-box"><div><small>HOW TO PAY</small><p className="ws-pre">{b.bank}</p></div>{b.qr_url && !d.draft && <QrImg text={b.qr_url} />}</section>}
       {(b.warranty || b.footer) && <footer>{b.warranty && <><small>WARRANTY</small><p className="ws-pre">{b.warranty}</p></>}{b.footer && <p className="ws-pre muted">{b.footer}</p>}</footer>}
       {!d.draft && (d.status === "PAID" || d.status === "VOID") && <span className={"ws-bill-stamp " + d.status.toLowerCase()} aria-hidden="true">{d.status === "PAID" ? "PAID" : "VOID"}</span>}
       <div className="ws-bill-sign"><span>Authorised signature</span></div>

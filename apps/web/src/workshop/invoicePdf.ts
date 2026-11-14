@@ -1,5 +1,6 @@
 /** Builds the invoice PDF in the browser from the invoice already on screen, so Download PDF never depends on the server. A4, Helvetica, ASCII only. */
-import { dateOnly, num, type Business, type Invoice } from "./common";
+import QRCode from "qrcode";
+import { addDays, dateOnly, num, type Business, type Invoice } from "./common";
 
 type RGB = [number, number, number];
 const W = 595, H = 842, MARGIN = 40, R = W - MARGIN;
@@ -44,6 +45,17 @@ class Doc {
   }
   line(x1: number, y1: number, x2: number, y2: number, w = 0.6, color: RGB = LINE) { this.ops.push(`${rgb(color)} RG ${w} w ${f1(x1)} ${f1(H - y1)} m ${f1(x2)} ${f1(H - y2)} l S`); }
   rect(x: number, y: number, w: number, h: number, fill: RGB = WASH) { this.ops.push(`${rgb(fill)} rg ${f1(x)} ${f1(H - y - h)} ${f1(w)} ${f1(h)} re f`); }
+  /** A slanted PAID / VOID stamp on a given page. */
+  stamp(label: string, x: number, y: number, color: RGB, page: number, size = 54, angle = 18) {
+    const a = (angle * Math.PI) / 180, c = Math.cos(a).toFixed(4), sn = Math.sin(a).toFixed(4);
+    this.pages[page].push(`BT /F2 ${size} Tf ${rgb(color)} rg ${c} ${sn} -${sn} ${c} ${f1(x)} ${f1(H - y)} Tm (${esc(label)}) Tj ET`);
+  }
+  /** A QR code drawn as plain squares, so it stays sharp at any size and needs no image. */
+  qr(x: number, y: number, size: number, text: string) {
+    const q = QRCode.create(text, { errorCorrectionLevel: "M" }), n = q.modules.size, cell = size / n;
+    this.rect(x - 4, y - 4, size + 8, size + 8, [1, 1, 1]);
+    for (let r = 0; r < n; r++) { let c = 0; while (c < n) { if (!q.modules.get(r, c)) { c++; continue; } let e = c; while (e < n && q.modules.get(r, e)) e++; this.rect(x + c * cell, y + r * cell, (e - c) * cell + 0.2, cell + 0.2, INK); c = e; } }
+  }
   paragraph(x: number, s: string, max: number, size = 10, color: RGB = INK) {
     for (const part of wrap(s, max, size)) { this.room(size * 1.35); this.text(x, this.y + size, part, size, false, "l", color); this.y += size * 1.35; }
   }
@@ -79,17 +91,25 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   const d = new Doc((b.name || "Workshop") + " | " + inv.invoice_number);
   const taxRate = num(inv.tax_rate), status = inv.status;
   // header
+  d.rect(0, 0, W, 12, ACCENT);
   const top = d.y;
-  d.text(MARGIN, top + 18, b.name || "Workshop", 18, true, "l", ACCENT);
-  let y = top + 32;
+  const mono = (b.name || "W").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "W";
+  d.rect(MARGIN, top, 36, 36, ACCENT);
+  d.text(MARGIN + 18 + width(mono, 14, true) / 2, top + 23, mono, 14, true, "r", [1, 1, 1]);
+  d.text(MARGIN + 46, top + 24, b.name || "Workshop", 18, true, "l", ACCENT);
+  let y = top + 44;
   for (const part of [b.address, [b.phone, b.email].filter(Boolean).join(" | "), b.reg_no]) if (part) for (const row of wrap(part, 300, 9)) { d.text(MARGIN, y + 8, row, 9, false, "l", MUTED); y += 12; }
   d.text(R, top + 20, status === "VOID" ? "VOID" : taxRate ? "TAX INVOICE" : "INVOICE", 20, true, "r");
   let ry = top + 36;
   const label = { UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", VOID: "Void" }[status] || status;
-  for (const [t, bold] of [[inv.invoice_number, true], ["Date: " + dateOnly(inv.created_at), false], ["Status: " + label, false]] as [string, boolean][]) { d.text(R, ry + 8, t, 9.5, bold, "r", bold ? INK : MUTED); ry += 13; }
+  const terms = num(b.payment_terms_days ?? 0);
+  const meta: [string, boolean][] = [[inv.invoice_number, true], ["Date: " + dateOnly(inv.created_at), false]];
+  if (terms) meta.push(["Due: " + addDays(dateOnly(inv.created_at), terms) + " (" + terms + " days)", false]);
+  meta.push(["Status: " + label, false]);
+  for (const [t, bold] of meta) { d.text(R, ry + 8, t, 9.5, bold, "r", bold ? INK : MUTED); ry += 13; }
   d.y = Math.max(y, ry) + 8; d.line(MARGIN, d.y, R, d.y, 1.2, ACCENT); d.y += 14;
   // parties
-  const left = block(d, MARGIN, 230, "BILL TO", [[inv.customer, 11, true], [inv.phone, 9.5, false]]);
+  const left = block(d, MARGIN, 230, "BILL TO", [[inv.customer, 11, true], [inv.address, 9.5, false], [inv.phone, 9.5, false]]);
   const km = inv.odometer != null ? Math.round(num(inv.odometer)).toLocaleString("en") + " km" : "";
   const right = block(d, 320, 235, "VEHICLE", [[inv.registration, 13, true], [inv.vehicle, 9.5, false], [km, 9.5, false], [inv.mechanic ? "Mechanic: " + inv.mechanic : "", 9.5, false]]);
   d.y = Math.max(left, right) + 6;
@@ -121,6 +141,7 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   if (num(inv.discount)) totals.push(["Discount", "-" + money(inv.discount)]);
   if (num(inv.tax)) totals.push([(inv.tax_name || "VAT") + " (" + qty(taxRate) + "%)", money(inv.tax)]);
   d.room(30 + 16 * totals.length + 70);
+  const totPage = d.pages.length - 1, totY = d.y;
   for (const [l, v] of totals) { d.text(430, d.y + 10, l, 9.5, false, "r", MUTED); d.text(R - 6, d.y + 10, v, 9.5, false, "r"); d.y += 16; }
   d.rect(300, d.y + 2, R - 300, 26, ACCENT);
   d.text(310, d.y + 19, "TOTAL (" + (inv.currency || "LKR") + ")", 10, true, "l", [1, 1, 1]);
@@ -143,15 +164,22 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
     const what = [inv.next_service_date && "on " + inv.next_service_date, inv.next_service_km && "at " + Math.round(num(inv.next_service_km)).toLocaleString("en") + " km"].filter(Boolean).join(" and ");
     d.text(MARGIN + 10, d.y + 17, "Next service due " + what, 9.5, true, "l", ACCENT); d.y += 36;
   }
-  if (b.bank || b.footer) {
-    d.room(60);
-    if (b.bank) { d.text(MARGIN, d.y + 8, "PAYMENT DETAILS", 8, true, "l", MUTED); d.y += 14; d.paragraph(MARGIN, b.bank, 300, 9); d.y += 4; }
-    if (b.footer) d.paragraph(MARGIN, b.footer, R - MARGIN, 9, MUTED);
+  if (!taxRate && !num(inv.tax) && !b.reg_no) { d.room(20); d.text(MARGIN, d.y + 10, "This is not a tax invoice.", 9, true, "l", MUTED); d.y += 18; }
+  if (b.bank || b.qr_url) {
+    const bankLines = b.bank ? wrap(b.bank, 280, 9) : [], boxH = Math.max(b.qr_url ? 84 : 0, 30 + bankLines.length * 12);
+    d.room(boxH + 14); d.rect(MARGIN, d.y, R - MARGIN, boxH, WASH);
+    d.text(MARGIN + 10, d.y + 14, "HOW TO PAY", 8, true, "l", ACCENT);
+    bankLines.forEach((l, k) => d.text(MARGIN + 10, d.y + 29 + k * 12, l, 9));
+    if (b.qr_url) { try { d.qr(R - 76, d.y + 8, 64, b.qr_url); d.text(R - 44, d.y + boxH - 1, "Scan", 7, false, "r", MUTED); } catch { /* link too long for a QR */ } }
+    d.y += boxH + 10;
   }
+  if (b.warranty) { d.room(46); d.text(MARGIN, d.y + 8, "WARRANTY", 8, true, "l", MUTED); d.y += 14; d.paragraph(MARGIN, b.warranty, R - MARGIN, 9); d.y += 4; }
+  if (b.footer) d.paragraph(MARGIN, b.footer, R - MARGIN, 9, MUTED);
   d.room(50);
   d.y = d.pages.length === 1 && d.y < H - MARGIN - 80 ? Math.max(d.y + 24, H - MARGIN - 50) : d.y + 24;
   d.line(R - 170, d.y, R, d.y);
   d.text(R, d.y + 12, "Authorised signature", 8.5, false, "r", MUTED);
+  if (status === "PAID" || status === "VOID") d.stamp(status === "PAID" ? "PAID" : "VOID", 150, totY + 70, status === "PAID" ? [0.2, 0.55, 0.35] : [0.75, 0.2, 0.2], totPage);
   return d.render();
 }
 
@@ -162,4 +190,13 @@ export function downloadInvoicePdf(inv: Invoice, shop: Business) {
   a.href = url; a.download = clean(inv.invoice_number).replace(/[^A-Za-z0-9_-]/g, "") + ".pdf";
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+/** Opens the phone's share sheet with the PDF attached (WhatsApp, email...). Returns false when the device cannot share files, so the caller can fall back. */
+export async function shareInvoicePdf(inv: Invoice, shop: Business, text: string): Promise<boolean> {
+  const file = new File([invoicePdf(inv, shop)], clean(inv.invoice_number).replace(/[^A-Za-z0-9_-]/g, "") + ".pdf", { type: "application/pdf" });
+  const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+  if (!nav.share || !nav.canShare || !nav.canShare({ files: [file] })) return false;
+  try { await nav.share({ files: [file], title: inv.invoice_number, text }); } catch (e) { if ((e as Error).name !== "AbortError") throw e; }
+  return true;
 }

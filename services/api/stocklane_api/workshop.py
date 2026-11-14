@@ -25,7 +25,7 @@ METHODS = ('CASH', 'CARD', 'BANK', 'OTHER')
 CHANGED = 'Someone changed this just now. Reload it and try again.'
 DEFAULT_BUSINESS = {'name': 'Workshop Suite', 'address': '', 'phone': '', 'email': '', 'reg_no': '', 'bank': '',
                     'footer': 'Thank you for your business.', 'tax_name': 'VAT', 'tax_rate': ZERO, 'mechanic_discount_pct': Decimal('10'),
-                    'payment_terms_days': 0, 'warranty': ''}
+                    'payment_terms_days': 0, 'warranty': '', 'qr_url': ''}
 
 
 # ---------- input checks ----------
@@ -157,7 +157,7 @@ def save_business(key, who, body):
         terms = num(b.get('payment_terms_days') if b.get('payment_terms_days') not in (None, '') else 0, 'Payment terms')
         if terms < 0 or terms > 90 or terms != terms.to_integral_value():
             raise bad('Payment terms must be a whole number of days between 0 and 90')
-        item = {'pk': 'WSET', 'sk': 'business', 'payment_terms_days': int(terms), 'warranty': lines_text(b.get('warranty'), 'Warranty note', 200), 'name': text(b.get('name'), 'Business name', 60, True),
+        item = {'pk': 'WSET', 'sk': 'business', 'payment_terms_days': int(terms), 'warranty': lines_text(b.get('warranty'), 'Warranty note', 200), 'qr_url': text(b.get('qr_url'), 'QR link', 200), 'name': text(b.get('name'), 'Business name', 60, True),
                 'address': lines_text(b.get('address'), 'Address', 200), 'phone': text(b.get('phone'), 'Phone', 60),
                 'email': text(b.get('email'), 'Email', 80), 'reg_no': text(b.get('reg_no'), 'Registration / tax number', 60),
                 'bank': lines_text(b.get('bank'), 'Bank details', 300), 'footer': lines_text(b.get('footer'), 'Footer', 300),
@@ -197,6 +197,14 @@ def vehicle_fields(j):
 def vehicles(search=''):
     needle = search.strip().lower()
     items = [public(v) for v in query('VEHICLE')]
+    latest = {}
+    held = {r['sk']: r.get('before', []) for r in query('WJPH')}
+    for j in sorted(query('WJOB'), key=lambda j: j['created_at'], reverse=True):
+        if j['status'] != 'ARCHIVED' and held.get(j['id']) and j['vehicle_key'] not in latest:
+            latest[j['vehicle_key']] = held[j['id']][0]
+    for v in items:
+        if not v.get('front_photo') and latest.get(regkey(v['registration'])):
+            v['front_photo'] = latest[regkey(v['registration'])]
     items = [v for v in items if not needle or needle in (v['registration'] + ' ' + v.get('owner', '') + ' ' + v.get('phone', '') + ' ' + v.get('make', '')).lower()]
     return sorted(items, key=lambda v: v['updated_at'], reverse=True)[:200]
 
@@ -274,7 +282,8 @@ def jobs():
     rate = business()['tax_rate']
     asked = {r['sk'] for r in query('WREQ') if r['status'] == 'PENDING'}
     faces = {v['sk']: v['front_photo'] for v in query('VEHICLE') if v.get('front_photo')}
-    shots = {r['sk']: len(r.get('before', [])) for r in query('WJPH')}
+    held = {r['sk']: r.get('before', []) for r in query('WJPH')}
+    shots = {k: len(v) for k, v in held.items()}
     out = []
     for j in sorted(query('WJOB'), key=lambda j: j['created_at'], reverse=True):
         if j['status'] == 'ARCHIVED':
@@ -283,6 +292,8 @@ def jobs():
         v['delete_requested'] = j['id'] in asked
         if j['vehicle_key'] in faces:
             v['front_photo'] = faces[j['vehicle_key']]
+        elif held.get(j['id']):
+            v['front_photo'] = held[j['id']][0]
         if shots.get(j['id']):
             v['photo_count'] = shots[j['id']]
         v['lines'] = len(v.pop('parts')) + len(v.pop('labour'))

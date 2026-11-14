@@ -1,7 +1,8 @@
 import { t } from "../i18n";
-import { Banknote, CalendarClock, ClipboardCheck, Receipt, TrendingUp, Wrench } from "lucide-react";
+import { AlertTriangle, Banknote, CalendarClock, ClipboardCheck, Receipt, TrendingUp, Wrench } from "lucide-react";
 import { JobCard } from "./Cards";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "../api";
 import { Num, Empty, Loading, ReasonDialog, dateOnly, useCommand, useDebounced, useLoad, useWs, type DeleteRequest, type Job, type Vehicle } from "./common";
 
 type Dash = {
@@ -17,6 +18,8 @@ export function Dashboard() {
   const [q, setQ] = useState("");
   const [ask, setAsk] = useState<{ r: DeleteRequest; reject: boolean } | null>(null), [problem, setProblem] = useState("");
   const command = useCommand();
+  const [low, setLow] = useState<string[] | null>(null);
+  useEffect(() => { api<{ name: string; quantity: number; reorder_level: number }[]>("/api/inventory/products").then((r) => setLow(Array.isArray(r) ? r.filter((p) => Number(p.quantity) <= Number(p.reorder_level)).map((p) => p.name) : null)).catch(() => setLow(null)); }, []);
   const term = useDebounced(q.trim());
   const found = useLoad<Vehicle[]>(term.length >= 2 ? "/api/workshop/vehicles?search=" + encodeURIComponent(term) : null);
   return (
@@ -42,6 +45,7 @@ export function Dashboard() {
             <div className="ws-kpi"><small><Receipt size={15} /> {t("Billed today")}</small><b><Num v={data.today.billed} /></b><span>{data.today.invoices} invoice{data.today.invoices === 1 ? "" : "s"}</span></div>
             <div className="ws-kpi"><small><Banknote size={15} /> {t("Received today")}</small><b><Num v={data.today.received} /></b><span>{t("cash, card and bank")}</span></div>
             <button className="ws-kpi warn" onClick={() => go({ name: "invoices" })}><small><ClipboardCheck size={15} /> {t("Customers owe")}</small><b><Num v={data.unpaid_total} /></b><span>{data.unpaid_count} invoice{data.unpaid_count === 1 ? "" : "s"}{data.oldest_unpaid_days > 7 ? ", oldest " + data.oldest_unpaid_days + " days" : ""}</span></button>
+            {low !== null && low.length > 0 && <button className="ws-kpi warn" onClick={() => window.dispatchEvent(new Event("lifta:stock"))}><small><AlertTriangle size={15} /> {t("Running low")}</small><b>{low.length}</b><span>{low.slice(0, 2).join(", ")}{low.length > 2 ? " +" + (low.length - 2) : ""}</span></button>}
             <button className="ws-kpi" onClick={() => go({ name: "due" })}><small><CalendarClock size={15} /> {t("Service due")}</small><b>{data.due_count}</b><span>{t("vehicles to call")}</span></button>
             {owner && <div className="ws-kpi"><small><TrendingUp size={15} /> {t("Billed this month")}</small><b><Num v={data.month.billed} /></b><span>{data.month.invoices} invoice{data.month.invoices === 1 ? "" : "s"}</span></div>}
           </div>

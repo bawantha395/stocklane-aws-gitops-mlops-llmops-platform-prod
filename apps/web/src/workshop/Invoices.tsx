@@ -2,8 +2,9 @@ import { t } from "../i18n";
 import { InvoiceCard } from "./Cards";
 import { useEffect, useState } from "react";
 import { Bill, autoPrintOn } from "./Bill";
-import { downloadInvoicePdf } from "./invoicePdf";
+import { downloadInvoicePdf, shareInvoicePdf } from "./invoicePdf";
 import { printerConnected, receiptBytes, sendToPrinter } from "./printer";
+import { DateChips, SummaryBar, cap, ALL, inRange, useSaved, type Range } from "./DateRange";
 import { Empty, Loading, Pill, dateOnly, lkr, num, today, useCommand, useLoad, useWs, waLink, type Invoice } from "./common";
 
 type Row = Omit<Invoice, "payments" | "parts" | "labour">;
@@ -13,12 +14,12 @@ const days = (iso: string) => Math.max(0, Math.round((new Date(today()).getTime(
 export function Invoices() {
   const { go } = useWs();
   const { data, error } = useLoad<Row[]>("/api/workshop/invoices");
-  const [filter, setFilter] = useState("UNPAID"), [q, setQ] = useState("");
+  const [filter, setFilter] = useSaved("bills.status", "UNPAID"), [q, setQ] = useState(""), [range, setRange] = useSaved<Range>("bills.range", ALL);
   if (!data) return <Loading error={error} />;
   const owing = data.filter((i) => i.status === "UNPAID" || i.status === "PARTIAL");
   const needle = q.trim().toLowerCase();
   const base = filter === "UNPAID" ? owing : filter === "PAID" ? data.filter((i) => i.status === "PAID") : data;
-  const shown = base.filter((i) => !needle || (i.invoice_number + " " + i.registration + " " + i.customer + " " + (i.phone || "")).toLowerCase().includes(needle));
+  const shown = base.filter((i) => inRange(i.created_at, range) && (!needle || (i.invoice_number + " " + i.registration + " " + i.customer + " " + (i.phone || "")).toLowerCase().includes(needle)));
   return (
     <>
       <div className="ws-toolbar">
@@ -30,6 +31,9 @@ export function Invoices() {
         <input aria-label="Search invoices" placeholder={t("Search invoice, vehicle or customer")} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {filter === "UNPAID" && <p className="ws-owed">{t("Customers owe")} <b>LKR {lkr(owing.reduce((s, i) => s + i.total - i.paid, 0))}</b></p>}
+      <DateChips value={range} onChange={setRange} />
+      <SummaryBar text={cap(t("bills")) + ": " + shown.length + " · LKR " + lkr(shown.reduce((s, i) => s + (i.status === "VOID" ? 0 : i.total), 0))} file="bills"
+        rows={shown.map((i) => ({ Date: dateOnly(i.created_at), Invoice: i.invoice_number, "Vehicle no.": i.registration, Customer: i.customer, Status: i.status, "Total (LKR)": i.total, "Paid (LKR)": i.paid, "Owing (LKR)": i.status === "VOID" ? 0 : i.total - i.paid }))} />
       <div className="ws-cards">
         {shown.map((i) => <InvoiceCard key={i.id} i={i} age={days(i.created_at)} onOpen={() => go({ name: "invoice", id: i.id })} />)}
         {!shown.length && <Empty action={filter === "UNPAID" ? undefined : { label: t("Jobs"), onClick: () => go({ name: "jobs" }) }}>{filter === "UNPAID" ? "Everything is paid." : "No invoices yet. Open a job and press Create invoice. It will appear here."}</Empty>}
@@ -66,6 +70,11 @@ export function InvoicePage({ id }: { id: string }) {
   const pay = (e: React.FormEvent) => { e.preventDefault(); void run(async () => { await command("/api/workshop/invoices/" + id + "/payments", { amount: num(amount || balance), method, note }); setAmount(""); setNote(""); await reload(); if (autoPrintOn()) setTimeout(() => void printNow(), 400); }); };
   const voidIt = () => { if (confirm("Void this invoice? The job opens again so you can correct it.")) void run(async () => { await command("/api/workshop/invoices/" + id + "/void", {}); go({ name: "job", id: inv.job_id }, "Invoice voided. The job is open again."); }); };
   const shop = inv.business ? { ...business, ...inv.business } : business;
+  const shareBill = () => void run(async () => {
+    const msg = "Hello " + inv.customer + ", your invoice " + inv.invoice_number + " from " + shop.name + " is LKR " + lkr(inv.total) + (balance > 0 ? ", balance LKR " + lkr(balance) : ", paid in full") + ". Thank you.";
+    // Phones with a share sheet send the PDF itself; otherwise open WhatsApp with the message.
+    if (!(await shareInvoicePdf(inv, shop, msg))) window.open(waLink(inv.phone || "", msg), "_blank", "noopener");
+  });
   return (
     <div>
       <section className={"ws-sum " + (inv.status === "PAID" ? "paid" : inv.status === "VOID" ? "void" : "owes")}>
@@ -80,7 +89,7 @@ export function InvoicePage({ id }: { id: string }) {
         <button className="button secondary small" onClick={() => { try { downloadInvoicePdf(inv, shop); } catch (e) { setError((e as Error).message); } }}>{t("Download PDF")}</button>
         <button className="button secondary small" onClick={() => go({ name: "job", id: inv.job_id })}>{t("View job")}</button>
         <button className="button secondary small" onClick={() => go({ name: "vehicle", id: inv.registration.replace(/[^A-Za-z0-9]/g, "").toUpperCase() })}>{t("Vehicle file")}</button>
-        {inv.phone && <a className="button secondary small" target="_blank" rel="noreferrer" href={waLink(inv.phone, "Hello " + inv.customer + ", your invoice " + inv.invoice_number + " from " + shop.name + " is LKR " + lkr(inv.total) + (balance > 0 ? ", balance LKR " + lkr(balance) : ", paid in full") + ". Thank you.")}>WhatsApp</a>}
+        <button className="button secondary small" disabled={busy} onClick={shareBill}>{t("Share bill")}</button>
         {owner && inv.status !== "VOID" && num(inv.paid) === 0 && <button className="button secondary small" disabled={busy} onClick={voidIt}>{t("Void invoice")}</button>}
       </div>
       {error && <p role="alert" className="stock-error">{error}</p>}

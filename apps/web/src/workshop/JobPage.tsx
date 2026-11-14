@@ -4,7 +4,7 @@ import { JobPhotos } from "./Photos";
 import { useEffect, useMemo, useState } from "react";
 import { Bill, PrintButton, billTotals, type BillData } from "./Bill";
 import { PastRepairs } from "./Vehicles";
-import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, today, useCommand, useLoad, useWs, type Invoice, type Job } from "./common";
+import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job } from "./common";
 
 type PartRow = { name: string; quantity: string; unit_price: string };
 type LabourRow = { description: string; amount: string };
@@ -41,6 +41,7 @@ export function JobPage({ id }: { id: string }) {
     labour: labour.filter((l) => l.description.trim()).map((l) => ({ description: l.description.trim(), amount: num(l.amount) })),
   }), [parts, labour]);
   const totals = billTotals({ ...lines, discount: num(f.discount), tax_rate: rate });
+  const pct = (n: number) => set("discount", String(round2(((totals.parts + totals.labour) * n) / 100)));
   if (!job) return <Loading error={loadError} />;
   const locked = job.status !== "OPEN";
 
@@ -153,7 +154,7 @@ export function JobPage({ id }: { id: string }) {
         <dl className="ws-sum">
           <div><dt>{t("Parts")}</dt><dd>{lkr(totals.parts)}</dd></div>
           <div><dt>{t("Labour")}</dt><dd>{lkr(totals.labour)}</dd></div>
-          <div><dt>Discount{!owner && !locked && business.mechanic_discount_pct != null ? <small> (up to {business.mechanic_discount_pct}%)</small> : null}</dt><dd><input disabled={locked} inputMode="decimal" aria-label="Discount" placeholder="0" value={f.discount || ""} onChange={(e) => set("discount", e.target.value)} /></dd></div>
+          <div><dt>Discount{!owner && !locked && business.mechanic_discount_pct != null ? <small> (up to {business.mechanic_discount_pct}%)</small> : null}</dt><dd><input disabled={locked} inputMode="decimal" aria-label="Discount" placeholder="0" value={f.discount || ""} onChange={(e) => set("discount", e.target.value)} onBlur={(e) => { const m = e.target.value.trim().match(/^(\d+(?:\.\d+)?)\s*%$/); if (m) pct(Number(m[1])); }} />{!locked && <span className="ws-pcts">{[5, 10].map((n) => <button type="button" key={n} className="ws-quick" onClick={() => pct(n)}>{n}%</button>)}</span>}</dd></div>
           {totals.tax > 0 && <div><dt>{business.tax_name} ({rate}%)</dt><dd>{lkr(totals.tax)}</dd></div>}
           <div className="grand"><dt>{t("Total (LKR)")}</dt><dd>{lkr(totals.total)}</dd></div>
         </dl>

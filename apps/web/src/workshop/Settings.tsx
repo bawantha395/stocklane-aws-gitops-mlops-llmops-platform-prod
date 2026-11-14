@@ -8,9 +8,8 @@ import { lkr, useCommand, useLoad, useWs, num, type Business } from "./common";
 
 export function Settings() {
   const { business, reloadBusiness } = useWs();
-  const [f, setF] = useState({ ...business, tax_rate: String(business.tax_rate), mechanic_discount_pct: String(business.mechanic_discount_pct ?? 10), payment_terms_days: String(business.payment_terms_days ?? 0), warranty: business.warranty || "" });
+  const [f, setF] = useState({ ...business, qr_url: business.qr_url || "", tax_rate: String(business.tax_rate), mechanic_discount_pct: String(business.mechanic_discount_pct ?? 10), payment_terms_days: String(business.payment_terms_days ?? 0), warranty: business.warranty || "" });
   const [msg, setMsg] = useState(""), [error, setError] = useState(""), [busy, setBusy] = useState(false);
-  useEffect(() => { if (msg) toast(msg); }, [msg]);
   useEffect(() => { if (msg) toast(msg); }, [msg]);
   const command = useCommand();
   const { data: dash } = useLoad<{ open_count: number; due_count: number; month: { billed: number; invoices: number } }>("/api/workshop/dashboard");
@@ -63,22 +62,13 @@ export function Settings() {
         <div className="ws-set-col">
           <section className="ws-sec">
             <h3><span className="ws-sec-ico"><FileText size={18} /></span>{t("How your bill looks")}</h3>
-            <p className="muted">{t("This is how the top of your bill will look. It changes as you type.")}</p>
-            <div className="ws-prev" aria-label="Invoice preview">
-              <span className="ws-prev-top">
-                <span><b>{f.name || t("Your business")}</b>{lines.map((l) => <small key={l}>{l}</small>)}{f.reg_no && <small>{f.reg_no}</small>}</span>
-                <span className="ws-prev-no"><small>{Number(f.tax_rate) > 0 ? t("TAX INVOICE") : t("INVOICE")}</small><b>INV-0042</b></span>
-              </span>
-              <span className="ws-prev-row"><span>{t("Oil filter")} x1</span><span>1,800</span></span>
-              <span className="ws-prev-row"><span>{t("Labour")}</span><span>2,500</span></span>
-              <span className="ws-prev-row tot"><span>{t("Total")}</span><span>LKR 4,300</span></span>
-              {f.bank && <small className="ws-prev-foot">{f.bank.split("\n")[0]}</small>}
-              {f.footer && <small className="ws-prev-foot">{f.footer}</small>}
-            </div>
             <label className="ws-field">{t("Registration or tax number")}<input value={f.reg_no} onChange={(e) => set("reg_no", e.target.value)} placeholder="VAT 123456789" /></label>
+            <p className="muted">{t("Leave this empty if you are not tax registered. Then every bill says: This is not a tax invoice.")}</p>
             <label className="ws-field">{t("Bank details for payments")}<textarea rows={3} value={f.bank} onChange={(e) => set("bank", e.target.value)} placeholder={"Bank of Ceylon\nAccount 1234567"} /></label>
             <label className="ws-field">{t("Payment terms")}<select value={f.payment_terms_days} onChange={(e) => set("payment_terms_days", e.target.value)}><option value="0">{t("Due on receipt")}</option><option value="7">7 {t("days")}</option><option value="14">14 {t("days")}</option><option value="30">30 {t("days")}</option></select></label>
             <label className="ws-field">{t("Warranty note")}<textarea rows={2} value={f.warranty} onChange={(e) => set("warranty", e.target.value)} placeholder="Parts warranty 30 days" /></label>
+            <label className="ws-field">{t("QR code link")} <small>({t("optional")})</small><input inputMode="url" value={f.qr_url || ""} onChange={(e) => set("qr_url", e.target.value)} placeholder="https://g.page/r/your-review-link" /></label>
+            <p className="muted">{t("A QR code with this link is printed next to How to pay, for example your Google review or payment page.")}</p>
             <label className="ws-field">{t("Footer note")}<textarea rows={2} value={f.footer} onChange={(e) => set("footer", e.target.value)} /></label>
           </section>
         </div>
