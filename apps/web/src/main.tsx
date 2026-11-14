@@ -45,6 +45,7 @@ import "./stock.css";
 import "./glass.css";
 import "./theme.css";
 import { setBusinessName, useBusinessName } from "./businessName";
+import { t, useLang, setLang } from "./i18n";
 import { Logo } from "./Logo";
 import { SignIn, type SignInMode } from "./SignIn";
 import type { Page as WsPage } from "./workshop/common";
@@ -218,6 +219,7 @@ function App() {
   const [counterMode, setCounterMode] = useState<CounterMode>(() => (loadNav().mode as CounterMode) || "receive");
   useEffect(() => { saveNav(view, counterMode); }, [view, counterMode]);
   const businessName = useBusinessName();
+  const lang = useLang();
   const [dockHidden, setDockHidden] = useState(() => {
     try { return localStorage.getItem("lifta.dock") === "hidden"; } catch { return false; }
   });
@@ -797,14 +799,14 @@ function App() {
       );
   }
   const navItems: ({ group: string } | { key: View; full: string; short: string; sub: string; Icon: typeof Home; main?: boolean })[] = [
-    { key: "home", full: "Home", short: "Home", sub: "", Icon: Home, main: true },
-    { group: "WORKSHOP MANAGEMENT" },
-    { key: "workshop", full: "Jobs & Invoices", short: "Jobs", sub: "Job cards, vehicles and bills", Icon: Wrench, main: true },
-    { group: "STOCK MANAGEMENT" },
-    { key: "counter", full: "Parts counter", short: "Counter", sub: "Receive or give a part", Icon: ScanLine, main: true },
-    { key: "stock", full: "Parts list", short: "Parts", sub: owner ? "All parts, photos and QR labels" : "See what is in stock", Icon: Package },
-    { key: "activity", full: "History", short: "History", sub: "Every part in and out", Icon: Activity },
-    ...(owner ? [{ key: "analysis" as View, full: "Reports", short: "Reports", sub: "Stock summary and low stock", Icon: ClipboardCheck }] : []),
+    { key: "home", full: t("Home"), short: t("Home"), sub: "", Icon: Home, main: true },
+    { group: t("WORKSHOP MANAGEMENT") },
+    { key: "workshop", full: t("Jobs & Invoices"), short: t("Jobs"), sub: t("Job cards, vehicles and bills"), Icon: Wrench, main: true },
+    { group: t("STOCK MANAGEMENT") },
+    { key: "counter", full: t("Parts counter"), short: t("Counter"), sub: t("Receive or give a part"), Icon: ScanLine, main: true },
+    { key: "stock", full: t("Parts list"), short: t("Parts"), sub: owner ? t("All parts, photos and QR labels") : t("See what is in stock"), Icon: Package },
+    { key: "activity", full: t("History"), short: t("History"), sub: t("Every part in and out"), Icon: Activity },
+    ...(owner ? [{ key: "analysis" as View, full: t("Reports"), short: t("Reports"), sub: t("Stock summary and low stock"), Icon: ClipboardCheck }] : []),
   ];
   const moreActive = view === "stock" || view === "activity" || view === "analysis";
   return (
@@ -820,7 +822,7 @@ function App() {
         >
           <Logo size={34} /> <b>Lifta<span>.</span></b>
         </a>
-        <p>WORKSHOP SUITE</p>
+        <p>{t("WORKSHOP SUITE")}</p>
         {navItems.map((n) =>
           "group" in n ? (
             <span className="nav-heading" key={n.group}>{n.group}</span>
@@ -847,11 +849,11 @@ function App() {
           onClick={() => setMenuOpen((o) => !o)}
         >
           {menuOpen ? <CloseIcon size={19} /> : <MenuIcon size={19} />}
-          <span className="nav-short">Menu</span>
+          <span className="nav-short">{t("Menu")}</span>
         </button>
         <div className="stock-sidebar-foot">
           <img className="shop-logo" src="/shop-logo.png" alt={businessName} />
-          <strong>{owner ? "Owner workspace" : "Stock team"}</strong>
+          <strong>{owner ? t("Owner workspace") : t("Stock team")}</strong>
           <small>{businessName}</small>
         </div>
         <div
@@ -878,7 +880,7 @@ function App() {
             )}
             <div className="menu-sheet-foot">
               <img className="shop-logo" src="/shop-logo.png" alt={businessName} />
-              <strong>{owner ? "Owner workspace" : "Stock team"}</strong>
+              <strong>{owner ? t("Owner workspace") : t("Stock team")}</strong>
               <small>{businessName}</small>
             </div>
           </nav>
@@ -890,6 +892,10 @@ function App() {
             <span className="online-dot" /> {businessName}
           </span>
           <div>
+            <div className="lang-toggle" role="group" aria-label="Language">
+              <button className={lang === "en" ? "on" : ""} onClick={() => setLang("en")}>EN</button>
+              <button className={lang === "si" ? "on" : ""} onClick={() => setLang("si")}>සිං</button>
+            </div>
             <button
               className="icon-button"
               aria-label="Refresh stock"
@@ -904,7 +910,7 @@ function App() {
                 disabled={busy}
                 onClick={() => void signOut()}
               >
-                <LogOut size={16} /> Sign out
+                <LogOut size={16} /> {t("Sign out")}
               </button>
             )}
           </div>
@@ -923,14 +929,14 @@ function App() {
         )}
         {error && (
           <div className="stock-error stock-error-toast" role="alert">
-            <strong>Something needs your attention</strong>
+            <strong>{t("Something needs your attention")}</strong>
             <span>{error}</span>
             {auth && !session && (
               <button
                 className="button secondary"
                 onClick={() => void auth?.signinRedirect()}
               >
-                Sign in
+                {t("Sign in")}
               </button>
             )}
             <button className="toast-close" aria-label="Dismiss error" onClick={() => setError("")}>×</button>
@@ -939,16 +945,16 @@ function App() {
         {view === "home" && (
           <>
             <div className="workspace-intro">
-              <p className="eyebrow">YOUR WORKSHOP. UNDER CONTROL.</p>
-              <h1>What are we doing today?</h1>
-              <p>Pick what you want to do. New here? Follow the steps below.</p>
+              <p className="eyebrow">{t("YOUR WORKSHOP. UNDER CONTROL.")}</p>
+              <h1>{t("What are we doing today?")}</h1>
+              <p>{t("Pick what you want to do. New here? Follow the steps below.")}</p>
             </div>
             {owner && session && !startHidden && started && (() => {
               const steps = [
-                { done: businessName !== "Workshop Suite" && businessName.trim() !== "", title: "Add your business details", sub: "Name, address and phone for your bills.", go: () => openWorkshop({ name: "settings" }) },
-                { done: items.length > 0, title: "Add your first part", sub: "Take a photo of a part. Lifta reads the label.", go: () => openCounter("receive") },
-                { done: started.jobs, title: "Start your first job", sub: "One vehicle, its repairs, parts and labour.", go: () => openWorkshop({ name: "new" }) },
-                { done: started.invoices, title: "Make your first invoice", sub: "Open a job and press Create invoice.", go: () => openWorkshop({ name: "jobs" }) },
+                { done: businessName !== "Workshop Suite" && businessName.trim() !== "", title: t("Add your business details"), sub: t("Name, address and phone for your bills."), go: () => openWorkshop({ name: "settings" }) },
+                { done: items.length > 0, title: t("Add your first part"), sub: t("Take a photo of a part. Lifta reads the label."), go: () => openCounter("receive") },
+                { done: started.jobs, title: t("Start your first job"), sub: t("One vehicle, its repairs, parts and labour."), go: () => openWorkshop({ name: "new" }) },
+                { done: started.invoices, title: t("Make your first invoice"), sub: t("Open a job and press Create invoice."), go: () => openWorkshop({ name: "jobs" }) },
               ];
               const left = steps.filter((x) => !x.done).length;
               if (!left) return null;
@@ -957,10 +963,10 @@ function App() {
                 <section className="start-card" aria-label="Get started">
                   <div className="start-head">
                     <div>
-                      <p className="eyebrow">GET STARTED</p>
-                      <h2>{steps.length - left} of {steps.length} done</h2>
+                      <p className="eyebrow">{t("GET STARTED")}</p>
+                      <h2>{t("{done} of {total} done", { done: steps.length - left, total: steps.length })}</h2>
                     </div>
-                    <button className="stock-link" onClick={() => { try { localStorage.setItem("lifta.start", "done"); } catch { /* private mode */ } setStartHidden(true); }}>Hide</button>
+                    <button className="stock-link" onClick={() => { try { localStorage.setItem("lifta.start", "done"); } catch { /* private mode */ } setStartHidden(true); }}>{t("Hide")}</button>
                   </div>
                   <div className="start-bar" aria-hidden="true"><span style={{ width: ((steps.length - left) / steps.length) * 100 + "%" }} /></div>
                   <ol className="start-steps">
@@ -968,7 +974,7 @@ function App() {
                       <li key={x.title} className={x.done ? "done" : i === next ? "next" : ""}>
                         <span className="start-mark">{x.done ? <Check size={15} /> : i + 1}</span>
                         <span className="start-text"><strong>{x.title}</strong><small>{x.sub}</small></span>
-                        {!x.done && <button className={"button small " + (i === next ? "primary" : "secondary")} disabled={!session || busy} onClick={x.go}>{i === next ? "Do this" : "Open"}</button>}
+                        {!x.done && <button className={"button small " + (i === next ? "primary" : "secondary")} disabled={!session || busy} onClick={x.go}>{i === next ? t("Do this") : t("Open")}</button>}
                       </li>
                     ))}
                   </ol>
@@ -976,24 +982,24 @@ function App() {
               );
             })()}
             {owner && session && <ReorderCard />}
-            <p className="home-label">WORKSHOP</p>
+            <p className="home-label">{t("WORKSHOP")}</p>
             <div className="counter-tiles">
               <button className="counter-tile job" disabled={!session || busy} onClick={() => openWorkshop({ name: "new" })}>
                 <PlusCircle size={30} />
                 <span>
-                  <strong>Start a job</strong>
-                  <small>A vehicle comes in for work</small>
+                  <strong>{t("Start a job")}</strong>
+                  <small>{t("A vehicle comes in for work")}</small>
                 </span>
               </button>
               <button className="counter-tile bill" disabled={!session || busy} onClick={() => openWorkshop({ name: "invoices" })}>
                 <FileText size={30} />
                 <span>
-                  <strong>Invoices</strong>
-                  <small>Open a bill or take a payment</small>
+                  <strong>{t("Invoices")}</strong>
+                  <small>{t("Open a bill or take a payment")}</small>
                 </span>
               </button>
             </div>
-            <p className="home-label">STOCK</p>
+            <p className="home-label">{t("STOCK")}</p>
             <div className="counter-tiles">
               <button
                 className="counter-tile receive"
@@ -1002,8 +1008,8 @@ function App() {
               >
                 <ArrowDownLeft size={30} />
                 <span>
-                  <strong>Receive</strong>
-                  <small>Scan or photo what came in</small>
+                  <strong>{t("Receive")}</strong>
+                  <small>{t("Scan or photo what came in")}</small>
                 </span>
               </button>
               <button
@@ -1013,8 +1019,8 @@ function App() {
               >
                 <ArrowUpRight size={30} />
                 <span>
-                  <strong>Give a part</strong>
-                  <small>Scan the part and confirm the quantity</small>
+                  <strong>{t("Give a part")}</strong>
+                  <small>{t("Scan the part and confirm the quantity")}</small>
                 </span>
               </button>
             </div>
@@ -1027,10 +1033,10 @@ function App() {
                 <span className="tile-icon">
                   <Search />
                 </span>
-                <h2>Find a part</h2>
-                <p>Look up a part, photo or shelf.</p>
+                <h2>{t("Find a part")}</h2>
+                <p>{t("Look up a part, photo or shelf.")}</p>
                 <span className="tile-bottom">
-                  Search stock <ArrowRight size={20} />
+                  {t("Search stock")} <ArrowRight size={20} />
                 </span>
               </button>
               <button
@@ -1041,16 +1047,16 @@ function App() {
                 <span className="tile-icon">
                   <ClipboardCheck />
                 </span>
-                <h2>Count stock</h2>
-                <p>Compare a physical count with your records.</p>
+                <h2>{t("Count stock")}</h2>
+                <p>{t("Compare a physical count with your records.")}</p>
                 <span className="tile-bottom">
-                  Check a quantity <ArrowRight size={20} />
+                  {t("Check a quantity")} <ArrowRight size={20} />
                 </span>
               </button>
             </div>
             {(tasks.IN.lines.length > 0 || tasks.OUT.lines.length > 0) && (
               <section className="resume-section">
-                <h3>Continue where you left off</h3>
+                <h3>{t("Continue where you left off")}</h3>
                 {(["IN", "OUT"] as const)
                   .filter((d) => tasks[d].lines.length > 0)
                   .map((d) => (
@@ -1723,13 +1729,13 @@ function App() {
                   <Package size={38} />
                   <h3>
                     {query
-                      ? "No matching items"
-                      : "No parts yet"}
+                      ? t("No matching items")
+                      : t("No parts yet")}
                   </h3>
                   <p>
                     {query
-                      ? "Try the manufacturer part number."
-                      : "This is the list of every part you keep. Go to the Parts counter, take a photo of a part and Lifta reads the label. Then print its QR label."}
+                      ? t("Try the manufacturer part number.")
+                      : t("This is the list of every part you keep. Go to the Parts counter, take a photo of a part and Lifta reads the label. Then print its QR label.")}
                   </p>
                 </div>
               )}

@@ -3,12 +3,16 @@ import base64
 import io
 import json
 import logging
+import re
+import time
 import urllib.error
 import urllib.request
 
 from .bedrock import LIMITS, SYSTEM, BedrockUnavailable, user_text
 
 URL = 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
+LIST_URL = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200'
+_found = {'at': 0.0, 'models': []}
 SCHEMA = {'type': 'OBJECT', 'properties': {k: {'type': 'STRING'} for k in LIMITS}}
 
 def _small(image):
@@ -31,6 +35,25 @@ def _call(settings, body, timeout, model=None):
         return json.load(response)
 
 
+def discover(settings):
+    """Ask Google which models this key can use, newest stable Flash first. Cached for an hour; names change over time."""
+    if _found['models'] and time.time() - _found['at'] < 3600:
+        return _found['models']
+    request = urllib.request.Request(LIST_URL, headers={'x-goog-api-key': settings.gemini_api_key})
+    with urllib.request.urlopen(request, timeout=6) as response:
+        listing = json.load(response).get('models', [])
+    def usable(m):
+        name = m.get('name', '').removeprefix('models/')
+        return ('generateContent' in m.get('supportedGenerationMethods', []) and 'flash' in name
+                and not re.search(r'image|tts|live|audio|embed|robot|computer|thinking|exp|vision', name))
+    def rank(name):
+        version = [int(x) for x in re.findall(r'\d+', name.split('flash')[0])] or [0]
+        return (0 if 'preview' in name or 'latest' in name else 1, version, 0 if 'lite' in name else 1)
+    names = sorted({m['name'].removeprefix('models/') for m in listing if usable(m)}, key=rank, reverse=True)
+    _found.update(at=time.time(), models=names)
+    return names
+
+
 def propose(settings, image, context=None):
     log = logging.getLogger(__name__)
     config = {'temperature': 0, 'maxOutputTokens': 2048, 'responseMimeType': 'application/json', 'responseSchema': SCHEMA}
@@ -42,8 +65,29 @@ def propose(settings, image, context=None):
     # a model is out of quota (429), unknown (404) or busy (503). A slow model is not retried, to stay inside the 30 s API limit.
     models = [m.strip() for m in settings.gemini_model.split(',') if m.strip()]
     try:
-        data, last = None, None
-        for model in models:
+        data, last, tried = None, None, []
+        for model in models + ['']:
+            if not model:
+                # Every configured name failed with "not found": ask Google for the names that exist today.
+                if data is not None or not last or last.code != 404:
+                    break
+                try:
+                    models_now = [m for m in discover(settings) if m not in tried][:3]
+                except Exception:
+                    break
+                log.info('Trying discovered Gemini models %s', models_now)
+                for model in models_now:
+                    try:
+                        data = _call(settings, dict(body, generationConfig=config), 18, model)
+                        log.info('Gemini answered discovered model=%s', model)
+                        break
+                    except urllib.error.HTTPError as error:
+                        last = error
+                        log.warning('Gemini discovered model=%s failed status=%s', model, error.code)
+                        if error.code not in (404, 429, 503):
+                            raise
+                break
+            tried.append(model)
             try:
                 try:
                     data = _call(settings, body, 18, model)

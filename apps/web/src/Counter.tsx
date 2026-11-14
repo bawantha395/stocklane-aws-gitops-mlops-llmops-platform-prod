@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Camera as CameraIcon, Check, Loader2, Minus, Plus } from "lucide-react";
+import { t, useLang } from "./i18n";
 import { api, shrink, type Match, type Product, type BarcodeLookup } from "./api";
 
 const Camera = React.lazy(() => import("./Camera").then((m) => ({ default: m.Camera })));
@@ -16,6 +17,7 @@ export function partFromCode(value: string, items: Item[]) {
 }
 
 export function Counter({ items, initialMode = "receive", picked = null, photo, onNewItem, onBarcodeSuggestion, onChanged }: { items: Item[]; initialMode?: Mode; picked?: Item | null; photo?: (item: Item) => React.ReactNode; onNewItem?: (imageId: string) => void | Promise<void>; onBarcodeSuggestion?: (barcode: string, suggestions: Record<string, string>) => void; onChanged: () => void }) {
+  useLang();
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<Mode>(initialMode);
   const [part, setPart] = useState<Item | null>(null);
@@ -41,7 +43,7 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
     setCamera(false);
     const found = partFromCode(value, items);
     if (found) { setPart(found); setCandidates([]); setPhotoId(""); setError(""); }
-    else setError("This QR is not a stock item. Take a photo of the part instead.");
+    else setError(t("This QR is not a stock item. Take a photo of the part instead."));
   }, [items]);
   const identifyPhoto = async (file?: File) => {
     if (!file) return;
@@ -54,7 +56,7 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
       const match = await api<Match>("/api/vision/match", { method: "POST", body: form });
       const known = match.candidates.map((c) => items.find((i) => i.id === c.product.id)).filter((i): i is Item => !!i).slice(0, 3);
       setPhotoId(match.imageId); setCandidates(known);
-      if (!known.length) setError(mode === "receive" ? "No match from the photo. Search below, or add it as a new item." : "No match from the photo. Search for the part below.");
+      if (!known.length) setError(mode === "receive" ? t("No match from the photo. Search below, or add it as a new item.") : t("No match from the photo. Search for the part below."));
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   };
@@ -69,7 +71,7 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
         // A confirmed photo becomes a reference and future training data for the photo model.
         try { await api("/api/vision/references", { method: "POST", body: JSON.stringify({ productId: part.id, imageId: photoId }) }); } catch { /* the movement is already recorded */ }
       }
-      onChanged(); reset("Recorded: " + amount(quantity) + " × " + part.name + " taken out.");
+      onChanged(); reset(t("Recorded: {q} × {name} taken out.", { q: amount(quantity), name: part.name }));
     } catch (e) { setError((e as Error).message); commandKey.current = key(); }
     finally { setBusy(false); }
   };
@@ -82,8 +84,8 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
     try {
       const result = await api<BarcodeLookup>("/api/vision/barcodes/" + encodeURIComponent(value));
       setDone(result.found
-        ? "Barcode found externally. Review the suggested details manually before registering."
-        : "Barcode " + value + " is not in the catalogue. Enter the item details manually.");
+        ? t("Barcode found externally. Review the suggested details manually before registering.")
+        : t("Barcode {code} is not in the catalogue. Enter the item details manually.", { code: value }));
       if (mode === "receive" && onBarcodeSuggestion) {
         onBarcodeSuggestion(value, result.suggestions);
       }
@@ -99,23 +101,23 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
       if (photoId) {
         try { await api("/api/vision/references", { method: "POST", body: JSON.stringify({ productId: part.id, imageId: photoId }) }); } catch { /* the receipt is already recorded */ }
       }
-      onChanged(); reset("Recorded: " + amount(quantity) + " × " + part.name + " added to stock.");
+      onChanged(); reset(t("Recorded: {q} × {name} added to stock.", { q: amount(quantity), name: part.name }));
     } catch (e) { setError((e as Error).message); commandKey.current = key(); }
     finally { setBusy(false); }
   };
   const matches = search.trim().length >= 2 ? items.filter((i) => (i.name + " " + i.sku + " " + i.brand + " " + (i.part_number || "")).toLowerCase().includes(search.trim().toLowerCase())).slice(0, 8) : [];
   const choosePart = (item: Item) => { setPart(item); setCandidates([]); setPhotoId(""); setError(""); };
   return (
-    <section className="counter-screen" aria-label="Parts counter">
+    <section className="counter-screen" aria-label={t("Parts counter")}>
       <div className="counter-modes" role="tablist">
-        {(([["receive", "Receive"], ["give", "Give a part"]]) as [Mode, string][]).map(([m, label]) => (
+        {(([["receive", t("Receive")], ["give", t("Give a part")]]) as [Mode, string][]).map(([m, label]) => (
           <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? "chosen " + m : m} onClick={() => switchMode(m)}>{label}</button>
         ))}
       </div>
       {done && <p className="counter-done" role="status"><Check size={20} /> {done}</p>}
       {error && (
         <div className="stock-error stock-error-toast" role="alert">
-          <strong>Could not complete that action</strong>
+          <strong>{t("Could not complete that action")}</strong>
           <span>{error}</span>
           <button className="toast-close" aria-label="Dismiss error" onClick={() => setError("")}>×</button>
         </div>
@@ -123,48 +125,48 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
       {(mode === "give" || mode === "receive") && (
         <>
           <div className="counter-step">
-            <h2><span>1</span> {mode === "receive" ? "Which part came in?" : "Which part?"}</h2>
+            <h2><span>1</span> {mode === "receive" ? t("Which part came in?") : t("Which part?")}</h2>
             {part ? (
-              <div className="counter-chosen"><strong>{part.name}</strong><small>Part no. {part.part_number || "Not set"} · System no. {part.sku} · {amount(Number(part.quantity))} in stock{part.location ? " · " + part.location : ""}</small><button onClick={() => { setPart(null); setPhotoId(""); }}>Change</button></div>
+              <div className="counter-chosen"><strong>{part.name}</strong><small>{t("Part no.")} {part.part_number || t("Not set")} · {t("System no.")} {part.sku} · {amount(Number(part.quantity))} {t("in stock")}{part.location ? " · " + part.location : ""}</small><button onClick={() => { setPart(null); setPhotoId(""); }}>{t("Change")}</button></div>
             ) : (
               <>
-                <button className="counter-big wide" disabled={busy} onClick={() => setCamera(true)}><CameraIcon size={30} /> {busy ? "Checking the photo…" : "Open camera"}</button>
-                <p className="stock-help">Scan a Lifta QR or original product barcode. You can also take a photo or search manually.</p>
+                <button className="counter-big wide" disabled={busy} onClick={() => setCamera(true)}><CameraIcon size={30} /> {busy ? t("Checking the photo…") : t("Open camera")}</button>
+                <p className="stock-help">{t("Scan a Lifta QR or original product barcode. You can also take a photo or search manually.")}</p>
                 {candidates.length > 0 && (
                   <div className="counter-candidates">
-                    <p>Is it one of these?</p>
-                    {candidates.map((c) => <button key={c.id} onClick={() => choosePart(c)}><strong>{c.name}</strong><small>Part no. {c.part_number || "Not set"} · System no. {c.sku}{c.location ? " · " + c.location : ""}</small></button>)}
+                    <p>{t("Is it one of these?")}</p>
+                    {candidates.map((c) => <button key={c.id} onClick={() => choosePart(c)}><strong>{c.name}</strong><small>{t("Part no.")} {c.part_number || t("Not set")} · {t("System no.")} {c.sku}{c.location ? " · " + c.location : ""}</small></button>)}
                   </div>
                 )}
                 {mode === "receive" && photoId && onNewItem && (
-                  <button className="counter-new" disabled={starting} aria-busy={starting} onClick={() => { setStarting(true); void Promise.resolve(onNewItem(photoId)).finally(() => setStarting(false)); }}>{starting ? <Loader2 size={20} className="spin" /> : <Plus size={20} />} {starting ? "Reading the label…" : candidates.length ? "None of these: add as a new item" : "Add as a new item (reads the label)"}</button>
+                  <button className="counter-new" disabled={starting} aria-busy={starting} onClick={() => { setStarting(true); void Promise.resolve(onNewItem(photoId)).finally(() => setStarting(false)); }}>{starting ? <Loader2 size={20} className="spin" /> : <Plus size={20} />} {starting ? t("Reading the label…") : candidates.length ? t("None of these: add as a new item") : t("Add as a new item (reads the label)")}</button>
                 )}
-                <label className="stock-field counter-search">Or search<input value={search} placeholder="Oil filter" onChange={(e) => setSearch(e.target.value)} /></label>
-                {matches.map((m) => <button key={m.id} className="counter-result" onClick={() => choosePart(m)}>{photo && <span className="counter-result-photo">{photo(m)}</span>}<span className="counter-result-text">{m.name} <small>Part no. {m.part_number || "Not set"} · System no. {m.sku}</small></span></button>)}
-                {search.trim().length >= 2 && !matches.length && <p className="stock-help">No part matches "{search.trim()}".</p>}
+                <label className="stock-field counter-search">{t("Or search")}<input value={search} placeholder="Oil filter" onChange={(e) => setSearch(e.target.value)} /></label>
+                {matches.map((m) => <button key={m.id} className="counter-result" onClick={() => choosePart(m)}>{photo && <span className="counter-result-photo">{photo(m)}</span>}<span className="counter-result-text">{m.name} <small>{t("Part no.")} {m.part_number || t("Not set")} · {t("System no.")} {m.sku}</small></span></button>)}
+                {search.trim().length >= 2 && !matches.length && <p className="stock-help">{t("No part matches \"{q}\".", { q: search.trim() })}</p>}
               </>
             )}
           </div>
           {part && (
             <div className="counter-step">
-              <h2><span>2</span> How many?</h2>
+              <h2><span>2</span> {t("How many?")}</h2>
               <div className="counter-stepper">
                 <button aria-label="One less" onClick={() => step(-1)}><Minus /></button>
                 <input aria-label="Quantity" type="number" min={part.unit === "LITRE" ? 0.001 : 1} step={part.unit === "LITRE" ? 0.001 : 1} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
                 <button aria-label="One more" onClick={() => step(1)}><Plus /></button>
-                <span>{part.unit === "LITRE" ? "litres" : "pieces"}</span>
+                <span>{part.unit === "LITRE" ? t("litres") : t("pieces")}</span>
               </div>
             </div>
           )}
-          {part && mode === "give" && <p className="stock-help counter-confirm-help">No recipient details are required. Confirm the quantity leaving the storeroom.</p>}
+          {part && mode === "give" && <p className="stock-help counter-confirm-help">{t("No recipient details are required. Confirm the quantity leaving the storeroom.")}</p>}
           {part && mode === "receive" && (
             <button className="button primary counter-confirm" disabled={busy || !(quantity > 0)} onClick={() => void receive()}>
-              {busy ? "Saving…" : "Add " + amount(quantity) + " × " + part.name + " to stock"}
+              {busy ? t("Saving…") : t("Add {q} × {name} to stock", { q: amount(quantity), name: part.name })}
             </button>
           )}
           {part && mode === "give" && (
             <button className="button primary counter-confirm" disabled={busy || !(quantity > 0)} onClick={() => void give()}>
-              {busy ? "Saving…" : "Record " + amount(quantity) + " × " + part.name + " leaving stock"}
+              {busy ? t("Saving…") : t("Record {q} × {name} leaving stock", { q: amount(quantity), name: part.name })}
             </button>
           )}
         </>
@@ -175,7 +177,7 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
           <Camera onQR={onQR} onBarcode={(value) => void onBarcode(value)} onPhoto={(f) => void identifyPhoto(f)} onClose={() => setCamera(false)} />
         </React.Suspense>
       )}
-      {part && <button className="counter-restart" onClick={() => reset()}><ArrowLeft size={16} /> Scan another item</button>}
+      {part && <button className="counter-restart" onClick={() => reset()}><ArrowLeft size={16} /> {t("Scan another item")}</button>}
     </section>
   );
 }

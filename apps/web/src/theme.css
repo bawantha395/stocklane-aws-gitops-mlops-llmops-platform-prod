@@ -136,3 +136,11 @@ html[data-glass] .counter-tile.job *, html[data-glass] .counter-tile.bill * { co
 .menu-sheet-foot .shop-logo { width: 96px; height: auto; margin-bottom: 6px; }
 .menu-sheet-foot strong { font-size: 15px; font-weight: 700; color: #14231f; }
 .menu-sheet-foot small { font-size: 12.5px; color: #6b7886; }
+
+/* Language switch + Sinhala text */
+.lang-toggle { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(20,35,31,.07); margin-right: 8px; vertical-align: middle; }
+.lang-toggle button { border: 0; background: transparent; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 650; color: #5b6b66; min-height: 0; box-shadow: none; }
+.lang-toggle button.on { background: #fff; color: #0e2f6b; box-shadow: 0 1px 4px rgba(15,23,42,.18); }
+html[lang="si"] body, html[lang="si"] button, html[lang="si"] input { font-family: "Noto Sans Sinhala", "Iskoola Pota", "Nirmala UI", "Sinhala Sangam MN", Inter, system-ui, sans-serif; }
+html[lang="si"] h1 { line-height: 1.25; letter-spacing: 0; }
+html[lang="si"] .nav-short, html[lang="si"] .nav-heading, html[lang="si"] .eyebrow, html[lang="si"] .home-label { letter-spacing: 0; text-transform: none; }

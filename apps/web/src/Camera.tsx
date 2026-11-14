@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
 import { Camera as CameraIcon, X } from "lucide-react";
 import { markNativePick, clearNativePick } from "./resume";
+import { t, useLang } from "./i18n";
 
 /**
  * One live camera for everything at the counter: a Stocklane QR in view is read by itself,
@@ -19,6 +20,7 @@ export function Camera({
   onPhoto: (file: File) => void;
   onClose: () => void;
 }) {
+  useLang();
   const video = useRef<HTMLVideoElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
@@ -147,10 +149,10 @@ export function Camera({
       <section className="scanner-dialog" role="dialog" aria-modal="true" aria-labelledby="camera-title">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">CAMERA</p>
-            <h2 id="camera-title">Scan a QR or product barcode</h2>
+            <p className="eyebrow">{t("CAMERA")}</p>
+            <h2 id="camera-title">{t("Scan a QR or product barcode")}</h2>
           </div>
-          <button className="icon-button" aria-label="Close camera" onClick={onClose}>
+          <button className="icon-button" aria-label={t("Close")} onClick={onClose}>
             <X />
           </button>
         </div>
@@ -159,30 +161,30 @@ export function Camera({
             <video ref={video} muted playsInline />
             <div className="scan-frame" />
             <span>
-              <CameraIcon size={18} /> QR and product barcodes are detected automatically.
+              <CameraIcon size={18} /> {t("QR and product barcodes are detected automatically.")}
             </span>
           </div>
         )}
         {!error && (
           <p className="camera-capability" role="status">
             {barcodeReady
-              ? "Barcode reader ready. Point at an EAN, UPC or Code 128 barcode."
-              : "This browser does not support live barcodes. Use a QR label or take a photo."}
+              ? t("Barcode reader ready. Point at an EAN, UPC or Code 128 barcode.")
+              : t("This browser does not support live barcodes. Use a QR label or take a photo.")}
           </p>
         )}
         {error && (
           <p className="stock-error" role="alert">
-            {error}
+            {t(error)}
           </p>
         )}
         {!error && (
           <button className="button primary full camera-shutter" disabled={!ready} onClick={shoot}>
-            <CameraIcon size={22} /> Take photo
+            <CameraIcon size={22} /> {t("Take photo")}
           </button>
         )}
         <input ref={picker} hidden type="file" accept="image/*" onChange={(e) => { clearNativePick(); if (e.target.files?.[0]) onPhoto(e.target.files[0]); }} />
         <button className="button secondary full" onClick={() => { markNativePick(); picker.current?.click(); }}>
-          Choose a photo from this device
+          {t("Choose a photo from this device")}
         </button>
       </section>
     </div>
