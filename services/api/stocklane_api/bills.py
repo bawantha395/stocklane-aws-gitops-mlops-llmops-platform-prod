@@ -158,17 +158,21 @@ def invoice(i):
         d.room(24)
         d.text(MARGIN, d.y + 10, 'This is not a tax invoice.', 9, True, color=MUTED)
         d.y += 20
-    if b.get('bank'):
+    qr = b.get('qr_bits') if b.get('qr_url') else ''
+    if b.get('bank') or qr:
         rows = []
-        for part in b['bank'].split('\n'):
-            rows += wrap(part, 300, 9.5)
-        box = 30 + 13 * len(rows)
+        for part in (b.get('bank') or '').split('\n'):
+            rows += wrap(part, 300, 9.5) if part else []
+        box = max(84 if qr else 0, 30 + 13 * len(rows))
         d.room(box + 10)
-        d.rect(MARGIN, d.y, 330, box, WASH)
+        d.rect(MARGIN, d.y, R - MARGIN if qr else 330, box, WASH)
         d.rect(MARGIN, d.y, 4, box, ACCENT)
         d.text(MARGIN + 14, d.y + 15, 'HOW TO PAY', 8, True, color=ACCENT)
         for k, row in enumerate(rows):
             d.text(MARGIN + 14, d.y + 30 + k * 13, row, 9.5, k == 0)
+        if qr:
+            d.qr(R - 76, d.y + 8, 64, qr)
+            d.text(R - 44, d.y + box - 2, 'Scan', 7, color=MUTED, align='c')
         d.y += box + 10
     if b.get('warranty'):
         d.room(30)

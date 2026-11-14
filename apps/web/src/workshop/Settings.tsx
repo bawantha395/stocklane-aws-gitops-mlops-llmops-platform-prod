@@ -2,9 +2,16 @@ import { t } from "../i18n";
 import { toast } from "../ui";
 import { useState, useEffect } from "react";
 import { Building2, FileText, Percent } from "lucide-react";
+import QRCode from "qrcode";
 import { BizLogo } from "../BizLogo";
 import { hue } from "./Cards";
 import { lkr, useCommand, useLoad, useWs, num, type Business } from "./common";
+
+/** The QR as "N:" plus N*N zeros and ones, so the server can draw it in its PDF without a QR library. */
+function qrBits(url?: string) {
+  if (!url || !url.trim()) return "";
+  try { const m = QRCode.create(url.trim(), { errorCorrectionLevel: "M" }).modules; let b = ""; for (let r = 0; r < m.size; r++) for (let c = 0; c < m.size; c++) b += m.get(r, c) ? "1" : "0"; return m.size + ":" + b; } catch { return ""; }
+}
 
 export function Settings() {
   const { business, reloadBusiness } = useWs();
@@ -16,7 +23,7 @@ export function Settings() {
   const set = (k: keyof typeof f, v: string) => { setF((x) => ({ ...x, [k]: v })); setMsg(""); };
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError("");
-    try { await command<Business>("/api/workshop/settings", { ...f, tax_rate: num(f.tax_rate), mechanic_discount_pct: num(f.mechanic_discount_pct), payment_terms_days: num(f.payment_terms_days) }, "PUT"); reloadBusiness(); setMsg(t("Saved. New invoices use these details; old invoices keep the details they were issued with.")); }
+    try { await command<Business>("/api/workshop/settings", { ...f, qr_bits: qrBits(f.qr_url), tax_rate: num(f.tax_rate), mechanic_discount_pct: num(f.mechanic_discount_pct), payment_terms_days: num(f.payment_terms_days) }, "PUT"); reloadBusiness(); setMsg(t("Saved. New invoices use these details; old invoices keep the details they were issued with.")); }
     catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   };
   const lines = (f.address || "").split("\n").filter(Boolean);

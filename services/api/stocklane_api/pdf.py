@@ -100,6 +100,24 @@ class Doc:
         if stroke is not None:
             self.ops.append('%s RG 0.6 w %.1f %.1f %.1f %.1f re S' % (_rgb(stroke), x, H - y - h, w, h))
 
+    def qr(self, x, y, size, packed):
+        """A QR code as plain squares. `packed` is 'N:' plus N*N characters of 0/1 (made by the browser when settings are saved)."""
+        n, bits = packed.split(':')
+        n = int(n)
+        cell = size / n
+        self.rect(x - 4, y - 4, size + 8, size + 8, (1, 1, 1))
+        for r in range(n):
+            row, c = bits[r * n:(r + 1) * n], 0
+            while c < n:
+                if row[c] != '1':
+                    c += 1
+                    continue
+                e = c
+                while e < n and row[e] == '1':
+                    e += 1
+                self.rect(x + c * cell, y + r * cell, (e - c) * cell + 0.2, cell + 0.2, INK)
+                c = e
+
     def stamp(self, label, x, y, color, size=56, angle=18, page=0):
         """A rotated outlined stamp (PAID, VOID) on the first page; y is measured from the top."""
         import math

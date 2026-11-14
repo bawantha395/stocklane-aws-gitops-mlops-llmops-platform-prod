@@ -478,6 +478,7 @@ const SI: Record<string, string> = {
   "QR code link": "QR කේත සබැඳිය",
   "Leave this empty if you are not tax registered. Then every bill says: This is not a tax invoice.": "බදු ලියාපදිංචි නැත්නම් මෙය හිස්ව තබන්න. එවිට සෑම බිලකම මෙය බදු ඉන්වොයිසියක් නොවේ යැයි සඳහන් වේ.",
   "A QR code with this link is printed next to How to pay, for example your Google review or payment page.": "මෙම සබැඳිය සහිත QR කේතයක් ගෙවීමේ තොරතුරු අසල මුද්‍රණය වේ, උදා: ඔබේ Google සමාලෝචන හෝ ගෙවීමේ පිටුව.",
+  "Low stock only": "අඩු තොග පමණක්",
   "Dark mode": "අඳුරු මාදිලිය",
   "Search anything": "ඕනෑම දෙයක් සොයන්න",
   "Vehicle number, customer, part or invoice": "වාහන අංකය, පාරිභෝගිකයා, කොටස හෝ බිල්පත",

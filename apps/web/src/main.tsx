@@ -308,7 +308,8 @@ function App() {
   const [counterKey, setCounterKey] = useState(0);
   const [archived, setArchived] = useState<Item[]>([]),
     [showArchived, setShowArchived] = useState(false),
-    [query, setQuery] = useState("");
+    [query, setQuery] = useState(""),
+    [lowOnly, setLowOnly] = useState(false);
   const [countId, setCountId] = useState(""),
     [physical, setPhysical] = useState("");
   const photoTarget = useRef("");
@@ -476,7 +477,7 @@ function App() {
     setCounterPick(picked);
     navigate("counter", true);
   };
-  useEffect(() => { const f = () => navigate("stock"); window.addEventListener("lifta:stock", f); return () => window.removeEventListener("lifta:stock", f); });
+  useEffect(() => { const f = (e: Event) => { setLowOnly(e.type === "lifta:low"); navigate("stock"); }; window.addEventListener("lifta:stock", f); window.addEventListener("lifta:low", f); return () => { window.removeEventListener("lifta:stock", f); window.removeEventListener("lifta:low", f); }; });
   const openWorkshop = (page: WsPage) => {
     setWsStart((w) => ({ page, n: w.n + 1 }));
     navigate("workshop");
@@ -791,7 +792,7 @@ function App() {
     }
   };
   const filtered = (source: Item[], text: string) =>
-    source.filter((p) =>
+    source.filter((p) => (!lowOnly || Number(p.quantity) <= Number(p.reorder_level)) &&
       [p.name, p.brand, p.part_number, p.location, p.category, p.sku]
         .join(" ")
         .toLowerCase()
@@ -1712,6 +1713,9 @@ function App() {
                     onChange={(e) => setQuery(e.target.value)}
                   />
                 </div>
+                <label className="stock-check">
+                  <input type="checkbox" checked={lowOnly} onChange={(e) => setLowOnly(e.target.checked)} /> {t("Low stock only")}
+                </label>
                 {owner && (
                   <label className="stock-check">
                     <input
