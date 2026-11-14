@@ -19,7 +19,7 @@ export function setPracticeStep(step: number) { state = { ...state, step }; emit
 export const probe = { view: "home" as string };
 
 type Row = Record<string, any>;
-const db = { products: [] as Row[], movements: [] as Row[], jobs: [] as Row[], invoices: [] as Row[], seq: 0, created: 0, moved: 0, jobsMade: 0, paid: 0 };
+const db = { photos: {} as Record<string, { image: string; thumb: string }>, products: [] as Row[], movements: [] as Row[], jobs: [] as Row[], invoices: [] as Row[], seq: 0, created: 0, moved: 0, jobsMade: 0, paid: 0 };
 export const progress = () => ({ created: db.created, moved: db.moved, jobs: db.jobsMade, paid: db.paid });
 const now = () => new Date().toISOString();
 const next = (p: string) => p + String(++db.seq);
@@ -27,7 +27,7 @@ const regKey = (s: string) => String(s || "").replace(/[^A-Za-z0-9]/g, "").toUpp
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 function reset() {
-  db.seq = 0; db.created = 0; db.moved = 0; db.jobsMade = 0; db.paid = 0; db.jobs = []; db.invoices = []; db.movements = [];
+  db.photos = {}; db.seq = 0; db.created = 0; db.moved = 0; db.jobsMade = 0; db.paid = 0; db.jobs = []; db.invoices = []; db.movements = [];
   const p = (name: string, brand: string, category: string, qty: number, location: string, part: string, extra: Row = {}) => ({
     id: next("p"), sku: "DEMO-" + String(db.seq).padStart(3, "0"), name, category, brand, grade: "", capacity: "", barcode: null, unit: "UNIT", quantity: qty,
     selling_price: 0, reorder_level: 5, image_id: null, part_number: part, location, archived: false, ...extra,
@@ -59,6 +59,28 @@ export async function samplePhoto(): Promise<File> {
   return new File([sampleBlob], "sample-oil.jpg", { type: "image/jpeg" });
 }
 export const samplePhotoBlob = () => sampleBlob;
+
+/** Drawn vehicle photos for practice: a number plate, a car front, a scratched door. */
+export async function demoShot(kind: "plate" | "front" | "damage"): Promise<File> {
+  const c = document.createElement("canvas"); c.width = 480; c.height = 320;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#dfe5ee"; g.fillRect(0, 0, 480, 320);
+  if (kind === "plate") {
+    g.fillStyle = "#4b5563"; g.fillRect(0, 230, 480, 90);
+    g.fillStyle = "#fff"; g.beginPath(); g.roundRect(90, 100, 300, 110, 14); g.fill();
+    g.strokeStyle = "#111827"; g.lineWidth = 4; g.stroke();
+    g.fillStyle = "#111827"; g.font = "bold 62px sans-serif"; g.textAlign = "center"; g.fillText("CAB-1234", 240, 178);
+  } else {
+    g.fillStyle = "#4b5563"; g.fillRect(0, 250, 480, 70);
+    g.fillStyle = "#1f3f9a"; g.beginPath(); g.roundRect(70, 120, 340, 120, 28); g.fill();
+    g.fillStyle = "#9db4e6"; g.beginPath(); g.roundRect(120, 70, 240, 70, 22); g.fill();
+    g.fillStyle = "#fff"; g.beginPath(); g.arc(130, 190, 20, 0, 7); g.arc(350, 190, 20, 0, 7); g.fill();
+    g.fillStyle = "#111827"; g.beginPath(); g.arc(100, 245, 26, 0, 7); g.arc(380, 245, 26, 0, 7); g.fill();
+    if (kind === "damage") { g.strokeStyle = "#e11d48"; g.lineWidth = 5; g.beginPath(); g.moveTo(210, 150); g.lineTo(290, 215); g.stroke(); }
+  }
+  const blob = await new Promise<Blob>((done) => c.toBlob((b) => done(b as Blob), "image/jpeg", 0.85));
+  return new File([blob], kind + ".jpg", { type: "image/jpeg" });
+}
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 const unavailable = () => new ApiError("This is not part of the practice. Close practice mode to use it for real.", 404);
@@ -128,6 +150,11 @@ export async function demoApi(path: string, options: RequestInit = {}): Promise<
   }
   if (area === "forecast") return { products: [] };
   if (area === "workshop") {
+    if (a === "photos") {
+      if (method === "POST") { const id = Array.from({ length: 32 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join(""); db.photos[id] = { image: body.image, thumb: body.thumb }; return { id }; }
+      const shot = b && db.photos[b]; if (!shot) throw new ApiError("Photo not found", 404);
+      return { data: url.searchParams.get("size") === "full" ? shot.image : shot.thumb };
+    }
     if (a === "settings") return business();
     if (a === "suggestions") return { parts: [{ name: "Demo Motor Oil 5W-30 1L", price: 1500, uses: 3 }, { name: "Oil filter small", price: 900, uses: 2 }], labour: [{ description: "Oil change", amount: 1500, uses: 3 }] };
     if (a === "service-due") return [];
@@ -153,10 +180,19 @@ export async function demoApi(path: string, options: RequestInit = {}): Promise<
         if (method === "GET") return clone(rows(db.jobs));
         const j = priced({ id: next("j"), registration: String(body.registration || "").toUpperCase(), vehicle_key: regKey(body.registration), customer: body.customer || "", phone: body.phone || "", vehicle: body.vehicle || "",
           odometer: body.odometer ?? undefined, summary: body.summary || "", mechanic: body.mechanic || "", notes: "", status: "OPEN", revision: 1, parts: [], labour: [], discount: 0, tax_rate: 0, created_at: now(), age_days: 0 });
+        Object.assign(j, { front_photo: body.front_photo || undefined, plate_photo: body.plate_photo || undefined, before_photos: body.before_photos || [], photo_count: (body.before_photos || []).length || undefined });
         db.jobs.unshift(j); db.jobsMade++; return clone(j);
       }
       const j = db.jobs.find((x) => x.id === b); if (!j) throw new ApiError("Not found", 404);
       const c = seg[4];
+      if (c === "photos" && method === "POST") {
+        const gone = body.remove || [], list = ((j.before_photos || []) as string[]).filter((x) => !gone.includes(x));
+        for (const x of body.add || []) if (!list.includes(x)) list.push(x);
+        j.before_photos = list; j.photo_count = list.length || undefined;
+        if ("front_photo" in body) j.front_photo = body.front_photo || undefined;
+        if ("plate_photo" in body) j.plate_photo = body.plate_photo || undefined;
+        return { before_photos: list, front_photo: j.front_photo, plate_photo: j.plate_photo };
+      }
       if (c === "invoice") {
         const inv = { id: next("i"), invoice_number: "INV-" + String(db.invoices.length + 1).padStart(4, "0"), job_id: j.id, registration: j.registration, customer: j.customer, phone: j.phone, vehicle: j.vehicle, odometer: j.odometer, summary: j.summary,
           mechanic: j.mechanic, parts: j.parts, labour: j.labour, parts_total: j.parts_total, labour_total: j.labour_total, discount: j.discount, subtotal: j.subtotal, tax: j.tax, tax_name: "VAT", tax_rate: 0, total: j.total,

@@ -8,7 +8,7 @@ import json
 import re
 import traceback
 
-from . import forecast, inventory, workshop
+from . import forecast, inventory, photos, workshop
 from .core import ApiError, actor, bad, dumps, groups, require
 
 OWNER, STAFF = ('OWNER',), ('OWNER', 'MECHANIC')
@@ -53,6 +53,9 @@ route('POST', '/api/workshop/jobs/([^/]+)/undo', STAFF, lambda e, p, b, k: works
 route('POST', '/api/workshop/jobs/([^/]+)/delete-request', STAFF, lambda e, p, b, k: workshop.request_delete(p[0], k, actor(e), b))
 route('POST', '/api/workshop/jobs/([^/]+)/delete-request/reject', OWNER, lambda e, p, b, k: workshop.reject_delete(p[0], k, actor(e), b))
 route('POST', '/api/workshop/jobs/([^/]+)/cancel', OWNER, lambda e, p, b, k: workshop.cancel_job(p[0], k, actor(e), b))
+route('POST', '/api/workshop/photos', STAFF, lambda e, p, b, k: photos.save(b))
+route('GET', '/api/workshop/photos/([0-9a-f]{32})', STAFF, lambda e, p, b, k: photos.read(p[0], q(e, 'size', 'thumb')))
+route('POST', '/api/workshop/jobs/([^/]+)/photos', STAFF, lambda e, p, b, k: workshop.job_photos(p[0], k, actor(e), b))
 route('GET', '/api/workshop/invoices', STAFF, lambda e, p, b, k: workshop.invoices())
 route('GET', '/api/workshop/invoices/([^/]+)', STAFF, lambda e, p, b, k: workshop.get_invoice(p[0]))
 route('GET', '/api/workshop/invoices/([^/]+)/pdf', STAFF, lambda e, p, b, k: ('pdf',) + workshop.pdf(p[0]))

@@ -39,6 +39,7 @@ function stepsFor(owner: boolean): Step[] {
     giveTab, giveFind, giveDo,
     home,
     { title: t("Start a job"), body: t("A vehicle came in for work. Tap Start a job."), target: ".counter-tile.job", until: () => probe.view === "workshop" },
+    { title: t("Add photos (optional)"), body: t("On this form you can also add photos: the number plate, the front, and how the vehicle looks before fixing. All optional. Here we use drawn samples. Try one, then press Next."), target: '[data-tour="job-photos"]', manual: true },
     { title: t("Enter the vehicle"), body: t("Type a vehicle number, for example CAB-1234, and a customer name. Then press Create job."), target: ".ws-form", until: (b) => progress().jobs > b.jobs },
     { title: t("Add a part"), body: t("Tap the part name to add it with its price."), target: '[data-tour="part-chips"]', until: () => has(".ws-job .ws-line:not(.labour)") },
     { title: t("Add labour"), body: t("Tap the work that was done."), target: '[data-tour="labour-chips"]', until: () => has(".ws-job .ws-line.labour") },

@@ -43,6 +43,7 @@ resource "aws_iam_role_policy" "api" {
     { Effect = "Allow", Action = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:BatchGetItem"], Resource = var.table_arn },
     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${var.models_bucket.arn}/forecast/*"] },
     { Effect = "Allow", Action = ["s3:ListBucket"], Resource = var.models_bucket.arn, Condition = { StringLike = { "s3:prefix" = ["forecast/*"] } } },
+    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${var.media_bucket.arn}/workshop/photos/*"] },
     { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = var.kms_key_arn }
     ], local.with_vision ? [
     { Effect = "Allow", Action = ["lambda:InvokeFunction"], Resource = aws_lambda_function.vision[0].arn }

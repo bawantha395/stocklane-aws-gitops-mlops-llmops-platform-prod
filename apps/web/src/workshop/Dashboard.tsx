@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Face } from "./Photos";
 import { Empty, Loading, Pill, ReasonDialog, dateOnly, lkr, useCommand, useDebounced, useLoad, useWs, type DeleteRequest, type Job, type Vehicle } from "./common";
 
 type Dash = {
@@ -7,10 +8,18 @@ type Dash = {
 };
 
 export function JobItem({ j, onOpen }: { j: Job; onOpen: () => void }) {
+  const when = j.status === "OPEN" && j.age_days != null ? (j.age_days === 0 ? "Today" : j.age_days + " d open") : dateOnly(j.created_at);
   return (
-    <button className="ws-item" onClick={onOpen}>
-      <span className="ws-item-main"><strong>{j.registration}</strong><span>{j.customer}{j.vehicle ? " · " + j.vehicle : ""}</span><small>{j.summary || "No complaint noted"}</small>{j.delete_requested && <small className="ws-flag">Delete requested</small>}</span>
-      <span className="ws-item-side"><b>{lkr(j.total)}</b><Pill s={j.status} /><small>{j.status === "OPEN" && j.age_days != null ? (j.age_days === 0 ? "Today" : j.age_days + " d open") : dateOnly(j.created_at)}</small></span>
+    <button className="ws-item ws-jobcard" onClick={onOpen}>
+      <Face id={j.front_photo} />
+      <span className="ws-item-main">
+        <strong className="ws-plate">{j.registration}</strong>
+        {j.vehicle && <span className="ws-vmodel">{j.vehicle}</span>}
+        <span className="ws-cust">{j.customer}{j.phone ? <small> · {j.phone}</small> : null}</span>
+        <small className="ws-work">{j.summary || "No complaint noted"}</small>
+        {j.delete_requested && <small className="ws-flag">Delete requested</small>}
+      </span>
+      <span className="ws-item-side"><b>{lkr(j.total)}</b><Pill s={j.status} /><small>{[j.invoice_number, when].filter(Boolean).join(" · ")}{j.photo_count ? " · \u{1F4F7} " + j.photo_count : ""}</small></span>
     </button>
   );
 }

@@ -1,3 +1,4 @@
+import { JobPhotos } from "./Photos";
 import { useEffect, useMemo, useState } from "react";
 import { Bill, PrintButton, billTotals, type BillData } from "./Bill";
 import { PastRepairs } from "./Vehicles";
@@ -109,6 +110,8 @@ export function JobPage({ id }: { id: string }) {
           <label className="ws-field">Complaint / work<textarea disabled={locked} rows={2} value={f.summary || ""} onChange={(e) => set("summary", e.target.value)} /></label>
         </div>
       </section>
+
+      <JobPhotos id={id} start={job} locked={locked} />
 
       <section className="ws-card">
         <h3>Parts</h3>

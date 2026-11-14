@@ -16,8 +16,8 @@ import uuid
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from . import bills
-from .core import COLOMBO, bad, batch_get, command, conflict, delete, get, missing, now, num, public, put, query
+from . import bills, photos
+from .core import COLOMBO, bad, batch_get, check, command, conflict, delete, get, missing, now, num, public, put, query
 
 LATIN = re.compile(r'[\x20-\x7e]*')
 MONEY, ZERO, HUNDRED = Decimal('0.01'), Decimal('0'), Decimal('100')
@@ -269,12 +269,18 @@ def view(j, rate=ZERO):
 def jobs():
     rate = business()['tax_rate']
     asked = {r['sk'] for r in query('WREQ') if r['status'] == 'PENDING'}
+    faces = {v['sk']: v['front_photo'] for v in query('VEHICLE') if v.get('front_photo')}
+    shots = {r['sk']: len(r.get('before', [])) for r in query('WJPH')}
     out = []
     for j in sorted(query('WJOB'), key=lambda j: j['created_at'], reverse=True):
         if j['status'] == 'ARCHIVED':
             continue
         v = view(j, rate)
         v['delete_requested'] = j['id'] in asked
+        if j['vehicle_key'] in faces:
+            v['front_photo'] = faces[j['vehicle_key']]
+        if shots.get(j['id']):
+            v['photo_count'] = shots[j['id']]
         v['lines'] = len(v.pop('parts')) + len(v.pop('labour'))
         out.append(v)
     return out
@@ -288,6 +294,9 @@ def get_job(job_id, who='', owner=False):
     req = get('WREQ', job_id)
     if req:
         out['delete_request'] = public(req)
+    car = get('VEHICLE', current['vehicle_key']) or {}
+    out.update({k: car[k] for k in ('front_photo', 'plate_photo') if car.get(k)})
+    out['before_photos'] = (get('WJPH', job_id) or {}).get('before', [])
     return out
 
 
@@ -302,8 +311,42 @@ def create_job(key, who, body):
                    'odometer': km(b.get('odometer'), 'Odometer'), 'summary': text(b.get('summary'), 'Complaint', 1000),
                    'mechanic': text(b.get('mechanic'), 'Mechanic', 60), 'notes': '', 'status': 'OPEN', 'revision': 0,
                    'parts': [], 'labour': [], 'discount': ZERO, 'created_by': who, 'created_at': created, 'updated_at': created})
-        return [put(j), vehicle_put(j['vehicle_key'], vehicle_fields(j)), history_put(j)], [None, None, None], view(j)
+        face = {'front_photo': photos.one(b.get('front_photo'), 'Front photo'), 'plate_photo': photos.one(b.get('plate_photo'), 'Plate photo')}
+        before = photos.many(b.get('before_photos'), 'Condition photos')
+        ops = [put(j), vehicle_put(j['vehicle_key'], {**vehicle_fields(j), **face}), history_put(j)]
+        if before:
+            ops.append(put({'pk': 'WJPH', 'sk': job_id, 'before': before, 'n': 1, 'updated_at': created}))
+        return ops, [None] * len(ops), view(j)
     return command(key, 'create-job', who, body, build)
+
+
+def job_photos(job_id, key, who, body):
+    """Photos on an OPEN job: condition photos before fixing (add/remove) and the vehicle's front and plate photos.
+    They live apart from the job lines, so adding one never clashes with someone editing the bill."""
+    def build():
+        b = body or {}
+        current = job(job_id)
+        if current['status'] != 'OPEN':
+            raise conflict('This job already has an invoice')
+        held = get('WJPH', job_id)
+        before = list((held or {}).get('before', []))
+        before = [p for p in before if p not in photos.many(b.get('remove'), 'Photos')]
+        for pid in photos.many(b.get('add'), 'Photos'):
+            if pid not in before:
+                before.append(pid)
+        if len(before) > 6:
+            raise bad('Up to 6 condition photos')
+        n = int((held or {}).get('n', 0)) + 1
+        row = {'pk': 'WJPH', 'sk': job_id, 'before': before, 'n': n, 'updated_at': now()}
+        ops = [put(row, ConditionExpression='n = :n', ExpressionAttributeValues={':n': held['n']}) if held else put(row, ConditionExpression='attribute_not_exists(pk)'),
+               check('WJOB', job_id, '#s = :open', {':open': 'OPEN'}, {'#s': 'status'})]
+        labels = [None, 'This job already has an invoice']
+        face = {k: photos.one(b[k], k) for k in ('front_photo', 'plate_photo') if k in b}
+        if any(face.values()):
+            ops.append(vehicle_put(current['vehicle_key'], face))
+            labels.append(None)
+        return ops, labels, {'before_photos': before, **{k: v for k, v in face.items() if v}}
+    return command(key, 'job-photos:' + job_id, who, body, build)
 
 
 def save_job(job_id, key, who, body, owner=True):

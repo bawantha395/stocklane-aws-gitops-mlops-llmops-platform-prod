@@ -50,6 +50,7 @@ const CameraScreen = () => (
 const JobScreen = () => (
   <div className="wt-screen-body">
     <Field label={t("Vehicle")} value="CAB-1234 · Demo Pickup" />
+    <Line a={"\u{1F4F7} " + t("Plate · Front · Condition")} b={t("Optional")} c="" />
     <Line a="Oil change" b={t("Labour")} c="Rs 1,500" />
     <Line a="Engine oil 5W-30 × 4" b={t("Part")} c="Rs 6,000" />
     <span className="wt-btn">{hot(t("Add part or labour"))}</span>
@@ -114,7 +115,7 @@ function stepsFor(owner: boolean): Step[] {
     { title: t("Save the new part"), body: t("Fix anything that is wrong, then save. Nothing is saved until you press Save."), screen: <AddPartScreen /> },
     receive,
     give,
-    { title: t("Start a job"), body: t("One job per vehicle. Add the vehicle, then the repairs, parts and labour."), screen: <JobScreen /> },
+    { title: t("Start a job"), body: t("One job per vehicle. Add the vehicle (you can also add photos of the number plate, the front and its condition), then the repairs, parts and labour."), screen: <JobScreen /> },
     { title: t("Make an invoice"), body: t("Open the job and press Create invoice. Check the total, then take the payment."), screen: <InvoiceScreen /> },
     { title: t("Reports and low stock"), body: t("Reports shows low stock and what to reorder this week, so you never run out."), screen: <ReportsScreen /> },
     { title: t("Settings"), body: t("Add your business name, address and phone. They appear on every bill."), screen: <SettingsScreen /> },

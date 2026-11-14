@@ -11,6 +11,7 @@ export type Job = {
   mechanic: string; notes: string; status: "OPEN" | "INVOICED" | "CANCELLED" | "ARCHIVED"; revision: number; invoice_id?: string; invoice_number?: string;
   parts: Part[]; labour: Labour[]; discount: number; tax_rate?: number; parts_total: number; labour_total: number; subtotal: number; tax: number; total: number;
   next_service_date?: string; next_service_km?: number; created_at: string; lines?: number; age_days?: number;
+  front_photo?: string; plate_photo?: string; before_photos?: string[]; photo_count?: number;
   delete_requested?: boolean; delete_request?: DeleteRequest; undo_seconds_left?: number; archive_reason?: string; archived_by?: string; archived_at?: string;
 };
 export type DeleteRequest = { job_id: string; registration: string; customer: string; reason: string; requested_by: string; requested_at: string; status: "PENDING" | "REJECTED"; note?: string; decided_by?: string };
@@ -21,6 +22,7 @@ export type Visit = {
 export type Vehicle = {
   id: string; registration: string; owner?: string; phone?: string; make?: string; notes?: string; last_km?: number; next_service_date?: string;
   next_service_km?: number; updated_at: string; reason?: string; history?: Visit[]; visits?: number; spent?: number; first_visit?: string | null; average_gap_days?: number | null;
+  front_photo?: string; plate_photo?: string;
 };
 export type Payment = { id: string; amount: number; method: string; note: string; at: string };
 export type Invoice = {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { JobItem } from "./Dashboard";
 import { PastRepairs } from "./Vehicles";
+import { PhotoSlot, PhotoStrip } from "./Photos";
 import { Empty, Loading, kmText, regKey, useCommand, useDebounced, useLoad, useWs, type Job, type Vehicle } from "./common";
 
 export function Jobs() {
@@ -33,6 +34,7 @@ export function NewJob({ reg: start }: { reg?: string }) {
   const { go } = useWs();
   const [f, setF] = useState({ registration: start || "", customer: "", phone: "", vehicle: "", odometer: "", summary: "", mechanic: "" });
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
+  const [plate, setPlate] = useState(""), [front, setFront] = useState(""), [before, setBefore] = useState<string[]>([]);
   const command = useCommand();
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
   const key = useDebounced(regKey(f.registration), 300);
@@ -45,7 +47,7 @@ export function NewJob({ reg: start }: { reg?: string }) {
   const lower = v?.last_km != null && f.odometer !== "" && Number(f.odometer) < v.last_km;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError("");
-    try { const job = await command<Job>("/api/workshop/jobs", { ...f, odometer: f.odometer === "" ? null : Number(f.odometer) }); go({ name: "job", id: job.id }, "Job created. Add the parts and labour."); }
+    try { const job = await command<Job>("/api/workshop/jobs", { ...f, odometer: f.odometer === "" ? null : Number(f.odometer), plate_photo: plate || undefined, front_photo: front || undefined, before_photos: before }); go({ name: "job", id: job.id }, "Job created. Add the parts and labour."); }
     catch (err) { setError((err as Error).message); setBusy(false); }
   };
   return (
@@ -63,6 +65,15 @@ export function NewJob({ reg: start }: { reg?: string }) {
         {lower && <p className="ws-warn">That is lower than the last recorded {kmText(v?.last_km)}. Check the reading.</p>}
         <label className="ws-field">Complaint / work to do<textarea rows={2} value={f.summary} onChange={(e) => set("summary", e.target.value)} placeholder="Engine oil change, brake noise" /></label>
         <label className="ws-field">Mechanic<input value={f.mechanic} onChange={(e) => set("mechanic", e.target.value)} /></label>
+        <div className="ws-photos" data-tour="job-photos">
+          <strong>Photos <small>(optional)</small></strong>
+          <div className="ws-photo-grid">
+            <PhotoSlot kind="plate" label="Number plate" id={plate} onId={setPlate} />
+            <PhotoSlot kind="front" label="Front of the vehicle" id={front || v?.front_photo || ""} onId={setFront} saved={!front && !!v?.front_photo} />
+          </div>
+          <span className="ws-photo-label">Condition when it arrived (before fixing)</span>
+          <PhotoStrip ids={before} onAdd={(id) => setBefore((x) => [...x, id])} onRemove={(id) => setBefore((x) => x.filter((y) => y !== id))} />
+        </div>
         {error && <p role="alert" className="stock-error">{error}</p>}
         <div className="ws-actions"><button className="button secondary" type="button" onClick={() => go({ name: "home" })}>Cancel</button><button className="button primary large" disabled={busy}>{busy ? "Saving…" : "Create job"}</button></div>
       </form>

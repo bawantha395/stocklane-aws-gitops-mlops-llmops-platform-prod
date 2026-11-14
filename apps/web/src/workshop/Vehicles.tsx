@@ -1,3 +1,4 @@
+import { Face, Photo } from "./Photos";
 import { useState } from "react";
 import { download } from "../api";
 import { Empty, Loading, Pill, addDays, dateOnly, kmText, lkr, today, useCommand, useDebounced, useLoad, useWs, waLink, type Vehicle, type Visit } from "./common";
@@ -58,7 +59,7 @@ export function Vehicles() {
         <div className="ws-list">
           {data.map((v) => (
             <button className="ws-item" key={v.id} onClick={() => go({ name: "vehicle", id: v.id })}>
-              <span className="ws-item-main"><strong>{v.registration}</strong><span>{v.owner}{v.make ? " · " + v.make : ""}</span><small>{v.phone}</small></span>
+              <Face id={v.front_photo} /><span className="ws-item-main"><strong>{v.registration}</strong><span>{v.owner}{v.make ? " · " + v.make : ""}</span><small>{v.phone}</small></span>
               <span className="ws-item-side"><small>{kmText(v.last_km)}</small>{v.next_service_date && <small>Next: {v.next_service_date}</small>}</span>
             </button>
           ))}
@@ -90,7 +91,7 @@ export function VehiclePage({ id }: { id: string }) {
       </div>
       <section className="ws-card">
         <div className="ws-card-head">
-          <div><h2>{v.registration}</h2><p>{v.make || "Model not set"}</p></div>
+          <div className="ws-vtitle"><Face id={v.front_photo} />{v.plate_photo && <Photo id={v.plate_photo} className="ws-face plate" />}<span><h2>{v.registration}</h2><p>{v.make || "Model not set"}</p></span></div>
           {due && <span className="ws-pill unpaid">Service due</span>}
         </div>
         {!edit ? (
