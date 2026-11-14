@@ -48,7 +48,7 @@ def discover(settings):
                 and not re.search(r'image|tts|live|audio|embed|robot|computer|thinking|exp|vision', name))
     def rank(name):
         version = [int(x) for x in re.findall(r'\d+', name.split('flash')[0])] or [0]
-        return (0 if 'preview' in name or 'latest' in name else 1, version, 0 if 'lite' in name else 1)
+        return (0 if 'preview' in name or 'latest' in name else 1, version, 1 if 'lite' in name else 0)
     names = sorted({m['name'].removeprefix('models/') for m in listing if usable(m)}, key=rank, reverse=True)
     _found.update(at=time.time(), models=names)
     return names
@@ -64,59 +64,73 @@ def propose(settings, image, context=None):
     # Each model has its own free quota. GEMINI_MODEL may list several, separated by commas: the next one is tried when
     # a model is out of quota (429), unknown (404) or busy (503). A slow model is not retried, to stay inside the 30 s API limit.
     models = [m.strip() for m in settings.gemini_model.split(',') if m.strip()]
+    started = time.monotonic()
+    budget = 24.0  # API Gateway allows 30 s in all; leave room for OCR and the reply
+
+    def attempt(model):
+        """One model, with whatever time is left. Raises HTTPError / timeouts for the caller to decide."""
+        left = max(4.0, min(14.0, budget - (time.monotonic() - started)))
+        try:
+            return _call(settings, body, left, model)
+        except urllib.error.HTTPError as error:
+            if error.code != 400 or 'thinkingConfig' not in body['generationConfig']:
+                raise
+            log.warning('Gemini rejected the thinking setting; retrying without it')
+            return _call(settings, dict(body, generationConfig=config), left, model)  # some models do not accept thinkingConfig
+
+    def slow(error):
+        return isinstance(error, (TimeoutError, OSError)) and not isinstance(error, urllib.error.HTTPError)
+
+    trail = []  # "model: reason" for every model that failed, shown in the app's banner
+    why = {404: 'not found', 429: 'free limit', 503: 'busy', 400: 'rejected', 401: 'key not accepted', 403: 'key not accepted', 500: 'Google error'}
     try:
         data, last, tried = None, None, []
-        for model in models + ['']:
-            if not model:
-                # Every configured name failed with "not found": ask Google for the names that exist today.
-                if data is not None or not last or last.code != 404:
+        queue = list(models)
+        discovered = False
+        while data is None:
+            if not queue:
+                # Every configured name failed (not found / quota / slow): ask Google which models exist today.
+                if discovered or time.monotonic() - started > budget - 4:
                     break
+                discovered = True
                 try:
-                    models_now = [m for m in discover(settings) if m not in tried][:3]
+                    queue = [m for m in discover(settings) if m not in tried][:4]
                 except Exception:
                     break
-                log.info('Trying discovered Gemini models %s', models_now)
-                for model in models_now:
-                    try:
-                        data = _call(settings, dict(body, generationConfig=config), 18, model)
-                        log.info('Gemini answered discovered model=%s', model)
-                        break
-                    except urllib.error.HTTPError as error:
-                        last = error
-                        log.warning('Gemini discovered model=%s failed status=%s', model, error.code)
-                        if error.code not in (404, 429, 503):
-                            raise
-                break
+                log.info('Trying discovered Gemini models %s', queue)
+                continue
+            model = queue.pop(0)
             tried.append(model)
             try:
-                try:
-                    data = _call(settings, body, 18, model)
-                except urllib.error.HTTPError as error:
-                    if error.code != 400 or 'thinkingConfig' not in body['generationConfig']:
-                        raise
-                    log.warning('Gemini rejected the thinking setting; retrying without it')
-                    plain = dict(body, generationConfig=config)  # an older or different model may not accept thinkingConfig
-                    data = _call(settings, plain, 18, model)
-                log.info('Gemini answered model=%s', model)
-                break
+                data = attempt(model)
+                log.info('Gemini answered model=%s in %.1fs', model, time.monotonic() - started)
             except urllib.error.HTTPError as error:
                 last = error
+                trail.append(model + ': ' + why.get(error.code, 'error ' + str(error.code)))
                 log.warning('Gemini model=%s failed status=%s', model, error.code)
                 if error.code not in (404, 429, 503):
                     raise
+            except Exception as error:
+                if not slow(error):
+                    raise
+                last = error
+                trail.append(model + ': too slow')
+                log.warning('Gemini model=%s too slow or unreachable (%s)', model, type(error).__name__)
+                if time.monotonic() - started > budget - 4:
+                    break
         if data is None:
-            raise last
+            raise last or TimeoutError()
         fields = json.loads(data['candidates'][0]['content']['parts'][0]['text'])
         if not isinstance(fields, dict):
             raise ValueError('Expected a label JSON object')
     except urllib.error.HTTPError as error:
         log.warning('Gemini backup failed status=%s', error.code)
         raise BedrockUnavailable('AI_BACKUP_UNAVAILABLE', 'AI suggestions are unavailable. Enter the item manually.',
-                                 retryable=error.code in (429, 500, 503), provider_code=str(error.code)) from None
+                                 retryable=error.code in (429, 500, 503), provider_code=str(error.code), trail=trail) from None
     except (ValueError, KeyError, IndexError, TypeError) as error:
         log.warning('Gemini backup unusable reply type=%s', type(error).__name__)
         raise BedrockUnavailable('AI_INVALID_RESPONSE', 'The AI response could not be used. No product was created. Enter the details manually.', status=502) from None
     except Exception as error:
         log.warning('Gemini backup unreachable type=%s', type(error).__name__)
-        raise BedrockUnavailable('AI_PROVIDER_TIMEOUT', 'The AI service could not be reached. Retry later or enter the item manually.', retryable=True, provider_code='AI_PROVIDER_TIMEOUT') from None
+        raise BedrockUnavailable('AI_PROVIDER_TIMEOUT', 'The AI service could not be reached. Retry later or enter the item manually.', retryable=True, provider_code='AI_PROVIDER_TIMEOUT', trail=trail) from None
     return {k: v.strip()[:LIMITS[k]] for k, v in fields.items() if k in LIMITS and isinstance(v, str) and v.strip()}, 'gemini'

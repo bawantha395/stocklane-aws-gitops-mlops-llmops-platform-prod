@@ -47,10 +47,10 @@ SHORT = {'AI_PROVIDER_QUOTA': 'quota is zero or used up', 'AI_ACCESS_DENIED': 'm
 class BedrockUnavailable(Exception):
     """Sanitized operator guidance; never return provider exception text."""
     def __init__(self, code, message, *, retryable=False, status=503,
-                 provider_code='Unknown', retry_after=None):
+                 provider_code='Unknown', retry_after=None, trail=None):
         super().__init__(message)
         self.code=code;self.message=message;self.retryable=retryable
-        self.status=status;self.provider_code=provider_code;self.retry_after=retry_after
+        self.status=status;self.provider_code=provider_code;self.retry_after=retry_after;self.trail=trail or []
 
 
 def failure(error):
@@ -109,7 +109,7 @@ def propose(settings, image, context=None):
             return gemini.propose(settings, image, context or {})
         except BedrockUnavailable as error:
             problem = problem or error
-            details.append('Gemini: ' + SHORT.get(error.provider_code, SHORT.get(error.code, error.code)))
+            details.append('Gemini: ' + ('; '.join(error.trail) if error.trail else SHORT.get(error.provider_code, SHORT.get(error.code, error.code))))
     problem.detail = ' | '.join(details)
     raise problem from None
 
