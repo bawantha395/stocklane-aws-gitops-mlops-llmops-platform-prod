@@ -113,3 +113,17 @@ html, body { overflow-x: clip; }
 }
 /* Desktop: the workshop tabs pin just under the top bar, never behind it */
 @media (min-width: 761px) { .ws-sticky { top: 72px; } }
+
+/* Desktop top bar: macOS-style frosted glass, full width of the content area, content blurs as it scrolls under */
+@media (min-width: 761px) {
+  .stock-main { --pad: 42px; }
+  .stock-shell .stock-header, html[data-glass] .stock-shell .stock-header, html .stock-shell .stock-header {
+    margin-inline: calc(-1 * var(--pad)); padding-inline: var(--pad);
+    background: rgba(var(--w), .58) !important;
+    -webkit-backdrop-filter: saturate(200%) blur(28px) !important; backdrop-filter: saturate(200%) blur(28px) !important;
+    border-bottom: 1px solid rgba(var(--w), .7) !important;
+    box-shadow: 0 1px 0 rgba(var(--sh), .06), 0 10px 30px -18px rgba(var(--sh), .28) !important;
+  }
+}
+@media (min-width: 1500px) { .stock-main { --pad: 60px; } }
+@media (min-width: 761px) and (max-width: 1100px) { .stock-main { --pad: 26px; } }
