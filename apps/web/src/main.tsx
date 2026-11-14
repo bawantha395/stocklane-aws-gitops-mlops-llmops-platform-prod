@@ -870,8 +870,9 @@ function App() {
             navigate("home");
           }}
         >
-          <Logo size={30} /> <b>Lifta<span>.</span></b>
+          <Logo size={44} /> <b>Lifta<span>.</span></b>
         </a>
+        <p>{t("WORKSHOP SUITE")}</p>
         {navItems.map((n) =>
           "group" in n ? (
             <span className="nav-heading" key={n.group}>{n.group}</span>
@@ -954,7 +955,7 @@ function App() {
       <main className="stock-main">
         <header className="stock-header">
           <a className="m-brand" href="#" onClick={(e) => { e.preventDefault(); navigate("home"); }}>
-            <Logo size={26} /> <b>Lifta<span>.</span></b>
+            <Logo size={30} /> <b>Lifta<span>.</span></b>
           </a>
           <div className="biz" aria-label={businessName}>
             <span className="biz-logo">

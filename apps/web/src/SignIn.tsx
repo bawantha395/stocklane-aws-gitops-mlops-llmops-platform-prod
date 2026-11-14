@@ -1,4 +1,4 @@
-import { LogoTile } from "./Logo";
+import { Logo } from "./Logo";
 import { KeyRound, Lock, ShieldCheck, Smartphone } from "lucide-react";
 import "./signin.css";
 
@@ -10,7 +10,7 @@ export function SignIn({ mode, error, onSignIn, onSignOut }: { mode: SignInMode;
   return (
     <main className="si-page">
       <section className="si-card" aria-live="polite">
-        <div className="si-brand"><LogoTile size={56} /><span className="si-word">Lifta<span>.</span></span></div>
+        <div className="si-brand"><Logo size={64} /><span className="si-word">Lifta<span>.</span></span></div>
         <p className="si-eyebrow">WORKSHOP SUITE</p>
         {working && (
           <>

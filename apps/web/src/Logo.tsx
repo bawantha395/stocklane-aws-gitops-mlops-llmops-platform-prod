@@ -1,24 +1,19 @@
-/** The Lifta mark, flat and vector: an L with an upward chevron. Ink follows the text colour, the chevron takes the brand accent, so it is crisp at any size and in dark mode. */
-export function Logo({ size = 30 }: { size?: number }) {
-  return (
-    <svg className="lifta-mark" width={size} height={size} viewBox="-10 -10 82 100" role="img" aria-label="Lifta" fill="none" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M0 0V74H54" stroke="currentColor" strokeWidth="16" />
-      <path className="lifta-chev" d="M24 41L38 27L52 41" stroke="currentColor" strokeWidth="10" />
-    </svg>
-  );
-}
+import { useId } from "react";
 
-/** The mark on the dark charcoal tile: for the sign-in card and other hero places, using the brand artwork as supplied. */
-export function LogoTile({ size = 56 }: { size?: number }) {
+/** The Lifta mark: a blue-to-green tile with a brushed-silver L and a mint chevron lifting out of it. Pure vector. */
+export function Logo({ size = 40 }: { size?: number }) {
+  const u = useId().replace(/:/g, "");
   return (
-    <img
-      className="lifta-logo"
-      src="/lifta-mark.png"
-      width={size}
-      height={size}
-      alt="Lifta"
-      draggable={false}
-      style={{ width: size, height: size, borderRadius: Math.round(size * 0.23), display: "block", flex: "none", objectFit: "cover" }}
-    />
+    <svg className="lifta-logo" width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="Lifta" style={{ flex: "none", display: "block" }}>
+      <defs>
+        <linearGradient id={"t" + u} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#1b4fa8" /><stop offset="1" stopColor="#0b3d30" /></linearGradient>
+        <linearGradient id={"m" + u} x1="0" y1="0" x2="1" y2=".2">
+          <stop offset="0" stopColor="#8d99a6" /><stop offset=".22" stopColor="#f6f9fc" /><stop offset=".45" stopColor="#b6c0ca" /><stop offset=".7" stopColor="#fff" /><stop offset="1" stopColor="#9aa6b3" />
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="16" fill={"url(#t" + u + ")"} />
+      <path d="M22 13v31a4 4 0 0 0 4 4h20" fill="none" stroke={"url(#m" + u + ")"} strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M34 28l7-7 7 7" fill="none" stroke="#7be0b4" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

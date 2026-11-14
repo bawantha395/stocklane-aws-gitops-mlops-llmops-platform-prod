@@ -15,7 +15,7 @@ html[data-theme="dark"] body, html[data-theme="dark"] .stock-shell, html[data-th
   background: var(--dots), linear-gradient(180deg, #1c1c1e 0%, #141415 100%) !important; background-attachment: fixed !important; }
 
 /* Settings cover: the silver card surface (light) or the charcoal texture (dark) */
-.ws-set-cover { background: #2b2b2d url("/lifta-cover.png") right center / cover no-repeat; height: 150px; box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .06), inset 0 2px 0 #fff; position: relative; }
+.ws-set-cover { background: linear-gradient(135deg, #3b3b3d, #2f2f31); height: 104px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14); position: relative; }
 .ws-set-cover::after { content: none; }
 html[data-theme="dark"] .ws-set-cover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18); }
 
@@ -73,9 +73,6 @@ html[data-theme="dark"] .counter-step h2 span { background: #2a8a63 !important; 
 /* Sidebar brand: flat vector mark + wordmark; the dark emboss is kept for hero places only */
 .stock-sidebar .stock-brand { display: flex; align-items: center; gap: 10px; padding: 0; margin: 4px 0 10px; color: var(--ink); }
 .stock-brand b, .m-brand b { font-size: 26px; font-weight: 800; letter-spacing: -.045em; color: var(--ink); }
-.lifta-mark { color: var(--ink); flex: none; }
-.lifta-mark .lifta-chev { stroke: var(--apple-blue); }
-html[data-theme="dark"] .lifta-mark { color: #f2f2f4; }
 /* Mobile: the top bar (Lifta, language, search) stays pinned under the dock, and the tabs pin under it */
 @media (max-width: 760px) {
   html .stock-shell .stock-header { position: sticky !important; top: calc(84px + env(safe-area-inset-top)); height: 56px; z-index: 35; }
@@ -101,3 +98,18 @@ html, body { overflow-x: clip; }
 @media (max-width: 350px) { .stock-header .icon-button { display: none; } .stock-header .m-brand b { display: none; } }
 .start-bar span { background: linear-gradient(90deg, #2a8a63, #14684c) !important; }
 .start-steps li.next .start-mark { background: #1d6b4f !important; }
+
+/* Brand lockup: tile + big wordmark + subtitle */
+.stock-sidebar .stock-brand { gap: 12px; margin: 6px 0 2px; }
+.stock-brand b { font-size: 34px; letter-spacing: -.05em; line-height: 1; }
+.stock-brand span, .m-brand span { color: #1d5bd8 !important; }
+.stock-sidebar > p { margin: 2px 0 14px 56px; font-size: 11px; letter-spacing: .22em; color: var(--muted); }
+.m-brand b { font-size: 26px; }
+.lifta-logo { box-shadow: 0 6px 16px rgba(0, 0, 0, .25); border-radius: 24%; }
+/* Pinned bars follow the dock: when it is tucked away, they move up with it */
+@media (max-width: 760px) {
+  .stock-shell[data-dock="hidden"] .stock-header { top: calc(30px + env(safe-area-inset-top)) !important; }
+  .stock-shell[data-dock="hidden"] .ws-sticky, .stock-shell[data-dock="hidden"] .ws-tabs { top: calc(86px + env(safe-area-inset-top)) !important; }
+}
+/* Desktop: the workshop tabs pin just under the top bar, never behind it */
+@media (min-width: 761px) { .ws-sticky { top: 72px; } }
