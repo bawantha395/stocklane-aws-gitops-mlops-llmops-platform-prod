@@ -73,7 +73,7 @@ export function StockReport() {
             ))}
           </tbody>
         </table>
-        {!shown.length && <div className="stock-empty">{lines.length ? "No items match." : "No items yet. Add your first item at the Storeroom counter."}</div>}
+        {!shown.length && <div className="stock-empty">{lines.length ? "No items match." : "No parts yet. Add your first part at the Parts counter, then this report fills itself."}</div>}
       </div>
     </section>
   );

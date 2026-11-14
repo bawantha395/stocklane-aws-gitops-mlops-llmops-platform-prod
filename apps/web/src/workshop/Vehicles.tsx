@@ -62,7 +62,7 @@ export function Vehicles() {
               <span className="ws-item-side"><small>{kmText(v.last_km)}</small>{v.next_service_date && <small>Next: {v.next_service_date}</small>}</span>
             </button>
           ))}
-          {!data.length && <Empty>{term ? "No vehicle matches." : "No vehicles yet. They appear when you create a job."}</Empty>}
+          {!data.length && <Empty>{term ? "No vehicle matches." : "No vehicles yet. A vehicle is added by itself when you create its first job."}</Empty>}
         </div>
       )}
     </>

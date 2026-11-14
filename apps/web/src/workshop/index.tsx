@@ -16,8 +16,8 @@ import { WsContext, type Business, type Page, type PageName } from "./common";
 import { getBusinessName, setBusinessName } from "../businessName";
 const FALLBACK: Business = { name: "Workshop Suite", address: "", phone: "", email: "", reg_no: "", bank: "", footer: "", tax_name: "VAT", tax_rate: 0, mechanic_discount_pct: 10 };
 
-export function Workshop({ owner }: { owner: boolean }) {
-  const [page, setPage] = useState<Page>({ name: "home" });
+export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
+  const [page, setPage] = useState<Page>(start || { name: "home" });
   const [notice, setNotice] = useState("");
   const [business, setBusiness] = useState<Business>({ ...FALLBACK, name: getBusinessName() });
   const reloadBusiness = useCallback(() => { api<Business>("/api/workshop/settings").then((b) => { setBusiness(b); setBusinessName(b.name); }).catch(() => undefined); }, []);

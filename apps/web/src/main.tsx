@@ -21,6 +21,10 @@ import {
   ClipboardCheck,
   ListChecks,
   Wrench,
+  Menu as MenuIcon,
+  FileText,
+  PlusCircle,
+  X as CloseIcon,
 } from "lucide-react";
 import {
   api,
@@ -43,6 +47,7 @@ import "./theme.css";
 import { setBusinessName, useBusinessName } from "./businessName";
 import { Logo } from "./Logo";
 import { SignIn, type SignInMode } from "./SignIn";
+import type { Page as WsPage } from "./workshop/common";
 
 document.documentElement.dataset.glass = "light";
 const Scanner = React.lazy(() =>
@@ -216,6 +221,12 @@ function App() {
   const [dockHidden, setDockHidden] = useState(() => {
     try { return localStorage.getItem("lifta.dock") === "hidden"; } catch { return false; }
   });
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [wsStart, setWsStart] = useState<{ page: WsPage; n: number }>({ page: { name: "home" }, n: 0 });
+  const [started, setStarted] = useState<{ jobs: boolean; invoices: boolean } | null>(null);
+  const [startHidden, setStartHidden] = useState(() => {
+    try { return localStorage.getItem("lifta.start") === "done"; } catch { return false; }
+  });
   const swipeY = useRef<number | null>(null);
   function setDock(hidden: boolean) {
     setDockHidden(hidden);
@@ -386,6 +397,15 @@ function App() {
     },
     [preview],
   );
+  useEffect(() => {
+    if (!session || !session.roles.includes("ROLE_OWNER") || startHidden || started) return;
+    let live = true;
+    void Promise.all([
+      api<unknown[]>("/api/workshop/jobs").catch(() => null),
+      api<unknown[]>("/api/workshop/invoices").catch(() => null),
+    ]).then(([j, i]) => { if (live) setStarted({ jobs: !!j?.length, invoices: !!i?.length }); });
+    return () => { live = false; };
+  }, [session, startHidden, started]);
   const onCallback = typeof location !== "undefined" && location.pathname === "/auth/callback";
   const resetIdentification = () => {
     photoTarget.current = "";
@@ -402,6 +422,7 @@ function App() {
   };
   const navigate = (next: View, preserveCounterPick = false) => {
     if (submitting.current) return;
+    setMenuOpen(false);
     setScanner(false);
     resetIdentification();
     if (next !== "counter" || !preserveCounterPick) setCounterPick(null);
@@ -417,6 +438,10 @@ function App() {
     setCounterMode(mode);
     setCounterPick(picked);
     navigate("counter", true);
+  };
+  const openWorkshop = (page: WsPage) => {
+    setWsStart((w) => ({ page, n: w.n + 1 }));
+    navigate("workshop");
   };
   const chooseQR = useCallback(
     (value: string) => {
@@ -771,6 +796,17 @@ function App() {
           onSignOut={() => void signOut()} />
       );
   }
+  const navItems: ({ group: string } | { key: View; full: string; short: string; sub: string; Icon: typeof Home; main?: boolean })[] = [
+    { key: "home", full: "Home", short: "Home", sub: "", Icon: Home, main: true },
+    { group: "WORKSHOP MANAGEMENT" },
+    { key: "workshop", full: "Jobs & Invoices", short: "Jobs", sub: "Job cards, vehicles and bills", Icon: Wrench, main: true },
+    { group: "STOCK MANAGEMENT" },
+    { key: "counter", full: "Parts counter", short: "Counter", sub: "Receive or give a part", Icon: ScanLine, main: true },
+    { key: "stock", full: "Parts list", short: "Parts", sub: owner ? "All parts, photos and QR labels" : "See what is in stock", Icon: Package },
+    { key: "activity", full: "History", short: "History", sub: "Every part in and out", Icon: Activity },
+    ...(owner ? [{ key: "analysis" as View, full: "Reports", short: "Reports", sub: "Stock summary and low stock", Icon: ClipboardCheck }] : []),
+  ];
+  const moreActive = view === "stock" || view === "activity" || view === "analysis";
   return (
     <div className="stock-shell" data-dock={dockHidden ? "hidden" : "shown"}>
       <aside className="stock-sidebar" {...swipe}>
@@ -785,28 +821,34 @@ function App() {
           <Logo size={34} /> <b>Lifta<span>.</span></b>
         </a>
         <p>WORKSHOP SUITE</p>
-        {(
-          [
-            ["home", "Workspace", Home],
-            ["workshop", "Workshop", Wrench],
-            ["counter", "Storeroom counter", ScanLine],
-            ["stock", owner ? "Manage catalogue" : "Current stock", Package],
-            ["activity", "Activity", Activity],
-            ...(owner
-              ? [["analysis", "Stock report", ClipboardCheck] as const]
-              : []),
-          ] as const
-        ).map(([key, label, Icon]) => (
-          <button
-            key={key}
-            disabled={busy}
-            className={view === key ? "chosen" : ""}
-            onClick={() => navigate(key)}
-          >
-            <Icon size={19} />
-            {label}
-          </button>
-        ))}
+        {navItems.map((n) =>
+          "group" in n ? (
+            <span className="nav-heading" key={n.group}>{n.group}</span>
+          ) : (
+            <button
+              key={n.key}
+              disabled={busy}
+              className={(view === n.key ? "chosen" : "") + (n.main ? "" : " nav-more")}
+              onClick={() => navigate(n.key)}
+            >
+              <n.Icon size={19} />
+              <span className="nav-text">
+                <span className="nav-full">{n.full}</span>
+                {n.sub && <small className="nav-sub">{n.sub}</small>}
+              </span>
+              <span className="nav-short">{n.short}</span>
+            </button>
+          ),
+        )}
+        <button
+          className={"dock-menu-btn" + (menuOpen || moreActive ? " chosen" : "")}
+          aria-expanded={menuOpen}
+          aria-controls="menu-sheet"
+          onClick={() => setMenuOpen((o) => !o)}
+        >
+          {menuOpen ? <CloseIcon size={19} /> : <MenuIcon size={19} />}
+          <span className="nav-short">Menu</span>
+        </button>
         <div className="stock-sidebar-foot">
           <img className="shop-logo" src="/shop-logo.png" alt={businessName} />
           <strong>{owner ? "Owner workspace" : "Stock team"}</strong>
@@ -821,6 +863,27 @@ function App() {
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setDock(!dockHidden); }}
         />
       </aside>
+      {menuOpen && (
+        <div className="menu-sheet-back" onClick={() => setMenuOpen(false)}>
+          <nav id="menu-sheet" className="menu-sheet" aria-label="All sections" onClick={(e) => e.stopPropagation()}>
+            {navItems.map((n) =>
+              "group" in n ? (
+                <p className="menu-heading" key={n.group}>{n.group}</p>
+              ) : (
+                <button key={n.key} className={view === n.key ? "chosen" : ""} disabled={busy} onClick={() => navigate(n.key)}>
+                  <n.Icon size={22} />
+                  <span><strong>{n.full}</strong>{n.sub && <small>{n.sub}</small>}</span>
+                </button>
+              ),
+            )}
+            <div className="menu-sheet-foot">
+              <img className="shop-logo" src="/shop-logo.png" alt={businessName} />
+              <strong>{owner ? "Owner workspace" : "Stock team"}</strong>
+              <small>{businessName}</small>
+            </div>
+          </nav>
+        </div>
+      )}
       <main className="stock-main">
         <header className="stock-header">
           <span>
@@ -878,9 +941,59 @@ function App() {
             <div className="workspace-intro">
               <p className="eyebrow">YOUR WORKSHOP. UNDER CONTROL.</p>
               <h1>What are we doing today?</h1>
-              <p>Point the camera at a part. That is all.</p>
+              <p>Pick what you want to do. New here? Follow the steps below.</p>
             </div>
+            {owner && session && !startHidden && started && (() => {
+              const steps = [
+                { done: businessName !== "Workshop Suite" && businessName.trim() !== "", title: "Add your business details", sub: "Name, address and phone for your bills.", go: () => openWorkshop({ name: "settings" }) },
+                { done: items.length > 0, title: "Add your first part", sub: "Take a photo of a part. Lifta reads the label.", go: () => openCounter("receive") },
+                { done: started.jobs, title: "Start your first job", sub: "One vehicle, its repairs, parts and labour.", go: () => openWorkshop({ name: "new" }) },
+                { done: started.invoices, title: "Make your first invoice", sub: "Open a job and press Create invoice.", go: () => openWorkshop({ name: "jobs" }) },
+              ];
+              const left = steps.filter((x) => !x.done).length;
+              if (!left) return null;
+              const next = steps.findIndex((x) => !x.done);
+              return (
+                <section className="start-card" aria-label="Get started">
+                  <div className="start-head">
+                    <div>
+                      <p className="eyebrow">GET STARTED</p>
+                      <h2>{steps.length - left} of {steps.length} done</h2>
+                    </div>
+                    <button className="stock-link" onClick={() => { try { localStorage.setItem("lifta.start", "done"); } catch { /* private mode */ } setStartHidden(true); }}>Hide</button>
+                  </div>
+                  <div className="start-bar" aria-hidden="true"><span style={{ width: ((steps.length - left) / steps.length) * 100 + "%" }} /></div>
+                  <ol className="start-steps">
+                    {steps.map((x, i) => (
+                      <li key={x.title} className={x.done ? "done" : i === next ? "next" : ""}>
+                        <span className="start-mark">{x.done ? <Check size={15} /> : i + 1}</span>
+                        <span className="start-text"><strong>{x.title}</strong><small>{x.sub}</small></span>
+                        {!x.done && <button className={"button small " + (i === next ? "primary" : "secondary")} disabled={!session || busy} onClick={x.go}>{i === next ? "Do this" : "Open"}</button>}
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              );
+            })()}
             {owner && session && <ReorderCard />}
+            <p className="home-label">WORKSHOP</p>
+            <div className="counter-tiles">
+              <button className="counter-tile job" disabled={!session || busy} onClick={() => openWorkshop({ name: "new" })}>
+                <PlusCircle size={30} />
+                <span>
+                  <strong>Start a job</strong>
+                  <small>A vehicle comes in for work</small>
+                </span>
+              </button>
+              <button className="counter-tile bill" disabled={!session || busy} onClick={() => openWorkshop({ name: "invoices" })}>
+                <FileText size={30} />
+                <span>
+                  <strong>Invoices</strong>
+                  <small>Open a bill or take a payment</small>
+                </span>
+              </button>
+            </div>
+            <p className="home-label">STOCK</p>
             <div className="counter-tiles">
               <button
                 className="counter-tile receive"
@@ -914,7 +1027,7 @@ function App() {
                 <span className="tile-icon">
                   <Search />
                 </span>
-                <h2>Find an item</h2>
+                <h2>Find a part</h2>
                 <p>Look up a part, photo or shelf.</p>
                 <span className="tile-bottom">
                   Search stock <ArrowRight size={20} />
@@ -984,7 +1097,7 @@ function App() {
               disabled={busy}
               onClick={() => navigate("home")}
             >
-              <ArrowLeft size={17} /> Workspace
+              <ArrowLeft size={17} /> Home
             </button>
             <div className="stock-title">
               <div>
@@ -1501,7 +1614,7 @@ function App() {
             <div className="stock-title">
               <div>
                 <p className="eyebrow">CATALOGUE & SHELVES</p>
-                <h1>{owner ? "Manage catalogue" : "Current stock"}</h1>
+                <h1>Parts list</h1>
                 <p>
                   Find exact parts. Keep their labels and shelf details
                   together.
@@ -1611,12 +1724,12 @@ function App() {
                   <h3>
                     {query
                       ? "No matching items"
-                      : "Your catalogue is ready to begin"}
+                      : "No parts yet"}
                   </h3>
                   <p>
                     {query
                       ? "Try the manufacturer part number."
-                      : "Register your first item, then print its QR label."}
+                      : "This is the list of every part you keep. Go to the Parts counter, take a photo of a part and Lifta reads the label. Then print its QR label."}
                   </p>
                 </div>
               )}
@@ -1626,7 +1739,7 @@ function App() {
         {view === "count" && (
           <>
             <button className="back-link" onClick={() => navigate("home")}>
-              <ArrowLeft size={17} /> Workspace
+              <ArrowLeft size={17} /> Home
             </button>
             <div className="stock-title">
               <div>
@@ -1753,7 +1866,7 @@ function App() {
           </>
         )}
         {view === "analysis" && owner && <StockReport />}
-        {view === "workshop" && session && <Workshop owner={owner} />}
+        {view === "workshop" && session && <Workshop key={wsStart.n} owner={owner} start={wsStart.page} />}
         {view === "counter" && session && (
           <Counter
             key={counterKey}
@@ -1857,7 +1970,7 @@ function App() {
                 </tbody>
               </table>
               {!visibleMoves.length && (
-                <div className="stock-empty">No recorded movements yet.</div>
+                <div className="stock-empty"><h3>No history yet</h3><p>Every part you receive or give out will be listed here, with who did it and when.</p></div>
               )}
             </section>
           </>

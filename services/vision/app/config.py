@@ -15,7 +15,7 @@ class Settings:
         self.bedrock_region = e.get('BEDROCK_REGION', '')
         self.bedrock_daily_request_limit = int(e.get('BEDROCK_DAILY_LIMIT', '50'))
         self.gemini_api_key = e.get('GEMINI_API_KEY', '')
-        self.gemini_model = e.get('GEMINI_MODEL', 'gemini-3.8-flash')
+        self.gemini_model = e.get('GEMINI_MODEL', 'gemini-3.8-flash,gemini-3.8-flash-lite')
         self.textract_fallback = e.get('TEXTRACT_FALLBACK', 'false') == 'true'
         self.textract_region = e.get('TEXTRACT_REGION', '')
         self.match_threshold = float(e.get('MATCH_THRESHOLD', '0.92'))

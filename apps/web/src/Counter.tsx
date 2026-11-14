@@ -106,7 +106,7 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
   const matches = search.trim().length >= 2 ? items.filter((i) => (i.name + " " + i.sku + " " + i.brand + " " + (i.part_number || "")).toLowerCase().includes(search.trim().toLowerCase())).slice(0, 8) : [];
   const choosePart = (item: Item) => { setPart(item); setCandidates([]); setPhotoId(""); setError(""); };
   return (
-    <section className="counter-screen" aria-label="Storeroom counter">
+    <section className="counter-screen" aria-label="Parts counter">
       <div className="counter-modes" role="tablist">
         {(([["receive", "Receive"], ["give", "Give a part"]]) as [Mode, string][]).map(([m, label]) => (
           <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? "chosen " + m : m} onClick={() => switchMode(m)}>{label}</button>

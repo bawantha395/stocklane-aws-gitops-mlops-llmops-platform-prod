@@ -84,5 +84,5 @@ variable "gemini_api_key" {
 
 variable "gemini_model" {
   type    = string
-  default = "gemini-3.8-flash"
+  default = "gemini-3.8-flash,gemini-3.8-flash-lite"
 }

@@ -23,7 +23,7 @@ export function Jobs() {
       </div>
       <div className="ws-list">
         {shown.map((j) => <JobItem key={j.id} j={j} onOpen={() => go({ name: "job", id: j.id })} />)}
-        {!shown.length && <Empty>{data.length ? "No jobs match." : "No jobs yet. Press New job."}</Empty>}
+        {!shown.length && <Empty>{data.length ? "No jobs match." : "No jobs yet. A job is one vehicle\u2019s visit: its repairs, parts and bill. Press + New job to start the first one."}</Empty>}
       </div>
     </>
   );

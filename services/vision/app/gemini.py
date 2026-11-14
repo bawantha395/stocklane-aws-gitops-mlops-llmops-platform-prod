@@ -24,8 +24,8 @@ def _small(image):
         return image
 
 
-def _call(settings, body, timeout):
-    request = urllib.request.Request(URL.format(model=settings.gemini_model), data=json.dumps(body).encode(), method='POST',
+def _call(settings, body, timeout, model=None):
+    request = urllib.request.Request(URL.format(model=model or settings.gemini_model), data=json.dumps(body).encode(), method='POST',
                                      headers={'Content-Type': 'application/json', 'x-goog-api-key': settings.gemini_api_key})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.load(response)
@@ -38,15 +38,30 @@ def propose(settings, image, context=None):
                                     {'text': SYSTEM + ' ' + user_text(context)}]}],
             # Reading a label needs no long reasoning; "minimal" keeps the answer in a few seconds.
             'generationConfig': dict(config, thinkingConfig={'thinkingLevel': 'minimal'})}
+    # Each model has its own free quota. GEMINI_MODEL may list several, separated by commas: the next one is tried when
+    # a model is out of quota (429), unknown (404) or busy (503). A slow model is not retried, to stay inside the 30 s API limit.
+    models = [m.strip() for m in settings.gemini_model.split(',') if m.strip()]
     try:
-        try:
-            data = _call(settings, body, 18)
-        except urllib.error.HTTPError as error:
-            if error.code != 400:
-                raise
-            log.warning('Gemini rejected the thinking setting; retrying without it')
-            body['generationConfig'] = config  # an older or different model may not accept thinkingConfig
-            data = _call(settings, body, 18)
+        data, last = None, None
+        for model in models:
+            try:
+                try:
+                    data = _call(settings, body, 18, model)
+                except urllib.error.HTTPError as error:
+                    if error.code != 400 or 'thinkingConfig' not in body['generationConfig']:
+                        raise
+                    log.warning('Gemini rejected the thinking setting; retrying without it')
+                    plain = dict(body, generationConfig=config)  # an older or different model may not accept thinkingConfig
+                    data = _call(settings, plain, 18, model)
+                log.info('Gemini answered model=%s', model)
+                break
+            except urllib.error.HTTPError as error:
+                last = error
+                log.warning('Gemini model=%s failed status=%s', model, error.code)
+                if error.code not in (404, 429, 503):
+                    raise
+        if data is None:
+            raise last
         fields = json.loads(data['candidates'][0]['content']['parts'][0]['text'])
         if not isinstance(fields, dict):
             raise ValueError('Expected a label JSON object')

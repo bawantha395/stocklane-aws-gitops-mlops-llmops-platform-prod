@@ -35,7 +35,7 @@ export function Invoices() {
             <span className="ws-item-side"><b>{lkr(i.total)}</b><Pill s={i.status} />{(i.status === "UNPAID" || i.status === "PARTIAL") && <small>Owes {lkr(i.total - i.paid)}{days(i.created_at) > 7 ? ", " + days(i.created_at) + " d" : ""}</small>}</span>
           </button>
         ))}
-        {!shown.length && <Empty>{filter === "UNPAID" ? "Everything is paid." : "No invoices."}</Empty>}
+        {!shown.length && <Empty>{filter === "UNPAID" ? "Everything is paid." : "No invoices yet. Open a job and press Create invoice. It will appear here."}</Empty>}
       </div>
     </>
   );
