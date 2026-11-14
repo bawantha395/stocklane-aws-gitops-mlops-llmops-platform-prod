@@ -5,9 +5,9 @@ html[data-glass] .stock-shell .button.primary, html[data-glass] .ws .button.prim
 html[data-glass] .stock-shell .button.primary:hover { background: linear-gradient(135deg, #12684d, #0d4a39) !important; }
 html[data-glass] .ws-tabs button.chosen, html[data-glass] .ws-chip.chosen { background: linear-gradient(135deg, #0f5a43, #0b3d30) !important; color: #fff !important; }
 html[data-glass] .counter-tile.receive, html[data-glass] .counter-big, html[data-glass] .scan-launch, html[data-glass] .counter-modes button.chosen.receive {
-  background: linear-gradient(135deg, #1b4fa8, #0e2f6b) !important; color: #fff !important; box-shadow: 0 10px 26px rgba(8, 28, 80, .35);
+  background: linear-gradient(135deg, #14684c, #0a3f2f) !important; color: #fff !important; box-shadow: 0 10px 26px rgba(6, 48, 34, .35);
 }
-html[data-glass] .counter-tile.give, html[data-glass] .counter-modes button.chosen.give { background: linear-gradient(135deg, #14684c, #0a3f2f) !important; color: #fff !important; }
+html[data-glass] .counter-tile.give, html[data-glass] .counter-modes button.chosen.give { background: linear-gradient(135deg, #4a4a4e, #252527) !important; color: #fff !important; }
 html[data-glass] .counter-tile.receive *, html[data-glass] .counter-tile.give *, html[data-glass] .counter-big *, html[data-glass] .scan-launch * { color: #fff !important; }
 html[data-glass] .stock-sidebar .stock-brand span { color: var(--blue-ink); }
 /* plain light background, as in the original Stocklane */

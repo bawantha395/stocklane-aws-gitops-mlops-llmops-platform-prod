@@ -172,7 +172,7 @@
 }
 
 /* ---- Liquid glass: translucent surfaces with blur (iOS and macOS look) ---- */
-html[data-glass] .stock-shell { background: radial-gradient(900px 500px at 10% -5%, rgba(0, 113, 227, .10), transparent 60%), radial-gradient(800px 500px at 100% 10%, rgba(52, 199, 89, .10), transparent 60%), var(--wash); background-attachment: fixed; }
+html[data-glass] .stock-shell { background: radial-gradient(900px 500px at 10% -5%, rgba(29, 107, 79, .10), transparent 60%), radial-gradient(800px 500px at 100% 10%, rgba(52, 199, 89, .10), transparent 60%), var(--wash); background-attachment: fixed; }
 .ws-glass, .ws-card, .ws-kpi, .ws-item, .ws-visit, .ws-tabs button, .ws-chip, .ws-actionbar, .ws-modal-bar {
   background: rgba(var(--w),.62); border: 1px solid rgba(var(--w),.75);
   -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);

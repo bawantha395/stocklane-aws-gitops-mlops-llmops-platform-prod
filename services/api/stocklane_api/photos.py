@@ -118,7 +118,7 @@ def logo_check(value):
 
 
 def logo_save(raw, version):
-    s3().put_object(Bucket=bucket(), Key='workshop/logo/%s.jpg' % version, Body=raw, ContentType='image/jpeg', CacheControl='private, max-age=31536000')
+    s3().put_object(Bucket=bucket(), Key='workshop/photos/logo/%s.jpg' % version, Body=raw, ContentType='image/jpeg', CacheControl='private, max-age=31536000')
 
 
 def logo_bytes(version):
@@ -126,7 +126,7 @@ def logo_bytes(version):
     if not version or not re.fullmatch(r'[0-9a-f]{32}', str(version)):
         return None
     try:
-        return s3().get_object(Bucket=bucket(), Key='workshop/logo/%s.jpg' % version)['Body'].read()
+        return s3().get_object(Bucket=bucket(), Key='workshop/photos/logo/%s.jpg' % version)['Body'].read()
     except Exception:  # noqa: BLE001
         return None
 
@@ -134,6 +134,6 @@ def logo_bytes(version):
 def logo_drop(version):
     try:
         if version and re.fullmatch(r'[0-9a-f]{32}', str(version)):
-            s3().delete_object(Bucket=bucket(), Key='workshop/logo/%s.jpg' % version)
+            s3().delete_object(Bucket=bucket(), Key='workshop/photos/logo/%s.jpg' % version)
     except Exception:  # noqa: BLE001
         pass

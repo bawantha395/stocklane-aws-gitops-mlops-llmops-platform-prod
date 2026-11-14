@@ -63,7 +63,7 @@ button:not(:disabled):active, .button:not(:disabled):active, a.button:active { t
 .cmd-open kbd { font-weight: 600; font-size: 12px; background: var(--wash); border-radius: 6px; padding: 2px 6px; }
 @media (max-width: 760px) { .cmd-open kbd, .cmd-open .cmd-label { display: none; } .cmd-open { width: 44px; padding: 0; justify-content: center; } }
 :root, .paper, .ws-bill {
-  --stock-ink:#1d1d1f; --stock-muted:#6e6e73; --stock-line:#e5e5ea; --stock-green:#248a3d; --stock-orange:#c4570c; --apple-blue:#0071e3; --apple-bg:#f5f5f7; --ws-bad:#b42318; --ws-warn:#a65c35; --ws-blue:#2a78d6; --ws-accent:#248a3d; --ws-line:#e5e5ea; --ws-muted:#6e6e73; --ink-rgb:20,35,31;
+  --stock-ink:#1d1d1f; --stock-muted:#6e6e73; --stock-line:#e5e5ea; --stock-green:#248a3d; --stock-orange:#c4570c; --apple-blue:#1d6b4f; --apple-bg:#f5f5f7; --ws-bad:#b42318; --ws-warn:#a65c35; --ws-blue:#2a78d6; --ws-accent:#248a3d; --ws-line:#e5e5ea; --ws-muted:#6e6e73; --ink-rgb:20,35,31;
   --surface:#fff; --wash:#f5f5f7; --wash-2:#edf0ed; --ink:#14231f; --ink-2:#3a3a3c; --muted:#6e6e73; --line:#e5e5ea;
   --brand-ink:#0f5a43; --blue-ink:#0e2f6b; --warm-ink:#b4561c;
   --tint-green:#e2f3e8; --tint-amber:#fdf1d8; --tint-orange:#fdf1e4; --tint-red:#fde4e4; --tint-blue:#e3edff;
@@ -919,7 +919,7 @@ html[data-theme="dark"] {
 }
 
 html[data-theme="dark"]:root {
-  --stock-ink:#ecefed; --stock-muted:#9aa19e; --stock-line:#33373a; --stock-green:#4cc27a; --stock-orange:#f0a064; --apple-blue:#4da3ff; --apple-bg:#111312;
+  --stock-ink:#ecefed; --stock-muted:#9aa19e; --stock-line:#33373a; --stock-green:#4cc27a; --stock-orange:#f0a064; --apple-blue:#4cc27a; --apple-bg:#111312;
   --ws-bad:#ff9b95; --ws-warn:#f0a064; --ws-blue:#6aaeff; --ws-accent:#4cc27a; --ws-line:#33373a; --ws-muted:#9aa19e; --ink-rgb:236,239,237;
   --ink:#ecefed; --muted:#9aa19e; --line:#33373a; --green:#6fcfa4;
 }

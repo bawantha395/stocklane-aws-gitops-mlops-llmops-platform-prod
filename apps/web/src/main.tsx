@@ -870,9 +870,8 @@ function App() {
             navigate("home");
           }}
         >
-          <Logo size={34} /> <b>Lifta<span>.</span></b>
+          <Logo size={30} /> <b>Lifta<span>.</span></b>
         </a>
-        <p>{t("WORKSHOP SUITE")}</p>
         {navItems.map((n) =>
           "group" in n ? (
             <span className="nav-heading" key={n.group}>{n.group}</span>
@@ -929,6 +928,11 @@ function App() {
               <strong>{owner ? t("Owner workspace") : t("Stock team")}</strong>
               <small>{businessName}</small>
             </div>
+            {auth && (
+              <button className="menu-signout" disabled={busy} onClick={() => void signOut()}>
+                <LogOut size={22} /> <span><strong>{t("Sign out")}</strong></span>
+              </button>
+            )}
           </nav>
         </div>
       )}
@@ -950,7 +954,7 @@ function App() {
       <main className="stock-main">
         <header className="stock-header">
           <a className="m-brand" href="#" onClick={(e) => { e.preventDefault(); navigate("home"); }}>
-            <Logo size={30} /> <b>Lifta<span>.</span></b>
+            <Logo size={26} /> <b>Lifta<span>.</span></b>
           </a>
           <div className="biz" aria-label={businessName}>
             <span className="biz-logo">
@@ -1891,6 +1895,7 @@ function App() {
           <Counter
             key={counterKey}
             items={items}
+            moves={moves}
             photo={(p) => <ItemPhoto item={p} />}
             initialMode={counterMode}
             picked={counterPick}
@@ -2023,6 +2028,7 @@ function App() {
             setEdit(null);
             fromCounter.current = false;
           }}
+          onAddedAnother={async (message) => { tell(message); await refresh(); }}
           onSaved={async (p, message) => {
             const wasEdit = !!edit;
             setNewItem(false);
@@ -2140,7 +2146,9 @@ function ProductEditor({
   products,
   onClose,
   onSaved,
+  onAddedAnother,
 }: {
+  onAddedAnother?: (message: string) => void | Promise<void>;
   item: Item | null;
   draft: Draft | null;
   aiNote?: string;
@@ -2188,6 +2196,19 @@ function ProductEditor({
   const [moreOpen, setMoreOpen] = useState(() => !!(pre("grade") || pre("capacity")));
   const sku = useRef("ITEM-" + uid().slice(0, 8).toUpperCase());
   const command = useCommand();
+  // A photo can be added while registering: it is stored now and attached to the new item on save.
+  const [photoId, setPhotoId] = useState(imageId), [photoBusy, setPhotoBusy] = useState(false), [savedNote, setSavedNote] = useState("");
+  const addAnother = useRef(false), formEl = useRef<HTMLFormElement>(null);
+  const pickPhoto = async (f?: File) => {
+    if (!f) return;
+    setPhotoBusy(true); setError("");
+    try {
+      const form = new FormData(); form.append("file", await shrink(f));
+      const found = await api<Match>("/api/vision/match", { method: "POST", body: form });
+      setPhotoId(found.imageId);
+    } catch (x) { setError((x as Error).message); }
+    finally { setPhotoBusy(false); }
+  };
   const fieldState: Record<Field, [string, (v: string) => void]> = {
     name: [name, setName], brand: [brand, setBrand], partNumber: [part, setPart], category: [category, setCategory],
     grade: [spec, setSpec], capacity: [size, setSize], location: [location, setLocation], unit: [unit, setUnit],
@@ -2280,7 +2301,7 @@ function ProductEditor({
           unit,
           openingQuantity: quantity,
           sellingPrice: 0,
-          imageId: imageId || null,
+          imageId: photoId || null,
         });
       let message = item
         ? "Catalogue updated. QR identity and stock history retained."
@@ -2298,10 +2319,21 @@ function ProductEditor({
             " AI draft resolution is pending; stock was already recorded.";
         }
       }
+      if (addAnother.current && !item && !draft && !inTask && onAddedAnother) {
+        // Keep the form open for the next part: the shelf, brand, category and unit usually stay the same.
+        addAnother.current = false;
+        await onAddedAnother(message);
+        setSavedNote(t("Saved {name}. Add the next one.", { name: result.name }));
+        setName(""); setPart(""); setQuantity(0); setPhotoId(""); setSpec(""); setSize("");
+        sku.current = "ITEM-" + uid().slice(0, 8).toUpperCase();
+        setTimeout(() => (formEl.current?.querySelector("input:not([type=file])") as HTMLInputElement | null)?.focus(), 30);
+        return;
+      }
       onSaved(result, message);
     } catch (x) {
       setError((x as Error).message);
     } finally {
+      addAnother.current = false;
       setBusy(false);
     }
   };
@@ -2329,14 +2361,24 @@ function ProductEditor({
             ? t("Check the filled fields, fix anything wrong, then save. Nothing is saved until you press Save item.")
             : "Use the visible manufacturer and part number where available."}
         </p>
-        {imageId && <Photo id={imageId} zoom />}
+        {photoId && <Photo id={photoId} zoom />}
+        {!item && (
+          <div className="reg-photo">
+            <label className={"button secondary" + (photoBusy || busy ? " disabled" : "")}>
+              <Camera size={18} /> {photoBusy ? t("Uploading…") : photoId ? t("Change photo") : t("Add photo")}
+              <input type="file" accept="image/*" hidden disabled={photoBusy || busy} onChange={(e) => { void pickPhoto(e.target.files?.[0]); e.target.value = ""; }} />
+            </label>
+            <small>{t("Optional. Helps Lifta recognise this part later.")}</small>
+          </div>
+        )}
+        {savedNote && <p className="reg-saved" role="status"><Check size={16} /> {savedNote}</p>}
         {banner && (
           <div className={"ai-note" + (bannerKind ? " " + bannerKind : "")} role="status">
             <span>{banner}</span>
             {Object.keys(filled).length > 0 && <button type="button" className="stock-link" onClick={clearAll}>{t("Clear all")}</button>}
           </div>
         )}
-        <form onSubmit={(e) => void save(e)}>
+        <form ref={formEl} onSubmit={(e) => void save(e)}>
           {inTask && (
             <p className="stock-help">
               Save the item first, then confirm how many came in.
@@ -2460,6 +2502,11 @@ function ProductEditor({
             >
               Cancel
             </button>
+            {!item && !draft && !inTask && onAddedAnother && (
+              <button className="button secondary" disabled={busy || !!duplicate} onClick={() => { addAnother.current = true; }}>
+                {t("Save and add another")}
+              </button>
+            )}
             <button className="button primary" disabled={busy || !!duplicate}>
               {busy ? t("Saving…") : item ? "Save changes" : t("Save item")}
             </button>

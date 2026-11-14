@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Camera as CameraIcon, Check, Loader2, Minus, Plus } from "lucide-react";
 import { t, useLang } from "./i18n";
-import { api, shrink, type Match, type Product, type BarcodeLookup } from "./api";
+import { api, shrink, type Match, type Product, type BarcodeLookup, type Movement } from "./api";
 
 const Camera = React.lazy(() => import("./Camera").then((m) => ({ default: m.Camera })));
 
@@ -16,7 +16,7 @@ export function partFromCode(value: string, items: Item[]) {
   return items.find((p) => p.id === id) || null;
 }
 
-export function Counter({ items, initialMode = "receive", picked = null, photo, onNewItem, onBarcodeSuggestion, onChanged }: { items: Item[]; initialMode?: Mode; picked?: Item | null; photo?: (item: Item) => React.ReactNode; onNewItem?: (imageId: string) => void | Promise<void>; onBarcodeSuggestion?: (barcode: string, suggestions: Record<string, string>) => void; onChanged: () => void }) {
+export function Counter({ moves = [], items, initialMode = "receive", picked = null, photo, onNewItem, onBarcodeSuggestion, onChanged }: { moves?: Movement[]; items: Item[]; initialMode?: Mode; picked?: Item | null; photo?: (item: Item) => React.ReactNode; onNewItem?: (imageId: string) => void | Promise<void>; onBarcodeSuggestion?: (barcode: string, suggestions: Record<string, string>) => void; onChanged: () => void }) {
   useLang();
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -122,6 +122,19 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
     finally { setBusy(false); }
   };
   const matches = search.trim().length >= 2 ? items.filter((i) => (i.name + " " + i.sku + " " + i.brand + " " + (i.part_number || "")).toLowerCase().includes(search.trim().toLowerCase())).slice(0, 8) : [];
+  // Parts that moved lately in this direction, newest first: the quickest way back to what the shop handles every day.
+  const recent = (() => {
+    const kinds = mode === "receive" ? ["RECEIPT", "RETURN", "OPENING"] : ["ISSUE", "STOCK_OUT"];
+    const seen = new Set<string>(), out: { item: Item; qty: number }[] = [];
+    for (const m of [...moves].filter((x) => kinds.includes(x.kind)).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))) {
+      if (seen.has(m.product_id)) continue;
+      const item = items.find((i) => i.id === m.product_id && !i.archived);
+      if (!item) continue;
+      seen.add(m.product_id); out.push({ item, qty: Number(m.quantity) });
+      if (out.length >= 6) break;
+    }
+    return out;
+  })();
   const choosePart = (item: Item) => { setPart(item); setCandidates([]); setPhotoId(""); setError(""); };
   return (
     <section className="counter-screen" aria-label={t("Parts counter")}>
@@ -157,6 +170,19 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
                 {mode === "receive" && photoId && onNewItem && (
                   <button data-tour="add-new" className="counter-new" disabled={starting} aria-busy={starting} onClick={() => { setStarting(true); void Promise.resolve(onNewItem(photoId)).finally(() => setStarting(false)); }}>{starting ? <Loader2 size={20} className="spin" /> : <Plus size={20} />} {starting ? t("Reading the label…") : candidates.length ? t("None of these: add as a new item") : t("Add as a new item (reads the label)")}</button>
                 )}
+                {recent.length > 0 && !search.trim() && (
+                  <div className="counter-recent" data-testid="counter-recent">
+                    <p>{mode === "receive" ? t("Recently added") : t("Recently taken out")}</p>
+                    <div>
+                      {recent.map((r) => (
+                        <button key={r.item.id} type="button" className="counter-recent-chip" disabled={busy} onClick={() => choosePart(r.item)}>
+                          <strong>{r.item.name}</strong>
+                          <small>{[r.item.brand, r.item.part_number].filter(Boolean).join(" · ") || r.item.sku} · {t("last")} {amount(r.qty)}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <label data-tour="counter-search" className="stock-field counter-search">{t("Or search")}<input value={search} placeholder="Oil filter" onChange={(e) => setSearch(e.target.value)} /></label>
                 {matches.map((m) => <button key={m.id} className="counter-result" onClick={() => choosePart(m)}>{photo && <span className="counter-result-photo">{photo(m)}</span>}<span className="counter-result-text">{m.name} <small>{t("Part no.")} {m.part_number || t("Not set")} · {t("System no.")} {m.sku}</small></span></button>)}
                 {search.trim().length >= 2 && !matches.length && <p className="stock-help">{t("No part matches \"{q}\".", { q: search.trim() })}</p>}
@@ -172,6 +198,11 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
                 <button aria-label="One more" onClick={() => step(1)}><Plus /></button>
                 <span>{part.unit === "LITRE" ? t("litres") : t("pieces")}</span>
               </div>
+              {part.unit !== "LITRE" && (
+                <div className="counter-qtyquick">
+                  {[5, 10, 20].map((n) => <button key={n} type="button" onClick={() => step(n)}>+{n}</button>)}
+                </div>
+              )}
             </div>
           )}
           {part && mode === "give" && (

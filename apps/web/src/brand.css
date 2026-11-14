@@ -15,9 +15,9 @@ html[data-theme="dark"] body, html[data-theme="dark"] .stock-shell, html[data-th
   background: var(--dots), linear-gradient(180deg, #1c1c1e 0%, #141415 100%) !important; background-attachment: fixed !important; }
 
 /* Settings cover: the silver card surface (light) or the charcoal texture (dark) */
-.ws-set-cover { background: linear-gradient(90deg, #efeff1, #e4e4e7); height: 150px; box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .06), inset 0 2px 0 #fff; position: relative; }
-.ws-set-cover::after { content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: min(100%, 410px); background: url("/lifta-cover.png") center / 100% 100% no-repeat; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 30%); mask-image: linear-gradient(90deg, transparent 0, #000 30%); pointer-events: none; }
-html[data-theme="dark"] .ws-set-cover { background: linear-gradient(90deg, #efeff1, #e4e4e7); height: 150px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18); }
+.ws-set-cover { background: #2b2b2d url("/lifta-cover.png") right center / cover no-repeat; height: 150px; box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .06), inset 0 2px 0 #fff; position: relative; }
+.ws-set-cover::after { content: none; }
+html[data-theme="dark"] .ws-set-cover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18); }
 
 
 /* sign-in: charcoal textured screen with a silver card, never blue */
@@ -41,3 +41,63 @@ html[data-theme="dark"] .ws-set-cover { background: linear-gradient(90deg, #efef
 .find-paste input { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font-size: 15px; }
 .find-paste input:focus-visible { outline: 2px solid var(--l-72986c); outline-offset: 2px; }
 .find-paste .button { min-height: 44px; flex: none; }
+
+/* Parts counter: recent parts as one-tap chips */
+.counter-recent { margin: 14px 0 4px; }
+.counter-recent > p { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.counter-recent > div { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.counter-recent-chip { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; min-height: 56px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); min-width: 0; }
+.counter-recent-chip strong { font-size: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.counter-recent-chip small { font-size: 12px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.counter-recent-chip:hover:not(:disabled) { border-color: var(--l-72986c); }
+/* Register a new item: photo and "saved" note */
+.reg-photo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 8px 0 12px; }
+.reg-photo label { cursor: pointer; }
+.reg-photo label.disabled { opacity: .55; pointer-events: none; }
+.reg-photo small { color: var(--muted); font-size: 12px; }
+.reg-saved { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: rgba(46, 125, 80, .12); color: #1f6b43; font-size: 14px; font-weight: 600; }
+html[data-theme="dark"] .reg-saved { color: #7fd4a1; background: rgba(80, 200, 130, .14); }
+
+/* Parts counter: one accent (green in, charcoal out), compact camera, thumb-friendly confirm */
+.counter-big.wide { min-height: 64px !important; font-size: 18px !important; }
+.counter-step h2 span { background: #1d6b4f !important; }
+html[data-theme="dark"] .counter-step h2 span { background: #2a8a63 !important; }
+.counter-qtyquick { display: flex; gap: 8px; margin-top: 10px; }
+.counter-qtyquick button { flex: 1; min-height: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font-weight: 700; }
+.counter-qtyquick button:hover { border-color: var(--l-72986c); }
+@media (max-width: 760px) {
+  .counter-confirm { position: sticky; bottom: 78px; z-index: 5; box-shadow: 0 10px 28px rgba(0, 0, 0, .22); }
+}
+.stock-shell .stock-sidebar > button.chosen small { color: inherit !important; opacity: .75; }
+
+/* Sidebar brand: flat vector mark + wordmark; the dark emboss is kept for hero places only */
+.stock-sidebar .stock-brand { display: flex; align-items: center; gap: 10px; padding: 0; margin: 4px 0 10px; color: var(--ink); }
+.stock-brand b, .m-brand b { font-size: 26px; font-weight: 800; letter-spacing: -.045em; color: var(--ink); }
+.lifta-mark { color: var(--ink); flex: none; }
+.lifta-mark .lifta-chev { stroke: var(--apple-blue); }
+html[data-theme="dark"] .lifta-mark { color: #f2f2f4; }
+/* Mobile: the top bar (Lifta, language, search) stays pinned under the dock, and the tabs pin under it */
+@media (max-width: 760px) {
+  html .stock-shell .stock-header { position: sticky !important; top: calc(84px + env(safe-area-inset-top)); height: 56px; z-index: 35; }
+  .ws-sticky, .ws-tabs { top: calc(140px + env(safe-area-inset-top)) !important; }
+}
+
+/* Small screens: nothing may push the page wider than the screen. Sign out lives in the Menu there. */
+html, body { overflow-x: clip; }
+.stock-main { min-width: 0; }
+@media (max-width: 760px) {
+  .stock-header .button.small { display: none; }
+  .stock-header > div { min-width: 0; gap: 8px; }
+}
+@media (max-width: 400px) {
+  .stock-header .biz, .stock-header .m-brand b { min-width: 0; }
+  .stock-header .lang-toggle button { padding-inline: 10px; }
+}
+.cmd-input:focus-within { border-color: var(--l-72986c); box-shadow: 0 0 0 3px rgba(29, 107, 79, .18); }
+.cmd-input input, .cmd-input input:focus, .cmd-input input:focus-visible, .stock-shell .cmd-input input:focus-visible { outline: none !important; box-shadow: none !important; }
+.menu-sheet button.chosen { background: rgba(29, 107, 79, .12); color: var(--brand-ink); }
+.menu-sheet button.chosen small { color: inherit; opacity: .75; }
+.menu-signout { margin-top: 8px; }
+@media (max-width: 350px) { .stock-header .icon-button { display: none; } .stock-header .m-brand b { display: none; } }
+.start-bar span { background: linear-gradient(90deg, #2a8a63, #14684c) !important; }
+.start-steps li.next .start-mark { background: #1d6b4f !important; }
