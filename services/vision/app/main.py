@@ -188,39 +188,44 @@ def create_app():
             image_bytes = store.image(body.imageId)
         except (ValueError, FileNotFoundError):
             raise HTTPException(404, 'Photo not found') from None
-        fields, source, suggestions, ai = {}, 'manual', {}, {'status': 'not_configured'}
+        lines, rule_fields, source, suggestions, ai = [], {}, 'manual', {}, {'status': 'not_configured'}
         if settings.textract_fallback:
             try:
-                fields = textract.propose(settings, image_bytes) or {}
+                lines = textract.read_lines(settings, image_bytes) or []
+                rule_fields = textract.parse_lines(lines)
             except Exception as error:
                 log.warning('Label reading failed type=%s', type(error).__name__)
-            if fields:
+            if rule_fields:
                 source = textract.SOURCE
-        problem = None
-        missing = [n for n in DRAFT_FIELDS if n not in fields]
-        if settings.ai_enabled and not missing:
-            ai = {'status': 'not_needed'}
-        if settings.ai_enabled and missing:
+        problem, fields = None, {}
+        if settings.ai_enabled:
             try:
                 used = store.spend_allowance()
             except Exception as error:  # the usage counter must never break the label reading itself
                 log.warning('AI usage counter failed type=%s', type(error).__name__)
                 used = settings.bedrock_daily_request_limit + 1
             if used > settings.bedrock_daily_request_limit:
-                if not fields:
+                if not rule_fields:
                     raise HTTPException(429, 'Daily AI suggestion limit reached. Register manually or retry tomorrow UTC.')
                 ai = {'status': 'limit_reached'}
             else:
                 try:
-                    proposed, used_by = propose(settings, image_bytes, fields)
-                    suggestions = {k: v for k, v in proposed.items() if k in DRAFT_FIELDS and k not in fields and v}
+                    try:
+                        categories, brands = store.catalogue_values()
+                    except Exception:
+                        categories, brands = [], []
+                    proposed, used_by = propose(settings, image_bytes, {'text': ' '.join(lines), 'categories': categories, 'brands': brands})
+                    suggestions = {k: v for k, v in proposed.items() if k in DRAFT_FIELDS and v}
                     ai = {'status': 'used'}
-                    if not fields:
-                        source = used_by
+                    source = used_by
+                    # The AI reads every field. Label text only fills what it left out, and only for fields a rule can read reliably.
+                    fields = {k: v for k, v in rule_fields.items() if k in ('partNumber', 'capacity', 'grade') and k not in suggestions}
                 except Exception as error:
                     problem = error if isinstance(error, BedrockUnavailable) else failure(error)
                     ai = {'status': 'unavailable', 'code': problem.code, 'message': problem.message.split('. ')[0]}
                     log.warning('AI suggestions unavailable code=%s', problem.code)
+        if ai['status'] != 'used':
+            fields = dict(rule_fields)  # without the AI, the label rules are the only reading
         if problem and not fields:
             return JSONResponse(status_code=problem.status, content={'detail': problem.message, 'code': problem.code, 'retryable': problem.retryable},
                                 headers={'Retry-After': str(problem.retry_after)} if problem.retry_after else {})

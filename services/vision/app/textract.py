@@ -21,7 +21,8 @@ BRANDS = ['Mobil', 'Castrol', 'Shell', 'Valvoline', 'Total', 'TotalEnergies', 'C
           'Bosch', 'Denso', 'NGK', 'Mann', 'Mahle', 'Sakura', 'Fram', 'K&N', 'Ryco', 'Wesfil', 'Hella', 'Valeo',
           'Brembo', 'Akebono', 'TRW', 'Gates', 'Continental', 'Exide', 'Amaron', 'Yuasa', 'Philips', 'Osram']
 CATEGORIES = [
-    (r'\b(engine|motor|gear|transmission)\s+oil\b|\bsynthetic\b|\bSAE\b|\bATF\b|\blubricant\b', 'Engine oil'),
+    (r'\bgear\s*oil\b|\bhypoid\b|\bGL-?[345]\b|\bATF\b|\bCVT\b|\btransmission\s+(oil|fluid)\b|\bdifferential\b|\bgearbox\b', 'Gear oil'),
+    (r'\b(engine|motor)\s+oil\b|\bsynthetic\b|\bSAE\b|\blubricant\b', 'Engine oil'),
     (r'\bfilters?\b', 'Filters'),
     (r'\bbrake\b|\bpads?\b', 'Brakes'),
     (r'\bspark\s*plugs?\b', 'Spark plugs'),

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Camera as CameraIcon, Check, Minus, Plus } from "lucide-react";
+import { ArrowLeft, Camera as CameraIcon, Check, Loader2, Minus, Plus } from "lucide-react";
 import { api, shrink, type Match, type Product, type BarcodeLookup } from "./api";
 
 const Camera = React.lazy(() => import("./Camera").then((m) => ({ default: m.Camera })));
@@ -15,7 +15,8 @@ export function partFromCode(value: string, items: Item[]) {
   return items.find((p) => p.id === id) || null;
 }
 
-export function Counter({ items, initialMode = "receive", picked = null, photo, onNewItem, onBarcodeSuggestion, onChanged }: { items: Item[]; initialMode?: Mode; picked?: Item | null; photo?: (item: Item) => React.ReactNode; onNewItem?: (imageId: string) => void; onBarcodeSuggestion?: (barcode: string, suggestions: Record<string, string>) => void; onChanged: () => void }) {
+export function Counter({ items, initialMode = "receive", picked = null, photo, onNewItem, onBarcodeSuggestion, onChanged }: { items: Item[]; initialMode?: Mode; picked?: Item | null; photo?: (item: Item) => React.ReactNode; onNewItem?: (imageId: string) => void | Promise<void>; onBarcodeSuggestion?: (barcode: string, suggestions: Record<string, string>) => void; onChanged: () => void }) {
+  const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<Mode>(initialMode);
   const [part, setPart] = useState<Item | null>(null);
   const [candidates, setCandidates] = useState<Item[]>([]);
@@ -136,7 +137,7 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
                   </div>
                 )}
                 {mode === "receive" && photoId && onNewItem && (
-                  <button className="counter-new" onClick={() => onNewItem(photoId)}><Plus size={20} /> {candidates.length ? "None of these: add as a new item" : "Add as a new item (reads the label)"}</button>
+                  <button className="counter-new" disabled={starting} aria-busy={starting} onClick={() => { setStarting(true); void Promise.resolve(onNewItem(photoId)).finally(() => setStarting(false)); }}>{starting ? <Loader2 size={20} className="spin" /> : <Plus size={20} />} {starting ? "Reading the label…" : candidates.length ? "None of these: add as a new item" : "Add as a new item (reads the label)"}</button>
                 )}
                 <label className="stock-field counter-search">Or search<input value={search} placeholder="Oil filter" onChange={(e) => setSearch(e.target.value)} /></label>
                 {matches.map((m) => <button key={m.id} className="counter-result" onClick={() => choosePart(m)}>{photo && <span className="counter-result-photo">{photo(m)}</span>}<span className="counter-result-text">{m.name} <small>Part no. {m.part_number || "Not set"} · System no. {m.sku}</small></span></button>)}

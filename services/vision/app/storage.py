@@ -63,6 +63,26 @@ class Store:
             if not start:
                 return items
 
+    def catalogue_values(self, limit=60):
+        """The shop's own categories and brands (most used first), so suggestions reuse the same names."""
+        from collections import Counter
+        categories, brands, start = Counter(), Counter(), None
+        while True:
+            args = {'KeyConditionExpression': Key('pk').eq('PRODUCT')}
+            if start:
+                args['ExclusiveStartKey'] = start
+            page = self.table.query(**args)
+            for p in page['Items']:
+                if p.get('archived'):
+                    continue
+                if p.get('category'):
+                    categories[str(p['category']).strip()] += 1
+                if p.get('brand'):
+                    brands[str(p['brand']).strip()] += 1
+            start = page.get('LastEvaluatedKey')
+            if not start:
+                return [c for c, _ in categories.most_common(limit)], [b for b, _ in brands.most_common(limit)]
+
     # ---------- references ----------
     def index(self, product, image_id, version, embedding):
         card = {k: product.get(k) for k in FIELDS}

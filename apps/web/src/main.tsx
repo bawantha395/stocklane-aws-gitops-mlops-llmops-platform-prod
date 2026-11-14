@@ -152,8 +152,15 @@ async function printLabel(item: Item) {
     throw error;
   }
 }
-function Photo({ id }: { id: string }) {
+function Photo({ id, zoom = false }: { id: string; zoom?: boolean }) {
   const [url, setUrl] = useState("");
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [open]);
   useEffect(() => {
     let active = true;
     let object = "";
@@ -170,7 +177,21 @@ function Photo({ id }: { id: string }) {
     };
   }, [id]);
   return url ? (
-    <img className="item-photo" src={url} alt="Approved item reference" />
+    zoom ? (
+      <>
+        <button type="button" className="photo-zoom-btn" aria-label="View the photo full screen" onClick={() => setOpen(true)}>
+          <img className="item-photo" src={url} alt="Uploaded photo" />
+        </button>
+        {open && (
+          <div className="photo-viewer" role="dialog" aria-modal="true" aria-label="Photo" onClick={() => setOpen(false)}>
+            <button type="button" className="photo-viewer-close" aria-label="Close photo" onClick={() => setOpen(false)}><X /></button>
+            <img src={url} alt="Uploaded photo, full size" onClick={(e) => e.stopPropagation()} />
+          </div>
+        )}
+      </>
+    ) : (
+      <img className="item-photo" src={url} alt="Approved item reference" />
+    )
   ) : (
     <span className="photo-placeholder">
       <Package />
@@ -505,7 +526,7 @@ function App() {
   const newItemFromCounter = (id: string) => {
     fromCounter.current = true;
     setImageId(id);
-    void readLabel(id);
+    return readLabel(id);
   };
   const newItemFromBarcode = (barcode: string, values: Record<string, string>) => {
     fromCounter.current = true;
@@ -2122,7 +2143,7 @@ function ProductEditor({
             ? "Label readings and AI suggestions are shown for review. Choose Use for each value; nothing is saved automatically."
             : "Use the visible manufacturer and part number where available."}
         </p>
-        {imageId && <Photo id={imageId} />}
+        {imageId && <Photo id={imageId} zoom />}
         {!item && aiNote && (
           <p className={"ai-note" + (draft?.ai?.status === "used" ? " used" : "")} role="status">
             {aiNote}
@@ -2171,11 +2192,19 @@ function ProductEditor({
                         : 180
                   }
                   value={value}
+                  list={field === "category" ? "category-options" : field === "brand" ? "brand-options" : undefined}
+                  autoComplete={field === "category" || field === "brand" ? "off" : undefined}
                   onChange={(e) => set(e.target.value)}
                 />
                 {hint(field)}
               </label>
             ))}
+            <datalist id="category-options">
+              {[...new Set(products.filter((p) => !p.archived).map((p) => (p.category || "").trim()).filter(Boolean))].sort().map((c) => <option key={c} value={c} />)}
+            </datalist>
+            <datalist id="brand-options">
+              {[...new Set(products.filter((p) => !p.archived).map((p) => (p.brand || "").trim()).filter(Boolean))].sort().map((b) => <option key={b} value={b} />)}
+            </datalist>
             {!item && (
               <>
                 <label className="stock-field">
