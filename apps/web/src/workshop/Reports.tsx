@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { csv, download } from "../api";
 import { t } from "../i18n";
-import { Loading, addDays, lkr, today, useLoad, useWs } from "./common";
+import { Num, Loading, addDays, lkr, today, useLoad, useWs } from "./common";
 
 type Rep = {
   from: string; until: string; invoices: number; vehicles: number; parts_total: number; labour_total: number; discount: number; tax: number; total: number; received: number;
@@ -51,7 +51,7 @@ function DayChart({ days }: { days: Rep["by_day"] }) {
             })}
             {days[peak]?.billed > 0 && <text x={Math.min(Math.max(col(peak) + bar / 2, L + 28), w - R - 28)} y={y(days[peak].billed) - 5} textAnchor="middle" className="ws-peak">{compact(days[peak].billed)}</text>}
           </svg>
-          {hover != null && <div className="ws-tip" style={{ left: Math.min(Math.max(col(hover) + bar / 2, 70), w - 70) }}><b>{lkr(days[hover].billed)}</b><span>{days[hover].date}</span></div>}
+          {hover != null && <div className="ws-tip" style={{ left: Math.min(Math.max(col(hover) + bar / 2, 70), w - 70) }}><b><Num v={days[hover].billed} /></b><span>{days[hover].date}</span></div>}
         </div>
       )}
     </section>
@@ -84,7 +84,7 @@ function Bars({ title, rows }: { title: string; rows: { label: string; value: nu
   return (
     <section className="ws-card ws-bars" aria-label={title}>
       <h3>{title}</h3>
-      <ol>{rows.map((r, i) => <li key={r.label + i}><span className="ws-bar-l">{r.label}{r.note && <small>{r.note}</small>}</span><span className="ws-bar-t"><i style={{ width: Math.max(3, (r.value / max) * 100) + "%", animationDelay: i * 70 + "ms" }} /></span><b>{lkr(r.value)}</b></li>)}</ol>
+      <ol>{rows.map((r, i) => <li key={r.label + i}><span className="ws-bar-l">{r.label}{r.note && <small>{r.note}</small>}</span><span className="ws-bar-t"><i style={{ width: Math.max(3, (r.value / max) * 100) + "%", animationDelay: i * 70 + "ms" }} /></span><b><Num v={r.value} /></b></li>)}</ol>
     </section>
   );
 }
@@ -124,12 +124,12 @@ export function Reports() {
       {!data ? !error && <Loading /> : (
         <>
           <div className="ws-kpis">
-            <div className="ws-kpi"><small>Billed</small><b>{lkr(data.total)}</b><span>{data.invoices} invoice{data.invoices === 1 ? "" : "s"}, {data.vehicles} vehicle{data.vehicles === 1 ? "" : "s"}</span></div>
-            <div className="ws-kpi"><small>Money received</small><b>{lkr(data.received)}</b><span>payments in this period</span></div>
-            <div className="ws-kpi"><small>Parts</small><b>{lkr(data.parts_total)}</b><span>Labour {lkr(data.labour_total)}</span></div>
-            <div className="ws-kpi"><small>Average invoice</small><b>{lkr(data.average)}</b><span>{data.discount > 0 ? "Discounts " + lkr(data.discount) : "no discounts"}{data.tax > 0 ? ", tax " + lkr(data.tax) : ""}</span></div>
-            <div className="ws-kpi warn"><small>Unpaid (this period)</small><b>{lkr(data.unpaid)}</b><span>of the invoices above</span></div>
-            <div className="ws-kpi warn"><small>Unpaid (all time)</small><b>{lkr(data.outstanding_all_time)}</b><span>every customer</span></div>
+            <div className="ws-kpi"><small>Billed</small><b><Num v={data.total} /></b><span>{data.invoices} invoice{data.invoices === 1 ? "" : "s"}, {data.vehicles} vehicle{data.vehicles === 1 ? "" : "s"}</span></div>
+            <div className="ws-kpi"><small>Money received</small><b><Num v={data.received} /></b><span>payments in this period</span></div>
+            <div className="ws-kpi"><small>Parts</small><b><Num v={data.parts_total} /></b><span>Labour {lkr(data.labour_total)}</span></div>
+            <div className="ws-kpi"><small>Average invoice</small><b><Num v={data.average} /></b><span>{data.discount > 0 ? "Discounts " + lkr(data.discount) : "no discounts"}{data.tax > 0 ? ", tax " + lkr(data.tax) : ""}</span></div>
+            <div className="ws-kpi warn"><small>Unpaid (this period)</small><b><Num v={data.unpaid} /></b><span>of the invoices above</span></div>
+            <div className="ws-kpi warn"><small>Unpaid (all time)</small><b><Num v={data.outstanding_all_time} /></b><span>every customer</span></div>
           </div>
           <DayChart days={data.by_day} />
           <div className="ws-two">
@@ -144,7 +144,7 @@ export function Reports() {
               <div className="ws-list">{data.unpaid_list.map((u) => (
                 <button className="ws-item" key={u.id} onClick={() => go({ name: "invoice", id: u.id })}>
                   <span className="ws-item-main"><strong>{u.registration}</strong><span>{u.customer}</span><small>{u.invoice_number}</small></span>
-                  <span className="ws-item-side"><b>{lkr(u.balance)}</b><small>{u.days} day{u.days === 1 ? "" : "s"}</small></span>
+                  <span className="ws-item-side"><b><Num v={u.balance} /></b><small>{u.days} day{u.days === 1 ? "" : "s"}</small></span>
                 </button>))}</div>
             </section>
           )}

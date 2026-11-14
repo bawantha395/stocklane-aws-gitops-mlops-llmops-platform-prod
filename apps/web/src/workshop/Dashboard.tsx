@@ -2,7 +2,7 @@ import { t } from "../i18n";
 import { Banknote, CalendarClock, ClipboardCheck, Receipt, TrendingUp, Wrench } from "lucide-react";
 import { JobCard } from "./Cards";
 import { useState } from "react";
-import { Empty, Loading, ReasonDialog, dateOnly, lkr, useCommand, useDebounced, useLoad, useWs, type DeleteRequest, type Job, type Vehicle } from "./common";
+import { Num, Empty, Loading, ReasonDialog, dateOnly, useCommand, useDebounced, useLoad, useWs, type DeleteRequest, type Job, type Vehicle } from "./common";
 
 type Dash = {
   today: { date: string; invoices: number; billed: number; received: number }; month: { from: string; invoices: number; billed: number; received: number };
@@ -39,11 +39,11 @@ export function Dashboard() {
         <>
           <div className="ws-kpis">
             <button className="ws-kpi" onClick={() => go({ name: "jobs" })}><small><Wrench size={15} /> {t("Open jobs")}</small><b>{data.open_count}</b><span>{t("in the workshop now")}</span></button>
-            <div className="ws-kpi"><small><Receipt size={15} /> {t("Billed today")}</small><b>{lkr(data.today.billed)}</b><span>{data.today.invoices} invoice{data.today.invoices === 1 ? "" : "s"}</span></div>
-            <div className="ws-kpi"><small><Banknote size={15} /> {t("Received today")}</small><b>{lkr(data.today.received)}</b><span>{t("cash, card and bank")}</span></div>
-            <button className="ws-kpi warn" onClick={() => go({ name: "invoices" })}><small><ClipboardCheck size={15} /> {t("Customers owe")}</small><b>{lkr(data.unpaid_total)}</b><span>{data.unpaid_count} invoice{data.unpaid_count === 1 ? "" : "s"}{data.oldest_unpaid_days > 7 ? ", oldest " + data.oldest_unpaid_days + " days" : ""}</span></button>
+            <div className="ws-kpi"><small><Receipt size={15} /> {t("Billed today")}</small><b><Num v={data.today.billed} /></b><span>{data.today.invoices} invoice{data.today.invoices === 1 ? "" : "s"}</span></div>
+            <div className="ws-kpi"><small><Banknote size={15} /> {t("Received today")}</small><b><Num v={data.today.received} /></b><span>{t("cash, card and bank")}</span></div>
+            <button className="ws-kpi warn" onClick={() => go({ name: "invoices" })}><small><ClipboardCheck size={15} /> {t("Customers owe")}</small><b><Num v={data.unpaid_total} /></b><span>{data.unpaid_count} invoice{data.unpaid_count === 1 ? "" : "s"}{data.oldest_unpaid_days > 7 ? ", oldest " + data.oldest_unpaid_days + " days" : ""}</span></button>
             <button className="ws-kpi" onClick={() => go({ name: "due" })}><small><CalendarClock size={15} /> {t("Service due")}</small><b>{data.due_count}</b><span>{t("vehicles to call")}</span></button>
-            {owner && <div className="ws-kpi"><small><TrendingUp size={15} /> {t("Billed this month")}</small><b>{lkr(data.month.billed)}</b><span>{data.month.invoices} invoice{data.month.invoices === 1 ? "" : "s"}</span></div>}
+            {owner && <div className="ws-kpi"><small><TrendingUp size={15} /> {t("Billed this month")}</small><b><Num v={data.month.billed} /></b><span>{data.month.invoices} invoice{data.month.invoices === 1 ? "" : "s"}</span></div>}
           </div>
           {owner && !!data.delete_requests?.length && (
             <section className="ws-card ws-requests" aria-label="Delete requests">

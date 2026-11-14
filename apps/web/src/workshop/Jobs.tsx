@@ -33,7 +33,7 @@ export function Jobs() {
 
 export function NewJob({ reg: start }: { reg?: string }) {
   const { go } = useWs();
-  const [f, setF] = useState({ registration: start || "", customer: "", phone: "", vehicle: "", odometer: "", summary: "", mechanic: "" });
+  const [f, setF] = useState({ registration: start || "", customer: "", address: "", phone: "", vehicle: "", odometer: "", summary: "", mechanic: "" });
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [plate, setPlate] = useState(""), [front, setFront] = useState(""), [before, setBefore] = useState<string[]>([]);
   const command = useCommand();
@@ -65,6 +65,7 @@ export function NewJob({ reg: start }: { reg?: string }) {
         <div className="ws-grid2">
           <label className="ws-field">{t("Customer name")} *<input required value={f.customer} onChange={(e) => set("customer", e.target.value)} /></label>
           <label className="ws-field">{t("Contact number")}<input inputMode="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} placeholder="07X XXX XXXX" /></label>
+          <label className="ws-field">{t("Customer address")} <small>({t("optional")})</small><textarea rows={2} value={f.address} onChange={(e) => set("address", e.target.value)} /></label>
           <label className="ws-field">{t("Make and model")}<input value={f.vehicle} onChange={(e) => set("vehicle", e.target.value)} placeholder="Toyota Prius" /></label>
           <label className="ws-field">{t("Odometer (km)")}<input inputMode="numeric" value={f.odometer} onChange={(e) => set("odometer", e.target.value.replace(/\D/g, ""))} /></label>
         </div>

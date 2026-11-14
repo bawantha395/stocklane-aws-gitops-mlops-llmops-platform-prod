@@ -8,7 +8,7 @@ import { lkr, useCommand, useLoad, useWs, num, type Business } from "./common";
 
 export function Settings() {
   const { business, reloadBusiness } = useWs();
-  const [f, setF] = useState({ ...business, tax_rate: String(business.tax_rate), mechanic_discount_pct: String(business.mechanic_discount_pct ?? 10) });
+  const [f, setF] = useState({ ...business, tax_rate: String(business.tax_rate), mechanic_discount_pct: String(business.mechanic_discount_pct ?? 10), payment_terms_days: String(business.payment_terms_days ?? 0), warranty: business.warranty || "" });
   const [msg, setMsg] = useState(""), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   useEffect(() => { if (msg) toast(msg); }, [msg]);
   useEffect(() => { if (msg) toast(msg); }, [msg]);
@@ -17,7 +17,7 @@ export function Settings() {
   const set = (k: keyof typeof f, v: string) => { setF((x) => ({ ...x, [k]: v })); setMsg(""); };
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError("");
-    try { await command<Business>("/api/workshop/settings", { ...f, tax_rate: num(f.tax_rate), mechanic_discount_pct: num(f.mechanic_discount_pct) }, "PUT"); reloadBusiness(); setMsg(t("Saved. New invoices use these details; old invoices keep the details they were issued with.")); }
+    try { await command<Business>("/api/workshop/settings", { ...f, tax_rate: num(f.tax_rate), mechanic_discount_pct: num(f.mechanic_discount_pct), payment_terms_days: num(f.payment_terms_days) }, "PUT"); reloadBusiness(); setMsg(t("Saved. New invoices use these details; old invoices keep the details they were issued with.")); }
     catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   };
   const lines = (f.address || "").split("\n").filter(Boolean);
@@ -62,7 +62,8 @@ export function Settings() {
 
         <div className="ws-set-col">
           <section className="ws-sec">
-            <h3><span className="ws-sec-ico"><FileText size={18} /></span>{t("Invoice header")} <em className="ws-live">{t("Live preview")}</em></h3>
+            <h3><span className="ws-sec-ico"><FileText size={18} /></span>{t("How your bill looks")}</h3>
+            <p className="muted">{t("This is how the top of your bill will look. It changes as you type.")}</p>
             <div className="ws-prev" aria-label="Invoice preview">
               <span className="ws-prev-top">
                 <span><b>{f.name || t("Your business")}</b>{lines.map((l) => <small key={l}>{l}</small>)}{f.reg_no && <small>{f.reg_no}</small>}</span>
@@ -76,6 +77,8 @@ export function Settings() {
             </div>
             <label className="ws-field">{t("Registration or tax number")}<input value={f.reg_no} onChange={(e) => set("reg_no", e.target.value)} placeholder="VAT 123456789" /></label>
             <label className="ws-field">{t("Bank details for payments")}<textarea rows={3} value={f.bank} onChange={(e) => set("bank", e.target.value)} placeholder={"Bank of Ceylon\nAccount 1234567"} /></label>
+            <label className="ws-field">{t("Payment terms")}<select value={f.payment_terms_days} onChange={(e) => set("payment_terms_days", e.target.value)}><option value="0">{t("Due on receipt")}</option><option value="7">7 {t("days")}</option><option value="14">14 {t("days")}</option><option value="30">30 {t("days")}</option></select></label>
+            <label className="ws-field">{t("Warranty note")}<textarea rows={2} value={f.warranty} onChange={(e) => set("warranty", e.target.value)} placeholder="Parts warranty 30 days" /></label>
             <label className="ws-field">{t("Footer note")}<textarea rows={2} value={f.footer} onChange={(e) => set("footer", e.target.value)} /></label>
           </section>
         </div>

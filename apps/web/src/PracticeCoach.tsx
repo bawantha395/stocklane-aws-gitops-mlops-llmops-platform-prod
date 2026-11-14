@@ -89,7 +89,7 @@ function missionsFor(owner: boolean): Mission[] {
         { id: "ex-ws", title: t("Open Jobs & Invoices"), body: t("Everything about the workshop lives here."), target: NAV("workshop"), hit: true, done: () => probe.view === "workshop" },
         { id: "ex-veh", title: t("Vehicles"), body: t("Every vehicle you served, with its owner, photos and history. Tap Vehicles."), target: TAB("vehicles"), go: { sel: NAV("workshop"), label: t("Jobs & Invoices") }, hit: true },
         { id: "ex-inv", title: t("Invoices"), body: t("Every bill, paid or not. Tap Invoices."), target: TAB("invoices"), go: { sel: NAV("workshop"), label: t("Jobs & Invoices") }, hit: true },
-        { id: "ex-rep", title: t("Reports"), body: t("Sales, what is unpaid, best parts and work. Tap Reports."), target: TAB("report"), go: { sel: NAV("workshop"), label: t("Jobs & Invoices") }, hit: true },
+        { id: "ex-rep", title: t("Sales report"), body: t("Sales, what is unpaid, best parts and work. Tap Sales report."), target: TAB("report"), go: { sel: NAV("workshop"), label: t("Jobs & Invoices") }, hit: true },
         { id: "ex-arc", title: t("Archive"), body: t("A deleted job is never lost. It waits here and you can restore it. Tap Archive."), target: TAB("archive"), go: { sel: NAV("workshop"), label: t("Jobs & Invoices") }, hit: true },
         { id: "ex-set", title: t("Settings"), body: t("Business name, address and tax, printed on every invoice. Tap Settings."), target: TAB("settings"), go: { sel: NAV("workshop"), label: t("Jobs & Invoices") }, hit: true },
       ],
@@ -229,7 +229,10 @@ export function PracticeCoach() {
     }
     return out;
   };
-  const touches = (b: Rect) => !!hole && b.x < hole.x + hole.w + 8 && b.x + b.w > hole.x - 8 && b.y < hole.y + hole.h + 8 && b.y + b.h > hole.y - 8;
+  const navEl = typeof document !== "undefined" ? document.querySelector(".ws-step-nav") : null;
+  const nr = navEl ? navEl.getBoundingClientRect() : null;
+  const hitsNav = (b: Rect) => !!nr && nr.width > 0 && b.x < nr.right && b.x + b.w > nr.left && b.y < nr.bottom + 4 && b.y + b.h > nr.top - 4;
+  const touches = (b: Rect) => hitsNav(b) || !!hole && b.x < hole.x + hole.w + 8 && b.x + b.w > hole.x - 8 && b.y < hole.y + hole.h + 8 && b.y + b.h > hole.y - 8;
   const modes: ("full" | "mini" | "pill")[] = small ? ["pill"] : ["full", "mini", "pill"];
   let mode: "full" | "mini" | "pill" = modes[modes.length - 1], spot: Spot = spotsFor(heights[mode])[0].s;
   search: for (const m of modes) for (const c of spotsFor(heights[m])) if (!touches(c.box)) { mode = m; spot = c.s; break search; }

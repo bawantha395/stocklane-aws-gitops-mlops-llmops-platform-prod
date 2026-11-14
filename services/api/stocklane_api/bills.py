@@ -67,9 +67,11 @@ def invoice(i):
     b = i.get('business') or {}
     d = Doc(footer=(b.get('name') or 'Workshop') + ' | ' + i['invoice_number'])
     status = i['status']
-    letterhead(d, b, 'VOID' if status == 'VOID' else 'INVOICE' if not b.get('tax_rate') else 'TAX INVOICE', [
-        (i['invoice_number'], True), ('Date: ' + i['date'], False), ('Status: ' + {'UNPAID': 'Unpaid', 'PARTIAL': 'Part paid', 'PAID': 'Paid', 'VOID': 'Void'}[status], False)])
-    left = block(d, MARGIN, 230, 'BILL TO', [(i['customer'], 11, True), (i.get('phone'), 9.5, False)])
+    letterhead(d, b, 'VOID' if status == 'VOID' else 'INVOICE' if not b.get('tax_rate') else 'TAX INVOICE',
+        [(i['invoice_number'], True), ('Date: ' + i['date'], False)]
+        + ([('Due: ' + i['due_date'] + ' (' + str(i['terms']) + ' days)', False)] if i.get('due_date') else [])
+        + [('Status: ' + {'UNPAID': 'Unpaid', 'PARTIAL': 'Part paid', 'PAID': 'Paid', 'VOID': 'Void'}[status], False)])
+    left = block(d, MARGIN, 230, 'BILL TO', [(i['customer'], 11, True), (i.get('address'), 9.5, False), (i.get('phone'), 9.5, False)])
     odo = kms(i['odometer']) if i.get('odometer') is not None else ''
     right = block(d, 320, 235, 'VEHICLE', [(i['registration'], 13, True), (i.get('vehicle'), 9.5, False), (odo, 9.5, False),
                                           ('Mechanic: ' + i['mechanic'] if i.get('mechanic') else '', 9.5, False)])
@@ -113,6 +115,7 @@ def invoice(i):
     rows('LABOUR', [{'name': l['description'], 'amount': l['amount']} for l in i['labour']])
 
     # totals, right-aligned block
+    tot_page, tot_y = len(d.pages), d.y
     lines = [('Parts', m(i['parts_total'])), ('Labour', m(i['labour_total']))]
     if i['discount']:
         lines.append(('Discount', '-' + m(i['discount'])))
@@ -151,19 +154,38 @@ def invoice(i):
         what = ' and '.join(x for x in (i.get('next_service_date') and 'on ' + i['next_service_date'], i.get('next_service_km') and 'at ' + kms(i['next_service_km'])) if x)
         d.text(MARGIN + 10, d.y + 17, 'Next service due ' + what, 9.5, True, color=ACCENT)
         d.y += 36
-    if b.get('bank') or b.get('footer'):
-        d.room(60)
-        if b.get('bank'):
-            d.text(MARGIN, d.y + 8, 'PAYMENT DETAILS', 8, True, color=MUTED)
-            d.y += 14
-            d.paragraph(MARGIN, b['bank'], 300, 9)
-            d.y += 4
-        if b.get('footer'):
-            d.paragraph(MARGIN, b['footer'], R - MARGIN, 9, color=MUTED)
+    if not i.get('tax_rate') and not b.get('tax_rate'):
+        d.room(24)
+        d.text(MARGIN, d.y + 10, 'This is not a tax invoice.', 9, True, color=MUTED)
+        d.y += 20
+    if b.get('bank'):
+        rows = []
+        for part in b['bank'].split('\n'):
+            rows += wrap(part, 300, 9.5)
+        box = 30 + 13 * len(rows)
+        d.room(box + 10)
+        d.rect(MARGIN, d.y, 330, box, WASH)
+        d.rect(MARGIN, d.y, 4, box, ACCENT)
+        d.text(MARGIN + 14, d.y + 15, 'HOW TO PAY', 8, True, color=ACCENT)
+        for k, row in enumerate(rows):
+            d.text(MARGIN + 14, d.y + 30 + k * 13, row, 9.5, k == 0)
+        d.y += box + 10
+    if b.get('warranty'):
+        d.room(30)
+        d.text(MARGIN, d.y + 9, 'WARRANTY', 8, True, color=MUTED)
+        d.y += 14
+        d.paragraph(MARGIN, b['warranty'], R - MARGIN, 9)
+        d.y += 4
+    if b.get('footer'):
+        d.room(30)
+        d.paragraph(MARGIN, b['footer'], R - MARGIN, 9, color=MUTED)
+    stamp_y = d.y
     d.room(50)
     d.y = max(d.y + 24, H - MARGIN - 50) if len(d.pages) == 1 and d.y < H - MARGIN - 80 else d.y + 24
     d.line(R - 170, d.y, R, d.y)
     d.text(R, d.y + 12, 'Authorised signature', 8.5, align='r', color=MUTED)
+    if status in ('PAID', 'VOID'):
+        d.stamp('PAID' if status == 'PAID' else 'VOID', 150, tot_y + 50, (0.1, 0.5, 0.25) if status == 'PAID' else (0.45, 0.45, 0.48), page=tot_page - 1)
     return d.render()
 
 

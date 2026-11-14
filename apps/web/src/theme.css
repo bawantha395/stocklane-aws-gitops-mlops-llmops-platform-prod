@@ -344,3 +344,5 @@ html .stock-shell .bl, html .stock-shell .bl * { color: #fff !important; }
 .sw-opt strong { font-size: 16.5px; }
 .sw-opt small { font-size: 13px; opacity: .75; }
 .sw-link { display: block; margin: 14px auto 0; background: none; border: 0; color: #5b6772; font: inherit; cursor: pointer; text-decoration: underline; }
+/* while the New job stepper's Next bar is on screen, keep the coach card above it */
+@media (max-width: 700px) { body:has(.ws-step-nav) .pc-card { bottom: auto !important; top: 92px !important; } }

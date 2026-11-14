@@ -46,7 +46,7 @@ export function JobPage({ id }: { id: string }) {
 
   const set = (k: string, v: string) => { setF((x) => ({ ...x, [k]: v })); setDirty(true); };
   const body = () => ({
-    revision: job.revision, customer: f.customer, phone: f.phone, vehicle: f.vehicle, odometer: f.odometer === "" ? null : Number(f.odometer), summary: f.summary, mechanic: f.mechanic, notes: f.notes,
+    revision: job.revision, customer: f.customer, address: f.address || "", phone: f.phone, vehicle: f.vehicle, odometer: f.odometer === "" ? null : Number(f.odometer), summary: f.summary, mechanic: f.mechanic, notes: f.notes,
     parts: lines.parts, labour: lines.labour, discount: num(f.discount), next_service_date: f.next_service_date, next_service_km: f.next_service_km === "" ? null : Number(f.next_service_km),
   });
   const save = async () => { const j = await command<Job>("/api/workshop/jobs/" + id, body(), "PATCH"); adopt(j); return j; };
@@ -78,7 +78,7 @@ export function JobPage({ id }: { id: string }) {
     work(i, { description, ...(hit && !labour[i].amount ? { amount: String(hit.amount) } : {}) });
   };
   const bill: BillData = {
-    business, number: job.invoice_number, date: today(), draft: !locked, status: locked ? "INVOICED" : undefined, customer: f.customer, phone: f.phone, registration: job.registration,
+    business, number: job.invoice_number, date: today(), draft: !locked, status: locked ? "INVOICED" : undefined, customer: f.customer, address: f.address, phone: f.phone, registration: job.registration,
     vehicle: f.vehicle, odometer: f.odometer === "" ? null : Number(f.odometer), mechanic: f.mechanic, summary: f.summary, ...lines, discount: num(f.discount),
     tax_name: business.tax_name, tax_rate: rate, next_service_date: f.next_service_date, next_service_km: f.next_service_km === "" ? null : Number(f.next_service_km),
   };
@@ -107,6 +107,7 @@ export function JobPage({ id }: { id: string }) {
         <div className="ws-grid2">
           <label className="ws-field">{t("Customer name")}<input disabled={locked} value={f.customer || ""} onChange={(e) => set("customer", e.target.value)} /></label>
           <label className="ws-field">{t("Contact number")}<input disabled={locked} inputMode="tel" value={f.phone || ""} onChange={(e) => set("phone", e.target.value)} /></label>
+          <label className="ws-field">{t("Customer address")}<textarea disabled={locked} rows={2} value={f.address || ""} onChange={(e) => set("address", e.target.value)} /></label>
           <label className="ws-field">{t("Make and model")}<input disabled={locked} value={f.vehicle || ""} onChange={(e) => set("vehicle", e.target.value)} /></label>
           <label className="ws-field">{t("Odometer (km)")}<input disabled={locked} inputMode="numeric" value={f.odometer || ""} onChange={(e) => set("odometer", e.target.value.replace(/\D/g, ""))} /></label>
           <label className="ws-field">{t("Mechanic")}<input disabled={locked} value={f.mechanic || ""} onChange={(e) => set("mechanic", e.target.value)} /></label>

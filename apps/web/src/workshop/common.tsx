@@ -5,11 +5,11 @@ import { api } from "../api";
 
 export type PageName = "home" | "jobs" | "vehicles" | "due" | "invoices" | "archive" | "report" | "settings" | "new" | "job" | "vehicle" | "invoice";
 export type Page = { name: PageName; id?: string; reg?: string };
-export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number };
+export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string };
 export type Part = { name: string; quantity: number; unit_price: number };
 export type Labour = { description: string; amount: number };
 export type Job = {
-  id: string; registration: string; vehicle_key: string; customer: string; phone: string; vehicle: string; odometer?: number; summary: string;
+  id: string; registration: string; vehicle_key: string; customer: string; address?: string; phone: string; vehicle: string; odometer?: number; summary: string;
   mechanic: string; notes: string; status: "OPEN" | "INVOICED" | "CANCELLED" | "ARCHIVED"; revision: number; invoice_id?: string; invoice_number?: string;
   parts: Part[]; labour: Labour[]; discount: number; tax_rate?: number; parts_total: number; labour_total: number; subtotal: number; tax: number; total: number;
   next_service_date?: string; next_service_km?: number; created_at: string; lines?: number; age_days?: number;
@@ -28,7 +28,7 @@ export type Vehicle = {
 };
 export type Payment = { id: string; amount: number; method: string; note: string; at: string };
 export type Invoice = {
-  id: string; invoice_number: string; job_id: string; registration: string; customer: string; phone?: string; vehicle?: string; odometer?: number; summary?: string; mechanic?: string;
+  id: string; invoice_number: string; job_id: string; registration: string; customer: string; address?: string; phone?: string; vehicle?: string; odometer?: number; summary?: string; mechanic?: string;
   parts: Part[]; labour: Labour[]; parts_total: number; labour_total: number; discount: number; subtotal: number; tax: number; tax_name?: string; tax_rate: number; total: number;
   paid: number; status: "UNPAID" | "PARTIAL" | "PAID" | "VOID"; created_at: string; payments: Payment[]; currency: string; business?: Business;
   next_service_date?: string; next_service_km?: number;
@@ -118,4 +118,40 @@ export function ReasonDialog({ title, help, label, confirm, required = true, onD
       </form>
     </div>
   );
+}
+
+/** A number that counts up the first time it scrolls into view (instant when motion is reduced). */
+export function Num({ v, fmt = lkr }: { v: number | string | undefined; fmt?: (n: number) => string }) {
+  const target = Number(v || 0), ref = useRef<HTMLSpanElement>(null), [shown, setShown] = useState(target), done = useRef(false);
+  useEffect(() => {
+    const el = ref.current; if (!el || done.current) return;
+    if (typeof window === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) { setShown(target); return; }
+    setShown(0);
+    const io = new IntersectionObserver((es) => {
+      if (!es[0]?.isIntersecting) return; io.disconnect(); done.current = true;
+      const t0 = performance.now(), D = 800;
+      const tick = (now: number) => { const p = Math.min(1, (now - t0) / D); setShown(target * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(tick); else setShown(target); };
+      requestAnimationFrame(tick);
+    }, { threshold: 0.4 });
+    io.observe(el); return () => io.disconnect();
+  }, [target]);
+  useEffect(() => { if (done.current) setShown(target); }, [target]);
+  return <span ref={ref}>{fmt(shown)}</span>;
+}
+
+/** Cards below the fold fade and rise as they arrive; charts start drawing when seen. Does nothing when motion is reduced. */
+export function useScrollFeel(root: React.RefObject<HTMLElement | null>, key: unknown) {
+  useEffect(() => {
+    const el = root.current; if (!el || typeof window === "undefined" || !("IntersectionObserver" in window) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const seen = new WeakSet<Element>();
+    const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add(e.target.classList.contains("rv") ? "rv-in" : "vis"); io.unobserve(e.target); } }), { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
+    const scan = () => el.querySelectorAll(".ws-tile, .ws-card, .ws-sec, .ws-kpi, .ws-bars, .ws-donut, .ws-chart").forEach((n) => {
+      if (seen.has(n)) return; seen.add(n);
+      const chart = n.matches(".ws-bars, .ws-donut, .ws-chart");
+      if (!chart) { if (n.getBoundingClientRect().top < window.innerHeight * 0.95) return; n.classList.add("rv"); }
+      io.observe(n);
+    });
+    scan(); const mo = new MutationObserver(() => scan()); mo.observe(el, { childList: true, subtree: true });
+    return () => { io.disconnect(); mo.disconnect(); };
+  }, [root, key]);
 }

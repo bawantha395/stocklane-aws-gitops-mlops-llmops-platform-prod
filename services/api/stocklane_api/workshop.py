@@ -24,7 +24,8 @@ MONEY, ZERO, HUNDRED = Decimal('0.01'), Decimal('0'), Decimal('100')
 METHODS = ('CASH', 'CARD', 'BANK', 'OTHER')
 CHANGED = 'Someone changed this just now. Reload it and try again.'
 DEFAULT_BUSINESS = {'name': 'Workshop Suite', 'address': '', 'phone': '', 'email': '', 'reg_no': '', 'bank': '',
-                    'footer': 'Thank you for your business.', 'tax_name': 'VAT', 'tax_rate': ZERO, 'mechanic_discount_pct': Decimal('10')}
+                    'footer': 'Thank you for your business.', 'tax_name': 'VAT', 'tax_rate': ZERO, 'mechanic_discount_pct': Decimal('10'),
+                    'payment_terms_days': 0, 'warranty': ''}
 
 
 # ---------- input checks ----------
@@ -153,7 +154,10 @@ def save_business(key, who, body):
         limit = num(b.get('mechanic_discount_pct', 10) if b.get('mechanic_discount_pct') not in (None, '') else 10, 'Mechanic discount limit')
         if limit < 0 or limit > 100 or limit.as_tuple().exponent < -2:
             raise bad('The mechanic discount limit must be between 0 and 100 percent')
-        item = {'pk': 'WSET', 'sk': 'business', 'name': text(b.get('name'), 'Business name', 60, True),
+        terms = num(b.get('payment_terms_days') if b.get('payment_terms_days') not in (None, '') else 0, 'Payment terms')
+        if terms < 0 or terms > 90 or terms != terms.to_integral_value():
+            raise bad('Payment terms must be a whole number of days between 0 and 90')
+        item = {'pk': 'WSET', 'sk': 'business', 'payment_terms_days': int(terms), 'warranty': lines_text(b.get('warranty'), 'Warranty note', 200), 'name': text(b.get('name'), 'Business name', 60, True),
                 'address': lines_text(b.get('address'), 'Address', 200), 'phone': text(b.get('phone'), 'Phone', 60),
                 'email': text(b.get('email'), 'Email', 80), 'reg_no': text(b.get('reg_no'), 'Registration / tax number', 60),
                 'bank': lines_text(b.get('bank'), 'Bank details', 300), 'footer': lines_text(b.get('footer'), 'Footer', 300),
@@ -307,6 +311,7 @@ def create_job(key, who, body):
         created, job_id = now(), str(uuid.uuid4())
         j = clean({'pk': 'WJOB', 'sk': job_id, 'id': job_id, 'registration': reg, 'vehicle_key': regkey(reg),
                    'customer': text(b.get('customer'), 'Customer name', 100, True), 'phone': phone(b.get('phone')),
+                   'address': lines_text(b.get('address'), 'Customer address', 200),
                    'vehicle': text(b.get('vehicle'), 'Vehicle make and model', 100),
                    'odometer': km(b.get('odometer'), 'Odometer'), 'summary': text(b.get('summary'), 'Complaint', 1000),
                    'mechanic': text(b.get('mechanic'), 'Mechanic', 60), 'notes': '', 'status': 'OPEN', 'revision': 0,
@@ -362,6 +367,8 @@ def save_job(job_id, key, who, body, owner=True):
                                    ('summary', 'Complaint', 1000), ('mechanic', 'Mechanic', 60), ('notes', 'Notes', 1000)):
             if field in b:
                 j[field] = text(b[field], label, size, field == 'customer')
+        if 'address' in b:
+            j['address'] = lines_text(b['address'], 'Customer address', 200)
         if 'phone' in b:
             j['phone'] = phone(b['phone'])
         if 'odometer' in b:
@@ -518,7 +525,7 @@ def finalise(job_id, key, who, body):
         stamped = dict(current, tax_rate=rate)
         t, created, invoice_id = totals(stamped), now(), str(uuid.uuid4())
         number = 'INV-' + datetime.now(COLOMBO).strftime('%Y%m%d') + '-' + invoice_id[:6].upper()
-        keep = ('registration', 'vehicle_key', 'customer', 'phone', 'vehicle', 'odometer', 'summary', 'mechanic', 'parts', 'labour',
+        keep = ('registration', 'vehicle_key', 'customer', 'address', 'phone', 'vehicle', 'odometer', 'summary', 'mechanic', 'parts', 'labour',
                 'next_service_date', 'next_service_km')
         invoice = clean({'pk': 'WINV', 'sk': invoice_id, 'id': invoice_id, 'invoice_number': number, 'job_id': job_id,
                          **{k: current.get(k) for k in keep}, **t, 'tax_name': shop['tax_name'], 'tax_rate': rate, 'currency': 'LKR',
@@ -718,6 +725,9 @@ def pdf(invoice_id):
     i['date'] = local_date(i['created_at']).isoformat()
     i['payments'] = [{**p, 'date': local_date(p['at']).isoformat()} for p in i['payments']]
     i['business'] = {**i.get('business', {}), 'tax_rate': i['tax_rate']}
+    terms = int(i['business'].get('payment_terms_days') or 0)
+    i['terms'] = terms
+    i['due_date'] = (local_date(i['created_at']) + timedelta(days=terms)).isoformat() if terms else ''
     i['tax_name'] = i.get('tax_name', 'VAT')
     return bills.invoice(i), i['invoice_number']
 

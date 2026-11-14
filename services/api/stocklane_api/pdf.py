@@ -100,6 +100,17 @@ class Doc:
         if stroke is not None:
             self.ops.append('%s RG 0.6 w %.1f %.1f %.1f %.1f re S' % (_rgb(stroke), x, H - y - h, w, h))
 
+    def stamp(self, label, x, y, color, size=56, angle=18, page=0):
+        """A rotated outlined stamp (PAID, VOID) on the first page; y is measured from the top."""
+        import math
+        c, sn = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+        w = width(label, size, True)
+        # text matrix rotates around (x, H - y); centre the word first
+        tx = x - (w / 2) * c + (size * 0.35) * sn
+        ty = (H - y) - (w / 2) * sn - (size * 0.35) * c
+        ops = self.pages[page]
+        ops.append('q %s RG %s rg 2 w 1 Tr BT /F2 %.1f Tf %.4f %.4f %.4f %.4f %.1f %.1f Tm (%s) Tj ET Q' % (_rgb(color), _rgb(color), size, c, sn, -sn, c, tx, ty, _esc(label)))
+
     def paragraph(self, x, s, max_width, size=10, bold=False, color=INK, lead=1.35):
         for part in wrap(s, max_width, size, bold):
             self.room(size * lead)

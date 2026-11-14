@@ -96,7 +96,7 @@ export function InvoicePage({ id }: { id: string }) {
         </form>
       )}
       <div className="ws-print">
-        <Bill d={{ business: shop, number: inv.invoice_number, date: dateOnly(inv.created_at), status: inv.status, customer: inv.customer, phone: inv.phone, registration: inv.registration, vehicle: inv.vehicle,
+        <Bill d={{ business: shop, number: inv.invoice_number, date: dateOnly(inv.created_at), status: inv.status, customer: inv.customer, address: inv.address, phone: inv.phone, registration: inv.registration, vehicle: inv.vehicle,
           odometer: inv.odometer, mechanic: inv.mechanic, summary: inv.summary, parts: inv.parts, labour: inv.labour, discount: inv.discount, tax_name: inv.tax_name, tax_rate: inv.tax_rate,
           payments: inv.payments, paid: inv.paid, next_service_date: inv.next_service_date, next_service_km: inv.next_service_km }} />
       </div>

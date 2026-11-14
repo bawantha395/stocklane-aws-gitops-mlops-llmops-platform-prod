@@ -1,7 +1,7 @@
-import { dateOnly, kmText, lkr, num, round2, type Business, type Labour, type Part, type Payment } from "./common";
+import { addDays, dateOnly, kmText, lkr, num, round2, type Business, type Labour, type Part, type Payment } from "./common";
 
 export type BillData = {
-  business: Business; number?: string; date: string; status?: string; draft?: boolean; customer: string; phone?: string; registration: string;
+  business: Business; number?: string; date: string; status?: string; draft?: boolean; customer: string; address?: string; phone?: string; registration: string;
   vehicle?: string; odometer?: number | null; mechanic?: string; summary?: string; parts: Part[]; labour: Labour[]; discount: number;
   tax_name?: string; tax_rate: number; payments?: Payment[]; paid?: number; next_service_date?: string; next_service_km?: number | null;
 };
@@ -35,11 +35,12 @@ export function Bill({ d }: { d: BillData }) {
           <strong>{title}</strong>
           {d.number && <b>{d.number}</b>}
           <span>Date: {d.date}</span>
+          {!!b.payment_terms_days && !d.draft && <span>Due: {addDays(d.date, b.payment_terms_days)} ({b.payment_terms_days} days)</span>}
           {d.status && !d.draft && <span>Status: {{ UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", VOID: "Void" }[d.status] || d.status}</span>}
         </div>
       </header>
       <section className="ws-bill-parties">
-        <div><small>BILL TO</small><b>{d.customer}</b><span>{d.phone}</span></div>
+        <div><small>BILL TO</small><b>{d.customer}</b>{d.address && <span className="ws-pre">{d.address}</span>}<span>{d.phone}</span></div>
         <div><small>VEHICLE</small><b className="ws-bill-reg">{d.registration}</b><span>{d.vehicle}</span><span>{d.odometer != null ? kmText(d.odometer) : ""}</span>{d.mechanic && <span>Mechanic: {d.mechanic}</span>}</div>
       </section>
       {d.summary && <section><small>WORK REQUESTED</small><p>{d.summary}</p></section>}
@@ -71,10 +72,13 @@ export function Bill({ d }: { d: BillData }) {
           {d.payments.map((p) => <div className="ws-bill-pay" key={p.id}><span>{dateOnly(p.at)}  {p.method.charAt(0) + p.method.slice(1).toLowerCase()}{p.note ? "  " + p.note : ""}</span><b>{lkr(p.amount)}</b></div>)}
         </section>
       )}
+      {!d.tax_rate && !d.draft && <p className="ws-bill-notax">This is not a tax invoice.</p>}
       {(d.next_service_date || d.next_service_km) && (
         <p className="ws-bill-next">Next service due {[d.next_service_date && "on " + d.next_service_date, d.next_service_km && "at " + kmText(d.next_service_km)].filter(Boolean).join(" and ")}</p>
       )}
-      {(b.bank || b.footer) && <footer>{b.bank && <><small>PAYMENT DETAILS</small><p className="ws-pre">{b.bank}</p></>}{b.footer && <p className="ws-pre muted">{b.footer}</p>}</footer>}
+      {b.bank && <section className="ws-bill-pay-box"><small>HOW TO PAY</small><p className="ws-pre">{b.bank}</p></section>}
+      {(b.warranty || b.footer) && <footer>{b.warranty && <><small>WARRANTY</small><p className="ws-pre">{b.warranty}</p></>}{b.footer && <p className="ws-pre muted">{b.footer}</p>}</footer>}
+      {!d.draft && (d.status === "PAID" || d.status === "VOID") && <span className={"ws-bill-stamp " + d.status.toLowerCase()} aria-hidden="true">{d.status === "PAID" ? "PAID" : "VOID"}</span>}
       <div className="ws-bill-sign"><span>Authorised signature</span></div>
     </article>
   );

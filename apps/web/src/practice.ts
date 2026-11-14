@@ -93,7 +93,7 @@ export async function demoShot(kind: "plate" | "front" | "damage"): Promise<File
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 function business() {
-  return { name: getBusinessName(), address: "12 Demo Road", phone: "011 000 0000", email: "", reg_no: "", bank: "", footer: "", tax_name: "VAT", tax_rate: 0, mechanic_discount_pct: 10, ...db.settings };
+  return { name: getBusinessName(), address: "12 Demo Road", phone: "011 000 0000", email: "", reg_no: "", bank: "", footer: "", tax_name: "VAT", tax_rate: 0, mechanic_discount_pct: 10, payment_terms_days: 0, warranty: "", ...db.settings };
 }
 function priced(j: Row) {
   j.parts_total = round2(j.parts.reduce((s: number, p: Row) => s + Number(p.quantity) * Number(p.unit_price), 0));
@@ -241,7 +241,7 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
     if (a === "jobs") {
       if (!b) {
         if (method === "GET") return clone(rows(db.jobs));
-        const j = priced({ id: next("j"), registration: String(body.registration || "").toUpperCase(), vehicle_key: regKey(body.registration), customer: body.customer || "", phone: body.phone || "", vehicle: body.vehicle || "",
+        const j = priced({ id: next("j"), registration: String(body.registration || "").toUpperCase(), vehicle_key: regKey(body.registration), customer: body.customer || "", address: body.address || "", phone: body.phone || "", vehicle: body.vehicle || "",
           odometer: body.odometer ?? undefined, summary: body.summary || "", mechanic: body.mechanic || "", notes: "", status: "OPEN", revision: 1, parts: [], labour: [], discount: 0, tax_rate: 0, created_at: now(), age_days: 0 });
         Object.assign(j, { front_photo: body.front_photo || undefined, plate_photo: body.plate_photo || undefined, before_photos: body.before_photos || [], photo_count: (body.before_photos || []).length || undefined });
         db.jobs.unshift(j); db.jobsMade++; return clone(j);
@@ -266,14 +266,14 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
         return { before_photos: list, front_photo: j.front_photo, plate_photo: j.plate_photo };
       }
       if (c === "invoice") {
-        const inv = { id: next("i"), invoice_number: "INV-" + String(db.invoices.length + 1).padStart(4, "0"), job_id: j.id, registration: j.registration, customer: j.customer, phone: j.phone, vehicle: j.vehicle, odometer: j.odometer, summary: j.summary,
+        const inv = { id: next("i"), invoice_number: "INV-" + String(db.invoices.length + 1).padStart(4, "0"), job_id: j.id, registration: j.registration, customer: j.customer, address: j.address, phone: j.phone, vehicle: j.vehicle, odometer: j.odometer, summary: j.summary,
           mechanic: j.mechanic, parts: j.parts, labour: j.labour, parts_total: j.parts_total, labour_total: j.labour_total, discount: j.discount, subtotal: j.subtotal, tax: j.tax, tax_name: "VAT", tax_rate: 0, total: j.total,
           paid: 0, status: "UNPAID", created_at: now(), payments: [] as Row[], currency: "LKR", business: business() };
         db.invoices.unshift(inv); j.status = "INVOICED"; j.invoice_id = inv.id; j.invoice_number = inv.invoice_number; j.revision++;
         return clone(inv);
       }
       if (method === "PATCH") {
-        Object.assign(j, { customer: body.customer, phone: body.phone, vehicle: body.vehicle, odometer: body.odometer ?? undefined, summary: body.summary, mechanic: body.mechanic, notes: body.notes,
+        Object.assign(j, { customer: body.customer, address: body.address, phone: body.phone, vehicle: body.vehicle, odometer: body.odometer ?? undefined, summary: body.summary, mechanic: body.mechanic, notes: body.notes,
           parts: body.parts || [], labour: body.labour || [], discount: Number(body.discount || 0) });
         priced(j); j.revision++;
       }
