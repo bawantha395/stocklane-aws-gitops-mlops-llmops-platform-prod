@@ -25,6 +25,7 @@ import {
   FileText,
   PlusCircle,
   X as CloseIcon,
+  Compass,
 } from "lucide-react";
 import {
   api,
@@ -46,6 +47,7 @@ import "./glass.css";
 import "./theme.css";
 import { setBusinessName, useBusinessName } from "./businessName";
 import { t, useLang, setLang } from "./i18n";
+import { Walkthrough } from "./Walkthrough";
 import { Logo } from "./Logo";
 import { SignIn, type SignInMode } from "./SignIn";
 import type { Page as WsPage } from "./workshop/common";
@@ -220,6 +222,7 @@ function App() {
   useEffect(() => { saveNav(view, counterMode); }, [view, counterMode]);
   const businessName = useBusinessName();
   const lang = useLang();
+  const [tourOpen, setTourOpen] = useState(false);
   const [dockHidden, setDockHidden] = useState(() => {
     try { return localStorage.getItem("lifta.dock") === "hidden"; } catch { return false; }
   });
@@ -798,7 +801,7 @@ function App() {
           onSignOut={() => void signOut()} />
       );
   }
-  const navItems: ({ group: string } | { key: View; full: string; short: string; sub: string; Icon: typeof Home; main?: boolean })[] = [
+  const navItems: ({ group: string } | { key: View | "tour"; full: string; short: string; sub: string; Icon: typeof Home; main?: boolean })[] = [
     { key: "home", full: t("Home"), short: t("Home"), sub: "", Icon: Home, main: true },
     { group: t("WORKSHOP MANAGEMENT") },
     { key: "workshop", full: t("Jobs & Invoices"), short: t("Jobs"), sub: t("Job cards, vehicles and bills"), Icon: Wrench, main: true },
@@ -807,7 +810,10 @@ function App() {
     { key: "stock", full: t("Parts list"), short: t("Parts"), sub: owner ? t("All parts, photos and QR labels") : t("See what is in stock"), Icon: Package },
     { key: "activity", full: t("History"), short: t("History"), sub: t("Every part in and out"), Icon: Activity },
     ...(owner ? [{ key: "analysis" as View, full: t("Reports"), short: t("Reports"), sub: t("Stock summary and low stock"), Icon: ClipboardCheck }] : []),
+    { group: t("HELP") },
+    { key: "tour", full: t("Walkthrough"), short: t("Walkthrough"), sub: t("Show me how it works"), Icon: Compass },
   ];
+  const pickNav = (key: View | "tour") => { if (key === "tour") { setMenuOpen(false); setTourOpen(true); } else navigate(key); };
   const moreActive = view === "stock" || view === "activity" || view === "analysis";
   return (
     <div className="stock-shell" data-dock={dockHidden ? "hidden" : "shown"}>
@@ -831,7 +837,7 @@ function App() {
               key={n.key}
               disabled={busy}
               className={(view === n.key ? "chosen" : "") + (n.main ? "" : " nav-more")}
-              onClick={() => navigate(n.key)}
+              onClick={() => pickNav(n.key)}
             >
               <n.Icon size={19} />
               <span className="nav-text">
@@ -872,7 +878,7 @@ function App() {
               "group" in n ? (
                 <p className="menu-heading" key={n.group}>{n.group}</p>
               ) : (
-                <button key={n.key} className={view === n.key ? "chosen" : ""} disabled={busy} onClick={() => navigate(n.key)}>
+                <button key={n.key} className={view === n.key ? "chosen" : ""} disabled={busy} onClick={() => pickNav(n.key)}>
                   <n.Icon size={22} />
                   <span><strong>{n.full}</strong>{n.sub && <small>{n.sub}</small>}</span>
                 </button>
@@ -886,6 +892,7 @@ function App() {
           </nav>
         </div>
       )}
+      {tourOpen && <Walkthrough owner={owner} onClose={() => setTourOpen(false)} />}
       <main className="stock-main">
         <header className="stock-header">
           <span>
@@ -947,7 +954,7 @@ function App() {
             <div className="workspace-intro">
               <p className="eyebrow">{t("YOUR WORKSHOP. UNDER CONTROL.")}</p>
               <h1>{t("What are we doing today?")}</h1>
-              <p>{t("Pick what you want to do. New here? Follow the steps below.")}</p>
+              <p>{t("Pick what you want to do. New here? Follow the steps below.")} <button className="stock-link" onClick={() => setTourOpen(true)}>{t("Take the tour")}</button></p>
             </div>
             {owner && session && !startHidden && started && (() => {
               const steps = [
