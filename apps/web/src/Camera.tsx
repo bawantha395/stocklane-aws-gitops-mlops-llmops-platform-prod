@@ -33,6 +33,27 @@ export function Camera({
       ? new (window as Window & { BarcodeDetector: new (options: { formats: string[] }) => { detect: (source: HTMLVideoElement) => Promise<{ rawValue: string }[]> } }).BarcodeDetector({ formats: ["ean_8", "ean_13", "upc_a", "upc_e", "code_128"] })
       : null;
     setBarcodeReady(!!barcodeDetector);
+    // iPhone Safari has no BarcodeDetector: load a small JavaScript reader (ZXing) only when it is needed.
+    let soft: { decode: (canvas: HTMLCanvasElement) => string } | null = null;
+    if (!barcodeDetector && onBarcode) {
+      void import("@zxing/library").then((z) => {
+        if (disposed) return;
+        const reader = new z.MultiFormatReader();
+        reader.setHints(new Map<unknown, unknown>([
+          [z.DecodeHintType.POSSIBLE_FORMATS, [z.BarcodeFormat.EAN_13, z.BarcodeFormat.EAN_8, z.BarcodeFormat.UPC_A, z.BarcodeFormat.UPC_E, z.BarcodeFormat.CODE_128]],
+          [z.DecodeHintType.TRY_HARDER, true],
+        ]) as Map<never, never>);
+        soft = {
+          decode: (canvas) => {
+            const source = new z.HTMLCanvasElementLuminanceSource(canvas);
+            return reader.decode(new z.BinaryBitmap(new z.HybridBinarizer(source))).getText();
+          },
+        };
+        setBarcodeReady(true);
+      }).catch(() => {});
+    }
+    const wide = document.createElement("canvas");
+    let tick = 0;
     const stop = () => stream?.getTracks().forEach((track) => track.stop());
     const read = () => {
       if (disposed) return;
@@ -61,6 +82,23 @@ export function Camera({
               onBarcode(value);
             }
           }).catch(() => {});
+        }
+      }
+      if (soft && onBarcode && v && v.readyState >= 2 && v.videoWidth && ++tick % 2 === 0) {
+        // A bigger frame than the QR check uses: thin barcode lines need the pixels.
+        wide.width = Math.min(1280, v.videoWidth);
+        wide.height = Math.round((v.videoHeight * wide.width) / v.videoWidth);
+        wide.getContext("2d", { willReadFrequently: true })?.drawImage(v, 0, 0, wide.width, wide.height);
+        try {
+          const value = soft.decode(wide);
+          if (value && !disposed) {
+            disposed = true;
+            stop();
+            onBarcode(value);
+            return;
+          }
+        } catch {
+          /* no barcode in this frame */
         }
       }
       timer = setTimeout(read, 200);

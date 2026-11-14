@@ -38,6 +38,12 @@ def user_text(context):
             '. Existing brands in this shop: ' + json.dumps(clean(context.get('brands'))) + '. Return the item fields.')
 
 
+SHORT = {'AI_PROVIDER_QUOTA': 'quota is zero or used up', 'AI_ACCESS_DENIED': 'model access not enabled', 'AI_MODEL_CONFIGURATION': 'model or region wrong',
+         'AI_PROVIDER_TIMEOUT': 'too slow or unreachable', 'AI_PROVIDER_BUSY': 'busy', 'AI_PROVIDER_UNAVAILABLE': 'unavailable', 'AI_CREDENTIALS_UNAVAILABLE': 'no AWS credentials',
+         'AI_INVALID_RESPONSE': 'unusable reply', 'AI_UNAVAILABLE': 'failed', '429': 'free limit reached, try later', '400': 'request rejected', '401': 'key not accepted',
+         '403': 'key not accepted', '404': 'model name not found', '500': 'Google error', '503': 'Google busy'}
+
+
 class BedrockUnavailable(Exception):
     """Sanitized operator guidance; never return provider exception text."""
     def __init__(self, code, message, *, retryable=False, status=503,
@@ -88,12 +94,13 @@ def propose(settings, image, context=None):
     backup = getattr(settings, 'gemini_api_key', '')
     if not settings.bedrock_model_id and not backup:
         return {}, 'manual'
-    problem = None
+    problem, details = None, []
     if settings.bedrock_model_id:
         try:
             return _invoke(settings,image,context or {})
         except Exception as error:
             problem = failure(error)
+            details.append('Bedrock: ' + SHORT.get(problem.code, problem.code))
             logging.getLogger(__name__).warning('Bedrock failed code=%s provider=%s', problem.code, problem.provider_code)
     if backup:
         logging.getLogger(__name__).info('Trying Gemini backup model=%s', settings.gemini_model)
@@ -102,6 +109,8 @@ def propose(settings, image, context=None):
             return gemini.propose(settings, image, context or {})
         except BedrockUnavailable as error:
             problem = problem or error
+            details.append('Gemini: ' + SHORT.get(error.provider_code, SHORT.get(error.code, error.code)))
+    problem.detail = ' | '.join(details)
     raise problem from None
 
 

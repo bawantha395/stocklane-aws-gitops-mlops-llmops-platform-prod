@@ -222,12 +222,12 @@ def create_app():
                     fields = {k: v for k, v in rule_fields.items() if k in ('partNumber', 'capacity', 'grade') and k not in suggestions}
                 except Exception as error:
                     problem = error if isinstance(error, BedrockUnavailable) else failure(error)
-                    ai = {'status': 'unavailable', 'code': problem.code, 'message': problem.message.split('. ')[0]}
+                    ai = {'status': 'unavailable', 'code': problem.code, 'message': problem.message.split('. ')[0], 'detail': getattr(problem, 'detail', '')}
                     log.warning('AI suggestions unavailable code=%s', problem.code)
         if ai['status'] != 'used':
             fields = dict(rule_fields)  # without the AI, the label rules are the only reading
         if problem and not fields:
-            return JSONResponse(status_code=problem.status, content={'detail': problem.message, 'code': problem.code, 'retryable': problem.retryable},
+            return JSONResponse(status_code=problem.status, content={'detail': problem.message + (' (' + problem.detail + ')' if getattr(problem, 'detail', '') else ''), 'code': problem.code, 'retryable': problem.retryable},
                                 headers={'Retry-After': str(problem.retry_after)} if problem.retry_after else {})
         label_suggestions = dict(fields)  # label text and model output are suggestions; the form starts empty
         row = {'id': str(uuid.uuid4()), 'image_id': body.imageId, 'fields': '{}', 'source': source, 'status': 'PENDING',

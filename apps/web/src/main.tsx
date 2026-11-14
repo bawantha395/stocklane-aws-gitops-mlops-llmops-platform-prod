@@ -83,7 +83,7 @@ type View =
   | "counter"
   | "workshop";
 const uid = () => crypto.randomUUID();
-function aiMessage(ai?: { status: string; code?: string; message?: string }) {
+function aiMessage(ai?: { status: string; code?: string; message?: string; detail?: string }) {
   if (!ai || ai.status === "not_needed") return "";
   if (ai.status === "used") return "AI suggestions are included (shown in blue). Check them before saving.";
   if (ai.status === "not_configured") return "AI suggestions are switched off. Showing what the label says and similar items only.";
@@ -93,7 +93,9 @@ function aiMessage(ai?: { status: string; code?: string; message?: string }) {
       ? " (the AWS Bedrock quota for this account is not approved yet)"
       : ai.code === "AI_ACCESS_DENIED"
         ? " (Bedrock model access is not enabled)"
-        : "";
+        : ai.detail
+          ? " (" + ai.detail + ")"
+          : "";
   return "AI suggestions are not available right now" + why + ". Showing what the label says and similar items only.";
 }
 const number = (n: number) =>

@@ -59,5 +59,5 @@ def propose(settings, image, context=None):
         raise BedrockUnavailable('AI_INVALID_RESPONSE', 'The AI response could not be used. No product was created. Enter the details manually.', status=502) from None
     except Exception as error:
         log.warning('Gemini backup unreachable type=%s', type(error).__name__)
-        raise BedrockUnavailable('AI_PROVIDER_TIMEOUT', 'The AI service could not be reached. Retry later or enter the item manually.', retryable=True) from None
+        raise BedrockUnavailable('AI_PROVIDER_TIMEOUT', 'The AI service could not be reached. Retry later or enter the item manually.', retryable=True, provider_code='AI_PROVIDER_TIMEOUT') from None
     return {k: v.strip()[:LIMITS[k]] for k, v in fields.items() if k in LIMITS and isinstance(v, str) and v.strip()}, 'gemini'
