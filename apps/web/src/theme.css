@@ -237,3 +237,28 @@ body[data-practice]::after { content: ""; position: fixed; inset: 0; border: 3px
 .chooser-opt strong { font-size: 17px; }
 .chooser-opt small { font-size: 13.5px; color: #5b6b66; }
 .chooser-opt.primary { border-color: #f0d27a; background: #fffdf6; }
+
+/* ---- Top bar: business identity (desktop) + Lifta brand (mobile) ---- */
+.stock-shell .stock-header { height: 72px; z-index: 40; }
+html .stock-shell .stock-header { background: rgba(245, 245, 247, .92) !important; -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid rgba(0, 0, 0, .06); }
+.stock-header .m-brand { display: none; align-items: center; gap: 8px; color: var(--stock-ink, #14231f); text-decoration: none; font-size: 22px; letter-spacing: -.05em; }
+.stock-header .m-brand span { color: var(--apple-blue, #0071e3); }
+.stock-header .biz { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.stock-header .biz-logo { position: relative; flex: 0 0 auto; display: inline-flex; }
+.stock-header .biz-logo img { height: 46px; width: auto; max-width: 64px; object-fit: contain; filter: drop-shadow(0 3px 6px rgba(14, 47, 107, .22)); }
+.stock-header .biz-logo.none img { display: none; }
+.stock-header .biz-logo .online-dot { position: absolute; right: -2px; bottom: 0; width: 10px; height: 10px; border: 2px solid #f5f5f7; background: #3fb37f; }
+.stock-header .biz-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.stock-header .biz-text strong { font-size: 16px; font-weight: 700; color: #14231f; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stock-header .biz-text small { font-size: 12px; color: #6b7886; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html .stock-shell .stock-header .biz-text strong { color: #14231f; }
+html .stock-shell .stock-header .biz-text small { color: #6b7886; }
+.stock-shell .ws-tabs { top: 72px; }
+@media (max-width: 760px) {
+  .stock-shell .stock-header { height: 56px; position: static; }
+  .stock-header .biz { display: none; }
+  .stock-header .m-brand { display: inline-flex; }
+  .stock-shell .ws-tabs { top: 0; }
+}
+html[data-glass] body .stock-shell .stock-main > .stock-header,
+html body .stock-shell .stock-main > .stock-header { background: rgba(245, 245, 247, .94) !important; -webkit-backdrop-filter: saturate(180%) blur(20px) !important; backdrop-filter: saturate(180%) blur(20px) !important; border-bottom: 1px solid rgba(0, 0, 0, .06) !important; }

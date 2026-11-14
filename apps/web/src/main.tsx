@@ -878,11 +878,6 @@ function App() {
           {menuOpen ? <CloseIcon size={19} /> : <MenuIcon size={19} />}
           <span className="nav-short">{t("Menu")}</span>
         </button>
-        <div className="stock-sidebar-foot">
-          <img className="shop-logo" src="/shop-logo.png" alt={businessName} />
-          <strong>{owner ? t("Owner workspace") : t("Stock team")}</strong>
-          <small>{businessName}</small>
-        </div>
         <div
           className="dock-grab"
           role="button"
@@ -926,9 +921,19 @@ function App() {
       <PracticeCoach />
       <main className="stock-main">
         <header className="stock-header">
-          <span>
-            <span className="online-dot" /> {businessName}
-          </span>
+          <a className="m-brand" href="#" onClick={(e) => { e.preventDefault(); navigate("home"); }}>
+            <Logo size={30} /> <b>Lifta<span>.</span></b>
+          </a>
+          <div className="biz" aria-label={businessName}>
+            <span className="biz-logo">
+              <img src="/shop-logo.png" alt="" onError={(e) => { (e.currentTarget.parentElement as HTMLElement).classList.add("none"); }} />
+              <span className="online-dot" title={t("Connected")} />
+            </span>
+            <span className="biz-text">
+              <strong>{businessName}</strong>
+              <small>{owner ? t("Owner workspace") : t("Stock team")}</small>
+            </span>
+          </div>
           <div>
             <div className="lang-toggle" role="group" aria-label="Language">
               <button className={lang === "en" ? "on" : ""} onClick={() => setLang("en")}>EN</button>
