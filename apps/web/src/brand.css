@@ -174,3 +174,6 @@ html[data-theme="dark"] .counter-lowchip { color: #f0b266; }
 /* Toasts live outside the app shell: give them the app font, and keep them clear of the page's main buttons on desktop */
 .ui-toasts { font-family: "Inter", "SF Pro Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 @media (min-width: 761px) { .ui-toasts { left: auto; right: 24px; bottom: 24px; justify-items: end; } }
+
+/* Language switch: a comfortable tap target on phones */
+@media (max-width: 760px) { .lang-toggle button { min-height: 36px; } }
