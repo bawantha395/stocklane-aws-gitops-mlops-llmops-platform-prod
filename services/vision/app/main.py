@@ -201,7 +201,11 @@ def create_app():
         if settings.ai_enabled and not missing:
             ai = {'status': 'not_needed'}
         if settings.ai_enabled and missing:
-            used = store.spend_allowance()
+            try:
+                used = store.spend_allowance()
+            except Exception as error:  # the usage counter must never break the label reading itself
+                log.warning('AI usage counter failed type=%s', type(error).__name__)
+                used = settings.bedrock_daily_request_limit + 1
             if used > settings.bedrock_daily_request_limit:
                 if not fields:
                     raise HTTPException(429, 'Daily AI suggestion limit reached. Register manually or retry tomorrow UTC.')

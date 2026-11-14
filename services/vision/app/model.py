@@ -3,6 +3,7 @@ a new approval takes effect within five minutes, without redeploying the functio
 import hashlib
 import io
 import json
+import logging
 import tarfile
 import time
 from pathlib import Path
@@ -33,13 +34,16 @@ def _download(s3, bucket, pointer, folder):
 
 def encoder(settings):
     """The current encoder, or None while no model has been released yet."""
-    if time.monotonic() < _state['checked'] + 300:
+    # While no model is loaded, look again after 15 s so a fresh release is picked up quickly; otherwise every 5 minutes.
+    if time.monotonic() < _state['checked'] + (300 if _state['encoder'] is not None else 15):
         return _state['encoder']
     _state['checked'] = time.monotonic()
     s3 = boto3.client('s3')
     try:
         head = s3.head_object(Bucket=settings.model_bucket, Key='config/model.json')
-    except s3.exceptions.ClientError:
+    except s3.exceptions.ClientError as error:
+        logging.getLogger(__name__).warning('Model pointer not readable code=%s bucket=%s',
+                                            error.response.get('Error', {}).get('Code'), settings.model_bucket or '(unset)')
         return _state['encoder']
     if head['ETag'] != _state['etag'] or _state['encoder'] is None:
         pointer = json.loads(s3.get_object(Bucket=settings.model_bucket, Key='config/model.json')['Body'].read(65536))

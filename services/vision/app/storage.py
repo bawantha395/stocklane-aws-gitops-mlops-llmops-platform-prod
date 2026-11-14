@@ -158,7 +158,8 @@ class Store:
     def spend_allowance(self):
         """Count one AI request for today (UTC); returns how many were used including this one."""
         day = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-        result = self.table.update_item(Key={'pk': 'LIMIT', 'sk': day}, UpdateExpression='ADD used :one SET ttl = :t',
+        result = self.table.update_item(Key={'pk': 'LIMIT', 'sk': day}, UpdateExpression='ADD used :one SET #ttl = :t',
+                                        ExpressionAttributeNames={'#ttl': 'ttl'},  # TTL is a DynamoDB reserved word
                                         ExpressionAttributeValues={':one': Decimal(1), ':t': int(time.time()) + 172800},
                                         ReturnValues='UPDATED_NEW')
         return int(result['Attributes']['used'])
