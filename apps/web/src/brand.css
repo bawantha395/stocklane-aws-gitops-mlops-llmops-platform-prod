@@ -177,3 +177,6 @@ html[data-theme="dark"] .counter-lowchip { color: #f0b266; }
 
 /* Language switch: a comfortable tap target on phones */
 @media (max-width: 760px) { .lang-toggle button { min-height: 36px; } }
+
+/* Phones: quick-add chips and small links on the job page are easy to hit */
+@media (max-width: 760px) { .ws-quick { min-height: 36px; } .ws-l-offlink { min-height: 34px; } }

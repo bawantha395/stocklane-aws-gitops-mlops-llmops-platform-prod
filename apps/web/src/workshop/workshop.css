@@ -301,8 +301,8 @@ html[data-glass="light"] .ws-tabs button.chosen, html[data-glass="light"] .ws-ch
   .ws-bill-table { min-width: 0 !important; width: 100%; font-size: 11px; }
   .ws-bill-table th { background: none !important; border-bottom: 1px solid #000; padding: 2px 2px; }
   .ws-bill-table td { padding: 2px 2px; border-bottom: 1px dotted var(--l-999999); }
-  .ws-bill-table th:first-child, .ws-bill-table td:first-child { display: none; }
-  .ws-bill-table th:nth-child(4), .ws-bill-table td:nth-child(4) { display: none; }
+  .ws-bill-table th:first-child, .ws-bill-table td:first-child { width: 0 !important; max-width: 0 !important; padding: 0 !important; border: 0 !important; font-size: 0 !important; line-height: 0 !important; overflow: hidden; }
+  .ws-bill-table th:nth-child(4), .ws-bill-table td:nth-child(4) { width: 0 !important; max-width: 0 !important; padding: 0 !important; border: 0 !important; font-size: 0 !important; line-height: 0 !important; overflow: hidden; }
   .ws-bill-totals { max-width: none !important; margin: 6px 0 !important; }
   .ws-bill-totals .grand { background: none !important; color: #000 !important; border-top: 1px solid #000; border-bottom: 1px solid #000; border-radius: 0 !important; padding: 3px 0 !important; font-size: 14px; }
   .ws-bill-totals .due { color: #000 !important; }
@@ -333,8 +333,8 @@ html[data-glass="light"] .ws-tabs button.chosen, html[data-glass="light"] .ws-ch
   html.ws-receipt-mode .ws-bill-table { min-width: 0 !important; width: 100%; font-size: 11px; }
   html.ws-receipt-mode .ws-bill-table th { background: none !important; border-bottom: 1px solid #000; padding: 2px 2px; }
   html.ws-receipt-mode .ws-bill-table td { padding: 2px 2px; border-bottom: 1px dotted var(--l-999999); }
-  html.ws-receipt-mode .ws-bill-table th:first-child, html.ws-receipt-mode .ws-bill-table td:first-child { display: none; }
-  html.ws-receipt-mode .ws-bill-table th:nth-child(4), html.ws-receipt-mode .ws-bill-table td:nth-child(4) { display: none; }
+  html.ws-receipt-mode .ws-bill-table th:first-child, html.ws-receipt-mode .ws-bill-table td:first-child { width: 0 !important; max-width: 0 !important; padding: 0 !important; border: 0 !important; font-size: 0 !important; line-height: 0 !important; overflow: hidden; }
+  html.ws-receipt-mode .ws-bill-table th:nth-child(4), html.ws-receipt-mode .ws-bill-table td:nth-child(4) { width: 0 !important; max-width: 0 !important; padding: 0 !important; border: 0 !important; font-size: 0 !important; line-height: 0 !important; overflow: hidden; }
   html.ws-receipt-mode .ws-bill-totals { max-width: none !important; margin: 6px 0 !important; }
   html.ws-receipt-mode .ws-bill-totals .grand { background: none !important; color: #000 !important; border-top: 1px solid #000; border-bottom: 1px solid #000; border-radius: 0 !important; padding: 3px 0 !important; font-size: 14px; }
   html.ws-receipt-mode .ws-bill-totals .due { color: #000 !important; }
@@ -605,7 +605,7 @@ button.ws-kpi:hover { transform: translateY(-4px); box-shadow: 0 22px 40px -20px
 .ws-sw-call { background: var(--b-15803d); color: #fff; } .ws-sw-open { background: var(--b-1d4ed8); color: #fff; }
 .ws-swipe-body { position: relative; touch-action: pan-y; background: transparent; }
 .ws-swipe-body > .ws-tile { width: 100%; }
-@media (hover: hover) and (pointer: fine) { .ws-swipe-acts { display: none; } }
+@media (hover: hover) { .ws-swipe-acts { display: none; } }
 /* status pills: Open amber, Invoiced blue, Paid green, Void grey; each with an icon */
 .ws-pill { display: inline-flex; align-items: center; gap: 5px; }
 .ws-pill.open, .ws-pill.partial { background: var(--st-open-bg); color: var(--st-open); }
@@ -641,7 +641,7 @@ button.ws-kpi:hover { transform: translateY(-4px); box-shadow: 0 22px 40px -20px
 .ws-bill-mono { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 10px; background: var(--ws-accent, var(--b-0f5a43)); color: #fff; font-weight: 700; font-size: 17px; font-family: inherit; }
 .ws-bill-table th { background: var(--b-e9f2ed); color: var(--brand-ink); }
 .ws-bill-totals .grand { background: linear-gradient(135deg, #0f5a43, #0b3d30); }
-@media print { .ws-bill { overflow: visible; } .ws-bill-band { position: fixed; top: 0; left: 0; right: 0; height: 8px; } }
+@media print { .ws-bill { overflow: visible; padding-top: 16px !important; } .ws-bill-band { position: absolute; top: 0; left: 0; right: 0; height: 8px; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 
 .ws-lb-box { display: grid; place-items: center; max-width: 92vw; max-height: 84vh; }
 .ws-lb-box img { max-width: 92vw; max-height: 84vh; border-radius: 20px; }
@@ -751,4 +751,13 @@ button.ws-kpi:hover { transform: translateY(-4px); box-shadow: 0 22px 40px -20px
 .ws-list-row input { min-width: 0; }
 .ws-list-row .ws-lr-amt { width: 110px; flex: none; }
 .ws-list-row .ws-l-del { flex: none; }
-html.ws-receipt-mode .ws-bill-stamp { display: none !important; }
+
+/* Thermal receipt layout (narrow paper, also a phone print): no colour band, and the PAID mark sits in the flow below the bill instead of floating over the text */
+@media print and (max-width: 110mm) {
+  .ws-bill-band { display: none !important; }
+  .ws-bill-stamp { position: static !important; display: block; transform: none !important; margin: 10px auto 4px; width: fit-content; font-size: 26px; line-height: 1.1; padding: 0 12px; border-width: 3px; border-radius: 12px; opacity: .7; -webkit-text-stroke-width: 1.5px; }
+}
+@media print {
+  html.ws-receipt-mode .ws-bill-band { display: none !important; }
+  html.ws-receipt-mode .ws-bill-stamp { position: static !important; display: block !important; transform: none !important; margin: 10px auto 4px; width: fit-content; font-size: 26px; line-height: 1.1; padding: 0 12px; border-width: 3px; border-radius: 12px; opacity: .7; -webkit-text-stroke-width: 1.5px; }
+}
