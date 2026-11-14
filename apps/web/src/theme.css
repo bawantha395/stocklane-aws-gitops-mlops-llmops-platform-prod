@@ -262,3 +262,22 @@ html .stock-shell .stock-header .biz-text small { color: #6b7886; }
 }
 html[data-glass] body .stock-shell .stock-main > .stock-header,
 html body .stock-shell .stock-main > .stock-header { background: rgba(245, 245, 247, .94) !important; -webkit-backdrop-filter: saturate(180%) blur(20px) !important; backdrop-filter: saturate(180%) blur(20px) !important; border-bottom: 1px solid rgba(0, 0, 0, .06) !important; }
+
+/* Practice card: docked in a corner, shrinks when the target needs the room */
+.pc-card.pc-mini { padding: 10px 14px; }
+.pc-card.pc-mini h3 { font-size: 16px; margin: 6px 0 0; }
+.pc-card.pc-mini .pc-actions { margin-top: 8px; }
+.pc-card.pc-pill { padding: 8px 12px; border-radius: 18px; }
+.pc-card.pc-pill .pc-actions { margin-top: 6px; }
+.pc-pill-title { margin: 4px 0 0 !important; font-size: 14px !important; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-count { display: inline-flex; align-items: center; gap: 6px; }
+.pc-fold { width: 28px; height: 28px; border: 0; border-radius: 99px; background: #f3e9c8; color: #7a5200; font-size: 14px; line-height: 1; cursor: pointer; }
+@media (min-width: 761px) { .pc-card { padding: 12px 14px; } .pc-card h3 { font-size: 16.5px; } .pc-card p { font-size: 13.5px; } }
+
+/* Business mark */
+.bl { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: #fff; }
+.bl-img { width: auto; max-width: 96px; object-fit: contain; filter: drop-shadow(0 4px 8px rgba(14, 47, 107, .22)); }
+.bl-mono { border-radius: 28%; font-weight: 700; letter-spacing: -.02em; box-shadow: 0 4px 10px rgba(0, 0, 0, .18), inset 0 1px 0 rgba(255, 255, 255, .35); }
+.stock-header .biz-logo .bl-img { height: 46px; }
+.menu-sheet-foot .bl { margin-bottom: 6px; }
+html .stock-shell .bl, html .stock-shell .bl * { color: #fff !important; }

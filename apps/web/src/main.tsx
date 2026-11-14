@@ -51,6 +51,7 @@ import { Walkthrough } from "./Walkthrough";
 import { isPractice, samplePhotoBlob, usePractice, startPractice, probe } from "./practice";
 import { PracticeCoach } from "./PracticeCoach";
 import { Logo } from "./Logo";
+import { BizLogo } from "./BizLogo";
 import { SignIn, type SignInMode } from "./SignIn";
 import type { Page as WsPage } from "./workshop/common";
 
@@ -901,7 +902,7 @@ function App() {
               ),
             )}
             <div className="menu-sheet-foot">
-              <img className="shop-logo" src="/shop-logo.png" alt={businessName} />
+              <BizLogo name={businessName} size={84} />
               <strong>{owner ? t("Owner workspace") : t("Stock team")}</strong>
               <small>{businessName}</small>
             </div>
@@ -926,7 +927,7 @@ function App() {
           </a>
           <div className="biz" aria-label={businessName}>
             <span className="biz-logo">
-              <img src="/shop-logo.png" alt="" onError={(e) => { (e.currentTarget.parentElement as HTMLElement).classList.add("none"); }} />
+              <BizLogo name={businessName} size={46} />
               <span className="online-dot" title={t("Connected")} />
             </span>
             <span className="biz-text">

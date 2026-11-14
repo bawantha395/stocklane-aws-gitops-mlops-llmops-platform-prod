@@ -51,6 +51,22 @@ function stepsFor(owner: boolean): Step[] {
 type Rect = { x: number; y: number; w: number; h: number };
 const PAD = 6;
 
+const closer = (): HTMLElement | null => {
+  const shades = Array.from(document.querySelectorAll(".stock-modal-shade")).reverse();
+  for (const shade of shades) {
+    const b = shade.querySelector(".stock-close, .icon-button[aria-label]") as HTMLElement | null;
+    if (b && b.getBoundingClientRect().width > 0) return b;
+  }
+  return null;
+};
+const hit = (el: HTMLElement, r: DOMRect) => {
+  const vt = Math.max(r.top, 0), vb = Math.min(r.bottom, window.innerHeight);
+  if (vb - vt < 4) return false;
+  const x = Math.min(Math.max(r.left + r.width / 2, 1), window.innerWidth - 1), y = (vt + vb) / 2;
+  const top = document.elementFromPoint(x, y);
+  return !!top && (el.contains(top) || top.closest(".pc-card") !== null);
+};
+
 export function PracticeCoach() {
   useLang();
   const st = usePractice();
@@ -58,27 +74,41 @@ export function PracticeCoach() {
   const step = steps[Math.min(st.step, steps.length - 1)];
   const last = st.step >= steps.length - 1;
   const [rect, setRect] = useState<Rect | null>(null);
+  const [stray, setStray] = useState<Rect | null>(null);
+  const [small, setSmall] = useState(false);
   const base = useRef<Base>(progress());
   const scrolled = useRef(false);
+  const blocked = useRef(0);
 
   useEffect(() => {
     if (!st.active) return;
     base.current = progress();
     scrolled.current = false;
+    blocked.current = 0;
     setRect(null);
+    setStray(null);
     let gone = false;
+    const same = (old: Rect | null, r: DOMRect) => !!old && Math.abs(old.x - r.left) < 1 && Math.abs(old.y - r.top) < 1 && Math.abs(old.w - r.width) < 1 && Math.abs(old.h - r.height) < 1;
     const tick = () => {
       if (gone) return;
       if (step.until && step.until(base.current)) { gone = true; setTimeout(() => setPracticeStep(st.step + 1), 350); return; }
       const el = step.target ? (document.querySelector(step.target) as HTMLElement | null) : null;
       const r = el?.getBoundingClientRect();
-      if (el && r && r.width > 0 && r.height > 0) {
+      const seen = !!el && !!r && r.width > 0 && r.height > 0;
+      if (seen && el && r) {
         if (!scrolled.current) {
           scrolled.current = true;
           if (r.top < 70 || r.bottom > window.innerHeight - 40) el.scrollIntoView({ block: "center", behavior: "smooth" });
         }
-        setRect((old) => (old && Math.abs(old.x - r.left) < 1 && Math.abs(old.y - r.top) < 1 && Math.abs(old.w - r.width) < 1 && Math.abs(old.h - r.height) < 1 ? old : { x: r.left, y: r.top, w: r.width, h: r.height }));
+        setRect((old) => (same(old, r) ? old : { x: r.left, y: r.top, w: r.width, h: r.height }));
       } else setRect(null);
+      // The target is missing or hidden under a window the person opened by mistake: point at that window's close button.
+      const covered = !!step.target && !step.manual && (!seen || (!!el && !!r && !hit(el, r)));
+      blocked.current = covered ? Math.min(blocked.current + 1, 8) : Math.max(blocked.current - 1, 0);
+      const x = covered && blocked.current >= 4 ? closer() : null;
+      const c = x?.getBoundingClientRect();
+      if (x && c && c.width > 0) setStray((old) => (same(old, c) ? old : { x: c.left, y: c.top, w: c.width, h: c.height }));
+      else setStray((old) => (old ? null : old));
     };
     tick();
     const timer = setInterval(tick, 200);
@@ -93,12 +123,33 @@ export function PracticeCoach() {
 
   if (!st.active) return null;
   const vh = window.innerHeight, vw = window.innerWidth;
-  const hole = rect ? { x: Math.max(0, rect.x - PAD), y: Math.max(0, rect.y - PAD), w: rect.w + PAD * 2, h: rect.h + PAD * 2 } : null;
+  const focus = stray || rect;
+  const hole = focus ? { x: Math.max(0, focus.x - PAD), y: Math.max(0, focus.y - PAD), w: focus.w + PAD * 2, h: focus.h + PAD * 2 } : null;
   const mobile = vw <= 760;
-  // Put the card where it does not sit on top of the glowing target: below it if there is room, otherwise above it.
-  const cardH = mobile ? 215 : 185, topEdge = mobile ? 92 : 14;
-  const room = hole ? { below: vh - (hole.y + hole.h) - 12, above: hole.y - topEdge } : { below: 999, above: 0 };
-  const top = !!hole && room.below < cardH && room.above >= cardH ? true : !!hole && room.below < cardH && room.above > room.below;
+
+  // Card placement: try the roomy card in each corner (phone: bottom, then top), then the short card, then the small pill.
+  // The first spot that does not touch the glowing target wins.
+  type Spot = { left: number; width: number; top?: number; bottom?: number };
+  const edge = 12, topEdge = mobile ? 92 : 14;
+  const W = mobile ? vw - 24 : 340;
+  const heights = mobile ? { full: 215, mini: 112, pill: 46 } : { full: 250, mini: 124, pill: 46 };
+  const spotsFor = (h: number): { s: Spot; box: { x: number; y: number; w: number; h: number } }[] => {
+    const xs = mobile ? [12] : [vw - W - 16, 16];
+    const out: { s: Spot; box: { x: number; y: number; w: number; h: number } }[] = [];
+    for (const x of xs) {
+      out.push({ s: { left: x, width: W, bottom: edge }, box: { x, y: vh - edge - h, w: W, h } });
+      out.push({ s: { left: x, width: W, top: topEdge }, box: { x, y: topEdge, w: W, h } });
+    }
+    return out;
+  };
+  const touches = (b: { x: number; y: number; w: number; h: number }) => !!hole && b.x < hole.x + hole.w + 8 && b.x + b.w > hole.x - 8 && b.y < hole.y + hole.h + 8 && b.y + b.h > hole.y - 8;
+  const modes: ("full" | "mini" | "pill")[] = small ? ["pill"] : ["full", "mini", "pill"];
+  let mode: "full" | "mini" | "pill" = modes[modes.length - 1], spot: Spot = spotsFor(heights[mode])[0].s;
+  search: for (const m of modes) for (const c of spotsFor(heights[m])) if (!touches(c.box)) { mode = m; spot = c.s; break search; }
+
+  const title = stray ? t("Close this window first") : step.title;
+  const body = stray ? t("This window is not part of this step. Tap the glowing × to close it.") : step.body;
+  const style = { left: spot.left, width: spot.width, top: spot.top, bottom: spot.bottom, transform: "none" } as const;
   return (
     <>
       {hole ? (
@@ -110,18 +161,26 @@ export function PracticeCoach() {
           <div className="pc-ring" style={{ left: hole.x, top: hole.y, width: hole.w, height: hole.h }} />
         </>
       ) : step.target ? <div className="pc-block pc-soft" style={{ inset: 0 }} /> : null}
-      <section className="pc-card" role="dialog" aria-label={t("Practice")} style={top ? { top: mobile ? 92 : 14 } : { bottom: 12 }}>
+      <section className={"pc-card pc-" + mode} role="dialog" aria-label={t("Practice")} style={style}>
         <div className="pc-head">
-          <span className="pc-tag">{t("PRACTICE")} · {t("nothing is saved")}</span>
-          <span className="pc-count">{t("Step {n} of {total}", { n: st.step + 1, total: steps.length })}</span>
+          <span className="pc-tag">{mode === "pill" ? t("PRACTICE") : t("PRACTICE") + " · " + t("nothing is saved")}</span>
+          <span className="pc-count">
+            {t("Step {n} of {total}", { n: st.step + 1, total: steps.length })}
+            <button className="pc-fold" aria-label={small ? t("Show the help") : t("Make the help small")} title={small ? t("Show the help") : t("Make the help small")} onClick={() => setSmall(!small)}>{small ? "▴" : "▾"}</button>
+          </span>
         </div>
-        <div className="pc-bar" aria-hidden="true"><span style={{ width: ((st.step + 1) / steps.length) * 100 + "%" }} /></div>
-        <h3>{step.title}</h3>
-        <p>{step.body}</p>
+        {mode !== "pill" && (
+          <>
+            {mode === "full" && <div className="pc-bar" aria-hidden="true"><span style={{ width: ((st.step + 1) / steps.length) * 100 + "%" }} /></div>}
+            <h3>{title}</h3>
+            {mode === "full" && <p>{body}</p>}
+          </>
+        )}
+        {mode === "pill" && <h3 className="pc-pill-title">{title}</h3>}
         <div className="pc-actions">
           <button className="button secondary small" onClick={() => stopPractice()}>{t("Exit practice")}</button>
-          {!last && step.until && <button className="button secondary small" onClick={() => setPracticeStep(st.step + 1)}>{t("Skip this step")}</button>}
-          {(step.manual || last) && (
+          {!last && step.until && mode !== "pill" && <button className="button secondary small" onClick={() => setPracticeStep(st.step + 1)}>{t("Skip this step")}</button>}
+          {(step.manual || last) && !stray && (
             <button className="button primary small" onClick={() => (last ? stopPractice() : setPracticeStep(st.step + 1))}>{last ? t("Finish") : t("Next")}</button>
           )}
         </div>
