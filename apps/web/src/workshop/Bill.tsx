@@ -83,8 +83,10 @@ export function Bill({ d }: { d: BillData }) {
       )}
       {(b.bank || b.qr_url) && <section className="ws-bill-pay-box"><div><small>HOW TO PAY</small><p className="ws-pre">{b.bank}</p></div>{b.qr_url && !d.draft && <QrImg text={b.qr_url} />}</section>}
       {(b.warranty || b.footer) && <footer>{b.warranty && <><small>WARRANTY</small><p className="ws-pre">{b.warranty}</p></>}{b.footer && <p className="ws-pre muted">{b.footer}</p>}</footer>}
-      {!d.draft && (d.status === "PAID" || d.status === "VOID") && <span className={"ws-bill-stamp " + d.status.toLowerCase()} aria-hidden="true">{d.status === "PAID" ? "PAID" : "VOID"}</span>}
-      <div className="ws-bill-sign"><span>Authorised signature</span></div>
+      <div className="ws-bill-signrow">
+        <div className="ws-bill-sign"><span>Authorised signature</span></div>
+        {!d.draft && (d.status === "PAID" || d.status === "VOID") && <span className={"ws-bill-stamp " + d.status.toLowerCase()} aria-hidden="true">{d.status === "PAID" ? "PAID" : "VOID"}</span>}
+      </div>
     </article>
   );
 }

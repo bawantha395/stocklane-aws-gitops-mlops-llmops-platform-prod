@@ -12,7 +12,7 @@ html:not([data-theme="dark"]) body, html:not([data-theme="dark"]) .stock-shell, 
   background: linear-gradient(165deg, #f8f8f9 0%, #f1f1f3 45%, #e8e9ec 100%) fixed !important; background-image: linear-gradient(165deg, #f8f8f9 0%, #f1f1f3 45%, #e8e9ec 100%) !important; }
 html[data-theme="dark"] { --wash: #151516; --surface: #1e1e20; --wash-2: #272729; --line: #353538; }
 html[data-theme="dark"] body, html[data-theme="dark"] .stock-shell, html[data-theme="dark"][data-glass] body, html[data-theme="dark"][data-glass] .stock-shell {
-  background: var(--dots), linear-gradient(180deg, #1c1c1e 0%, #141415 100%) !important; background-attachment: fixed !important; }
+  background: radial-gradient(900px 520px at 50% 0%, rgba(255, 255, 255, .10), transparent 70%), var(--dots), linear-gradient(180deg, #414144 0%, #1f1f21 100%) !important; background-attachment: fixed !important; }
 
 /* Settings cover: the silver card surface (light) or the charcoal texture (dark) */
 .ws-set-cover { background: linear-gradient(135deg, #3b3b3d, #2f2f31); height: 104px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14); position: relative; }
@@ -103,7 +103,7 @@ html, body { overflow-x: clip; }
 .stock-sidebar .stock-brand { gap: 12px; margin: 6px 0 2px; }
 .stock-brand b { font-size: 34px; letter-spacing: -.05em; line-height: 1; }
 .stock-brand span, .m-brand span { color: #1d5bd8 !important; }
-.stock-sidebar > p { margin: 2px 0 14px 56px; font-size: 11px; letter-spacing: .22em; color: var(--muted); }
+.stock-sidebar > p { margin: -2px 0 14px 56px; font-size: 10px; font-weight: 600; letter-spacing: .15em; white-space: nowrap; color: var(--muted); }
 .m-brand b { font-size: 26px; }
 .lifta-logo { box-shadow: 0 6px 16px rgba(0, 0, 0, .25); border-radius: 24%; }
 /* Pinned bars follow the dock: when it is tucked away, they move up with it */
@@ -127,3 +127,22 @@ html, body { overflow-x: clip; }
 }
 @media (min-width: 1500px) { .stock-main { --pad: 60px; } }
 @media (min-width: 761px) and (max-width: 1100px) { .stock-main { --pad: 26px; } }
+
+/* Mobile: dock, top bar and tabs read as one stack. The bar's frosted layer reaches up to the dock (no content peeking through the gap) and out to the screen edges. */
+@media (max-width: 760px) {
+  html .stock-shell .stock-header, html[data-glass] .stock-shell .stock-header { background: transparent !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border: 0 !important; box-shadow: none !important; isolation: isolate; }
+  html .stock-shell .stock-header::before { content: ""; position: absolute; z-index: -1; inset: -8px -24px 0 -24px; background: rgba(var(--w), .86); -webkit-backdrop-filter: saturate(200%) blur(24px); backdrop-filter: saturate(200%) blur(24px); }
+  .ws-sticky, .ws-tabs { isolation: isolate; background: transparent !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  .ws-sticky::before, .ws-tabs::before { content: ""; position: absolute; z-index: -1; inset: 0 -24px; background: rgba(var(--w), .86); -webkit-backdrop-filter: saturate(200%) blur(24px); backdrop-filter: saturate(200%) blur(24px); border-bottom: 1px solid rgba(var(--w), .7); box-shadow: 0 10px 24px -16px rgba(var(--sh), .3); }
+}
+
+/* Desktop: the tabs bar continues the top bar - same frosted glass, full width, flush underneath, no floating card */
+@media (min-width: 761px) {
+  .stock-shell .ws-sticky, .stock-shell .ws-tabs {
+    margin-inline: calc(-1 * var(--pad)) !important; padding-inline: var(--pad) !important; border-radius: 0 !important;
+    background: rgba(var(--w), .58) !important; border: 0 !important; border-bottom: 1px solid rgba(var(--w), .7) !important;
+    -webkit-backdrop-filter: saturate(200%) blur(28px) !important; backdrop-filter: saturate(200%) blur(28px) !important;
+    box-shadow: 0 10px 30px -18px rgba(var(--sh), .28) !important;
+  }
+  .stock-shell .ws-sticky::before, .stock-shell .ws-tabs::before { content: none !important; }
+}

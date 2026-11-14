@@ -161,7 +161,6 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   if (num(inv.discount)) totals.push(["Discount", "-" + money(inv.discount)]);
   if (num(inv.tax)) totals.push([(inv.tax_name || "VAT") + " (" + qty(taxRate) + "%)", money(inv.tax)]);
   d.room(30 + 16 * totals.length + 70);
-  const totPage = d.pages.length - 1, totY = d.y;
   for (const [l, v] of totals) { d.text(430, d.y + 10, l, 9.5, false, "r", MUTED); d.text(R - 6, d.y + 10, v, 9.5, false, "r"); d.y += 16; }
   d.rect(300, d.y + 2, R - 300, 26, ACCENT);
   d.text(310, d.y + 19, "TOTAL (" + (inv.currency || "LKR") + ")", 10, true, "l", [1, 1, 1]);
@@ -199,7 +198,7 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   d.y = d.pages.length === 1 && d.y < H - MARGIN - 80 ? Math.max(d.y + 24, H - MARGIN - 50) : d.y + 24;
   d.line(R - 170, d.y, R, d.y);
   d.text(R, d.y + 12, "Authorised signature", 8.5, false, "r", MUTED);
-  if (status === "PAID" || status === "VOID") d.stamp(status === "PAID" ? "PAID" : "VOID", 150, totY + 70, status === "PAID" ? [0.2, 0.55, 0.35] : [0.75, 0.2, 0.2], totPage);
+  if (status === "PAID" || status === "VOID") d.stamp(status === "PAID" ? "PAID" : "VOID", R - 270, d.y + 2, status === "PAID" ? [0.18, 0.31, 0.71] : [0.75, 0.2, 0.2], d.pages.length - 1, 32, 10);
   return d.render();
 }
 
