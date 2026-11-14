@@ -120,9 +120,6 @@ export function Scanner({
             Stops after one scan. Scanning never changes stock.
           </p>
         )}
-        <button className="button secondary full" onClick={onClose}>
-          Use another method
-        </button>
       </section>
     </div>
   );

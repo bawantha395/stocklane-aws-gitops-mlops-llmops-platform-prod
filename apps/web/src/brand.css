@@ -1,0 +1,43 @@
+/* Lifta brand surface: charcoal and silver card material. Loaded last so it wins over the earlier themes. */
+:root {
+  --dots: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3'%3E%3Ccircle cx='1.5' cy='1.5' r='.5' fill='%23fff' fill-opacity='.05'/%3E%3C/svg%3E");
+  --silver: linear-gradient(135deg, #fbfbfc 0%, #ebecee 55%, #d9dadd 100%);
+}
+/* the dot after "Lifta" is neutral, not blue */
+.stock-brand span, .si-brand .si-word span, html[data-glass] .stock-sidebar .stock-brand span { color: var(--muted) !important; }
+.lifta-logo { box-shadow: 0 6px 16px rgba(0, 0, 0, .28); }
+
+/* page background: soft silver in light, textured charcoal in dark */
+html:not([data-theme="dark"]) body, html:not([data-theme="dark"]) .stock-shell, html:not([data-theme="dark"])[data-glass] body, html:not([data-theme="dark"])[data-glass] .stock-shell {
+  background: linear-gradient(165deg, #f8f8f9 0%, #f1f1f3 45%, #e8e9ec 100%) fixed !important; background-image: linear-gradient(165deg, #f8f8f9 0%, #f1f1f3 45%, #e8e9ec 100%) !important; }
+html[data-theme="dark"] { --wash: #151516; --surface: #1e1e20; --wash-2: #272729; --line: #353538; }
+html[data-theme="dark"] body, html[data-theme="dark"] .stock-shell, html[data-theme="dark"][data-glass] body, html[data-theme="dark"][data-glass] .stock-shell {
+  background: var(--dots), linear-gradient(180deg, #1c1c1e 0%, #141415 100%) !important; background-attachment: fixed !important; }
+
+/* Settings cover: the silver card surface (light) or the charcoal texture (dark) */
+.ws-set-cover { background: linear-gradient(90deg, #efeff1, #e4e4e7); height: 150px; box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .06), inset 0 2px 0 #fff; position: relative; }
+.ws-set-cover::after { content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: min(100%, 410px); background: url("/lifta-cover.png") center / 100% 100% no-repeat; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 30%); mask-image: linear-gradient(90deg, transparent 0, #000 30%); pointer-events: none; }
+html[data-theme="dark"] .ws-set-cover { background: linear-gradient(90deg, #efeff1, #e4e4e7); height: 150px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18); }
+
+
+/* sign-in: charcoal textured screen with a silver card, never blue */
+.si-page { background: radial-gradient(700px 420px at 50% 28%, rgba(255, 255, 255, .13), transparent 70%), var(--dots), linear-gradient(180deg, #48484b 0%, #232325 100%); color: #1b1d1f; }
+.si-card { background: var(--silver); border: 1px solid #fff; box-shadow: 0 1px 0 #fff inset, 0 30px 70px rgba(0, 0, 0, .45), 0 2px 0 rgba(0, 0, 0, .08);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  --ink: #1b1d1f; --ink-2: #3b3d40; --muted: #6f7277; --line: #d3d4d8; --surface: #fff; --w: 255, 255, 255; }
+.si-card h1 { color: #1b1d1f; } .si-lead, .si-notes li { color: #3b3d40; } .si-eyebrow, .si-help { color: #7b7e83; } .si-notes svg { color: #5d6166; }
+.si-notes { background: rgba(255, 255, 255, .6); }
+.si-button { background: #333335; box-shadow: 0 8px 20px rgba(0, 0, 0, .3); } .si-button:hover { background: #262628; } .si-button:active { box-shadow: 0 4px 10px rgba(0, 0, 0, .3); }
+.si-button:focus-visible { outline-color: #8d9096; }
+.si-spinner { border-color: rgba(0, 0, 0, .12); border-top-color: #333335; }
+.si-brand { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.si-brand .si-word { color: #2f3033 !important; text-shadow: 0 1px 0 #fff, 0 -1px 0 rgba(0, 0, 0, .15); }
+
+/* one focus ring, never two: an input inside a bordered box lets the box show the ring */
+.stock-shell .search-box input:focus-visible, .stock-shell .report-search input:focus-visible, .stock-shell .find-bar input:focus-visible, .search-box input:focus { outline: none; box-shadow: none; }
+.search-box:focus-within { outline: 2px solid var(--l-72986c); outline-offset: 2px; }
+/* the paste-a-code field under Find: same size and look as the search field */
+.find-paste form { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.find-paste input { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font-size: 15px; }
+.find-paste input:focus-visible { outline: 2px solid var(--l-72986c); outline-offset: 2px; }
+.find-paste .button { min-height: 44px; flex: none; }

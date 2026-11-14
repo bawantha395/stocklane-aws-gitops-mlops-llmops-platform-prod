@@ -497,7 +497,7 @@ button.ws-kpi:hover { transform: translateY(-4px); box-shadow: 0 22px 40px -20px
 /* Settings */
 .ws-set { display: grid; gap: 16px; }
 .ws-set-hero { position: relative; border-radius: 30px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 10px 30px -14px rgba(var(--sh),.22); }
-.ws-set-cover { display: block; height: 104px; background: linear-gradient(135deg, #3b3b3b, #333333); }
+.ws-set-cover { display: block; height: 104px; }
 .ws-set-id { display: flex; align-items: flex-end; gap: 14px; padding: 0 22px; margin-top: -38px; }
 .ws-set-logo { display: inline-flex; border-radius: 22px; border: 4px solid #fff; overflow: hidden; box-shadow: 0 8px 20px -8px rgba(var(--sh),.4); flex: 0 0 auto; }
 .ws-set-name { display: flex; flex-direction: column; align-self: flex-start; margin-top: 44px; padding-bottom: 4px; min-width: 0; }

@@ -66,6 +66,7 @@ const Scanner = React.lazy(() =>
 import { StockReport } from "./StockReport";
 import { Workshop } from "./workshop";
 import { DateChips, SummaryBar, ALL, inRange, useSaved, type Range } from "./workshop/DateRange";
+import "./brand.css";
 import { CommandBar } from "./CommandBar";
 import { CountStock } from "./CountStock";
 import { ReorderCard } from "./ReorderCard";
