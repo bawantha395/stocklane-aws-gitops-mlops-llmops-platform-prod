@@ -6,15 +6,23 @@ import { getBusinessName } from "./businessName";
  * Practice mode: the real screens, run against dummy data that lives only in this browser tab.
  * While it is on, api() never reaches the server (see api.ts), so nothing real can be read or changed.
  */
-type PState = { active: boolean; owner: boolean; step: number };
-let state: PState = { active: false, owner: true, step: 0 };
+type PState = { active: boolean; owner: boolean; mission: string | null; picker: boolean };
+let state: PState = { active: false, owner: true, mission: null, picker: true };
 const subscribers = new Set<() => void>();
 const emit = () => subscribers.forEach((n) => n());
 export const usePractice = () => useSyncExternalStore((n) => { subscribers.add(n); return () => { subscribers.delete(n); }; }, () => state);
 export const isPractice = () => state.active;
-export function startPractice(owner: boolean) { reset(); state = { active: true, owner, step: 0 }; emit(); }
-export function stopPractice() { state = { ...state, active: false, step: 0 }; reset(); emit(); }
-export function setPracticeStep(step: number) { state = { ...state, step }; emit(); }
+export function startPractice(owner: boolean) { reset(); events.clear(); state = { active: true, owner, mission: null, picker: true }; emit(); }
+export function stopPractice() { state = { ...state, active: false, mission: null, picker: true }; reset(); events.clear(); emit(); }
+/** Choose a mission (or null to show the mission list again). */
+export function setMission(mission: string | null) { state = { ...state, mission, picker: mission === null }; emit(); }
+/**
+ * What the learner has really done, as named events: "api:job" when the dummy API handled a create-job,
+ * "hit:<step>" when they tapped the thing a step pointed at. Steps finish from these, never from a counter,
+ * so the help always matches the screen.
+ */
+export const events = new Set<string>();
+export const mark = (name: string) => { if (!events.has(name)) { events.add(name); state = { ...state }; emit(); } };
 /** The coach reads these to know what the learner has done. Counters only go up. */
 export const probe = { view: "home" as string };
 
@@ -141,7 +149,7 @@ function reportFor(from: string, until: string) {
     unpaid_list: owing.map((i) => ({ id: i.id, invoice_number: i.invoice_number, registration: i.registration, customer: i.customer, days: 0, balance: round2(i.total - i.paid) })) };
 }
 
-export async function demoApi(path: string, options: RequestInit = {}): Promise<any> {
+async function route(path: string, options: RequestInit = {}): Promise<any> {
   await new Promise((r) => setTimeout(r, 220));
   const method = (options.method || "GET").toUpperCase();
   const url = new URL(path, "http://demo");
@@ -289,4 +297,25 @@ export async function demoApi(path: string, options: RequestInit = {}): Promise<
   }
   // Anything unlisted still must not error or reach the server: answer as an empty, harmless success.
   return method === "GET" ? [] : { ok: true };
+}
+
+/** The dummy API. After a call succeeds it also records what the learner did, so the coach can follow along. */
+export async function demoApi(path: string, options: RequestInit = {}): Promise<any> {
+  const out = await route(path, options);
+  const method = (options.method || "GET").toUpperCase();
+  if (method !== "GET") {
+    const p = new URL(path, "http://demo").pathname.replace(/\/+$/, "");
+    let body: Row = {};
+    if (typeof options.body === "string") { try { body = JSON.parse(options.body); } catch { body = {}; } }
+    if (method === "POST" && p === "/api/inventory/products") mark("api:product");
+    else if (method === "POST" && p === "/api/inventory/movements") mark(body.kind === "STOCK_OUT" ? "api:out" : "api:in");
+    else if (method === "POST" && p === "/api/workshop/jobs") mark("api:job");
+    else if (method === "PATCH" && p.startsWith("/api/workshop/jobs/")) mark("api:jobsave");
+    else if (p.endsWith("/invoice")) mark("api:invoice");
+    else if (p.endsWith("/payments")) mark("api:pay");
+    else if (p.endsWith("/archive")) mark("api:archive");
+    else if (p.endsWith("/restore")) mark("api:restore");
+    else if (p.endsWith("/void")) mark("api:void");
+  }
+  return out;
 }

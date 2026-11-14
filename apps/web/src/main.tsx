@@ -45,9 +45,13 @@ import "@fontsource-variable/manrope";
 import "./stock.css";
 import "./glass.css";
 import "./theme.css";
+import "./tokens.css";
+import { ToastHost, applyTheme, getTheme } from "./ui";
 import { setBusinessName, useBusinessName } from "./businessName";
 import { t, useLang, setLang } from "./i18n";
 import { Walkthrough } from "./Walkthrough";
+import { MechanicHome } from "./MechanicHome";
+import { SetupWizard, setupDone } from "./SetupWizard";
 import { isPractice, samplePhotoBlob, usePractice, startPractice, probe } from "./practice";
 import { PracticeCoach } from "./PracticeCoach";
 import { Logo } from "./Logo";
@@ -61,6 +65,7 @@ const Scanner = React.lazy(() =>
 );
 import { StockReport } from "./StockReport";
 import { Workshop } from "./workshop";
+import { CommandBar } from "./CommandBar";
 import { ReorderCard } from "./ReorderCard";
 import { Counter, type Mode as CounterMode } from "./Counter";
 import { saveNav, loadNav, markNativePick, lostNativePick, clearNativePick } from "./resume";
@@ -232,6 +237,9 @@ function App() {
   useEffect(() => { saveNav(view, counterMode); }, [view, counterMode]);
   const businessName = useBusinessName();
   const lang = useLang();
+  const [, setThemeTick] = useState(0);
+  const [cmdOpen, setCmdOpen] = useState(false);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setCmdOpen(true); } }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, []);
   const [tourOpen, setTourOpen] = useState(false);
   const [chooser, setChooser] = useState(false);
   const pr = usePractice();
@@ -241,6 +249,7 @@ function App() {
   });
   const [menuOpen, setMenuOpen] = useState(false);
   const [wsStart, setWsStart] = useState<{ page: WsPage; n: number }>({ page: { name: "home" }, n: 0 });
+  const [wizardGone, setWizardGone] = useState(false);
   const [started, setStarted] = useState<{ jobs: boolean; invoices: boolean } | null>(null);
   const [startHidden, setStartHidden] = useState(() => {
     try { return localStorage.getItem("lifta.start") === "done"; } catch { return false; }
@@ -827,7 +836,7 @@ function App() {
     { group: t("WORKSHOP MANAGEMENT") },
     { key: "workshop", full: t("Jobs & Invoices"), short: t("Jobs"), sub: t("Job cards, vehicles and bills"), Icon: Wrench, main: true },
     { group: t("STOCK MANAGEMENT") },
-    { key: "counter", full: t("Parts counter"), short: t("Counter"), sub: t("Receive or give a part"), Icon: ScanLine, main: true },
+    { key: "counter", full: t("Parts counter"), short: t("Counter"), sub: t("A part came in or went out"), Icon: ScanLine, main: true },
     { key: "stock", full: t("Parts list"), short: t("Parts"), sub: owner ? t("All parts, photos and QR labels") : t("See what is in stock"), Icon: Package },
     { key: "activity", full: t("History"), short: t("History"), sub: t("Every part in and out"), Icon: Activity },
     ...(owner ? [{ key: "analysis" as View, full: t("Reports"), short: t("Reports"), sub: t("Stock summary and low stock"), Icon: ClipboardCheck }] : []),
@@ -910,6 +919,9 @@ function App() {
         </div>
       )}
       {tourOpen && <Walkthrough owner={owner} onClose={() => setTourOpen(false)} />}
+      {owner && session && !pr.active && !wizardGone && !setupDone() && (
+        <SetupWizard onClose={() => setWizardGone(true)} onPractice={() => startPractice(true)} onFirstPart={() => openCounter("receive")} />
+      )}
       {chooser && (
         <div className="wt-back" onClick={() => setChooser(false)}>
           <section className="wt-card chooser" role="dialog" aria-modal="true" aria-label={t("Walkthrough")} onClick={(e) => e.stopPropagation()}>
@@ -919,6 +931,7 @@ function App() {
           </section>
         </div>
       )}
+      {session && <CommandBar open={cmdOpen} onClose={() => setCmdOpen(false)} workshop={true} openWorkshop={openWorkshop} openPart={(q) => { setQuery(q); navigate("stock"); }} />}
       <PracticeCoach />
       <main className="stock-main">
         <header className="stock-header">
@@ -940,6 +953,8 @@ function App() {
               <button className={lang === "en" ? "on" : ""} onClick={() => setLang("en")}>EN</button>
               <button className={lang === "si" ? "on" : ""} onClick={() => setLang("si")}>සිං</button>
             </div>
+            <button className="cmd-open" aria-label={t("Search anything")} onClick={() => setCmdOpen(true)}><Search size={18} /><span className="cmd-label">{t("Search")}</span><kbd>Ctrl K</kbd></button>
+            <button className="theme-toggle" aria-label={t("Dark mode")} onClick={() => { const m = getTheme() === "dark" ? "light" : "dark"; applyTheme(m); setThemeTick((n) => n + 1); }}>{getTheme() === "dark" ? "☀️" : "🌙"}</button>
             <button
               className="icon-button"
               aria-label="Refresh stock"
@@ -986,7 +1001,10 @@ function App() {
             <button className="toast-close" aria-label="Dismiss error" onClick={() => setError("")}>×</button>
           </div>
         )}
-        {view === "home" && (
+        {view === "home" && session && !owner && (
+          <MechanicHome disabled={busy} onFind={() => navigate("find")} onIn={() => openCounter("receive")} onOut={() => openCounter("give")} onJob={() => openWorkshop({ name: "new" })} />
+        )}
+        {view === "home" && !(session && !owner) && (
           <>
             <div className="workspace-intro">
               <p className="eyebrow">{t("YOUR WORKSHOP. UNDER CONTROL.")}</p>
@@ -1052,7 +1070,7 @@ function App() {
               >
                 <ArrowDownLeft size={30} />
                 <span>
-                  <strong>{t("Receive")}</strong>
+                  <strong>{t("Part came in")}</strong>
                   <small>{t("Scan or photo what came in")}</small>
                 </span>
               </button>
@@ -1063,7 +1081,7 @@ function App() {
               >
                 <ArrowUpRight size={30} />
                 <span>
-                  <strong>{t("Give a part")}</strong>
+                  <strong>{t("Part went out")}</strong>
                   <small>{t("Scan the part and confirm the quantity")}</small>
                 </span>
               </button>
@@ -1724,17 +1742,25 @@ function App() {
                       <small>
                         {p.brand} · Part no. {p.part_number || "Not set"} · System no. {p.sku}
                       </small>
-                      <span>
+                      <span className="cat-chip">
                         {p.category} · {p.location || "Shelf not set"}
                       </span>
                     </div>
                     <div className="catalogue-quantity">
-                      <b>{number(p.quantity)}</b>
-                      <small>{p.unit === "LITRE" ? "litres" : "units"}</small>
-                      {Number(p.quantity) <= Number(p.reorder_level) &&
-                        !p.archived && (
-                          <span className="low-stock">Low stock</span>
-                        )}
+                      <span className="cq-line">
+                        <b>{number(p.quantity)}</b>
+                        <small>{p.unit === "LITRE" ? "litres" : "units"}</small>
+                        {Number(p.quantity) <= Number(p.reorder_level) &&
+                          !p.archived && (
+                            <span className="low-stock">Low stock</span>
+                          )}
+                      </span>
+                      <i className="stock-bar" aria-hidden="true">
+                        <u
+                          className={Number(p.quantity) <= Number(p.reorder_level) ? "low" : ""}
+                          style={{ width: Math.max(4, Math.min(100, (Number(p.quantity) / Math.max(1, Number(p.reorder_level) * 4)) * 100)) + "%" }}
+                        />
+                      </i>
                     </div>
                     <div className="stock-row-actions">
                       <button onClick={() => setLabelItem(p)}>
@@ -2497,4 +2523,5 @@ function ProductEditor({
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+applyTheme(getTheme());
+createRoot(document.getElementById("root")!).render(<><App /><ToastHost /></>);

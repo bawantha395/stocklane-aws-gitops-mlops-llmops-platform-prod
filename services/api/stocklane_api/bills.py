@@ -20,21 +20,27 @@ def kms(v):
 
 
 def letterhead(d, business, title, lines):
-    """Business name and contacts on the left, document title and facts on the right."""
+    """Brand band, monogram tile and business name on the left, document title and facts on the right."""
     top = d.y
-    d.text(MARGIN, top + 18, business.get('name') or 'Workshop', 18, True, color=ACCENT)
+    name = business.get('name') or 'Workshop'
+    d.rect(0, 0, W, 9, ACCENT)
+    initials = ''.join(w[0] for w in name.split()[:2]).upper() or '-'
+    d.rect(MARGIN, top + 2, 40, 40, ACCENT)
+    d.text(MARGIN + 20 - width(initials, 16, True) / 2, top + 28, initials, 16, True, color=(1, 1, 1))
+    x0 = MARGIN + 52
+    d.text(x0, top + 18, name, 18, True, color=ACCENT)
     y = top + 32
     for part in (business.get('address'), ' | '.join(x for x in (business.get('phone'), business.get('email')) if x), business.get('reg_no')):
         if part:
-            for row in wrap(part, 300, 9):
-                d.text(MARGIN, y + 8, row, 9, color=MUTED)
+            for row in wrap(part, 280, 9):
+                d.text(x0, y + 8, row, 9, color=MUTED)
                 y += 12
-    d.text(R, top + 20, title, 20, True, 'r')
+    d.text(R, top + 20, title, 20, True, 'r', color=ACCENT)
     ry = top + 36
     for text, bold in lines:
         d.text(R, ry + 8, text, 9.5, bold, 'r', color=INK if bold else MUTED)
         ry += 13
-    d.y = max(y, ry) + 8
+    d.y = max(y, ry, top + 46) + 8
     d.line(MARGIN, d.y, R, d.y, 1.2, ACCENT)
     d.y += 14
 

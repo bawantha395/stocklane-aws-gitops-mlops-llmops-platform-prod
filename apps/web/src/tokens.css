@@ -1,0 +1,68 @@
+/* Lifta design tokens: one place for colour, radius, spacing, shadow and motion. */
+:root {
+  --lf-green: #0f5a43; --lf-green-2: #0b3d30; --lf-blue: #1b4fa8; --lf-ink: #14231f; --lf-muted: #6e6e73; --lf-line: #e5e5ea; --lf-bg: #f5f5f7; --lf-surface: #fff;
+  --lf-r-sm: 12px; --lf-r-md: 20px; --lf-r-lg: 28px;
+  --lf-s1: 4px; --lf-s2: 8px; --lf-s3: 12px; --lf-s4: 16px; --lf-s5: 24px; --lf-s6: 32px;
+  --lf-shadow-1: 0 1px 2px rgba(0,0,0,.05), 0 4px 12px rgba(0,0,0,.05);
+  --lf-shadow-2: 0 8px 30px rgba(0,0,0,.12);
+  --lf-ease: cubic-bezier(.22, 1, .36, 1); --lf-fast: .16s; --lf-slow: .35s;
+  /* status colours: always shown with an icon and a label, never colour alone */
+  --st-open: #b45309; --st-open-bg: #fff3dc;
+  --st-invoiced: #1d4ed8; --st-invoiced-bg: #e3edff;
+  --st-paid: #15803d; --st-paid-bg: #def7e7;
+  --st-void: #52525b; --st-void-bg: #ececef;
+  --st-warn: #b91c1c; --st-warn-bg: #fde4e4;
+  --ap-ease: var(--lf-ease);
+}
+/* press feedback on every button, focus ring, comfortable touch targets */
+button:not(:disabled):active, .button:not(:disabled):active, a.button:active { transform: scale(.97); transition: transform .08s ease; }
+:focus-visible { outline: 3px solid #5aa3ff; outline-offset: 2px; border-radius: 8px; }
+@media (pointer: coarse) {
+  .ws .button, .stock-shell .button, .ws input, .ws select, .ws-chip, .ws-mtabs button, .ws-sheet button, .sw .button { min-height: 48px; }
+}
+/* shared components */
+.ui-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--lf-line); background: #fff; font: 600 15px inherit; font-family: inherit; color: inherit; cursor: pointer; }
+.ui-btn.primary { background: linear-gradient(135deg, var(--lf-green), var(--lf-green-2)); color: #fff; border-color: transparent; box-shadow: 0 8px 20px rgba(15,90,67,.3); }
+.ui-btn.danger { background: var(--st-warn-bg); color: var(--st-warn); border-color: transparent; }
+.ui-btn.ghost { background: transparent; border-color: transparent; }
+.ui-btn:disabled { opacity: .6; }
+.ui-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--lf-line); background: #fff; font: 600 14px inherit; font-family: inherit; color: inherit; }
+.ui-chip.chosen { background: var(--lf-green); color: #fff; border-color: transparent; }
+.ui-field { display: grid; gap: 6px; margin: 12px 0; }
+.ui-field > span { font-size: 14px; font-weight: 600; color: #3a3a3c; }
+.ui-field > input, .ui-field > select, .ui-field > textarea { min-height: 48px; padding: 0 14px; border: 1px solid var(--lf-line); border-radius: var(--lf-r-sm); background: #fff; font: 16px inherit; font-family: inherit; }
+.ui-field > textarea { padding: 12px 14px; min-height: 96px; }
+.ui-field > small { color: var(--lf-muted); font-size: 13px; }
+.ui-field.bad > input, .ui-field.bad > textarea { border-color: var(--st-warn); }
+.ui-field.bad > small { color: var(--st-warn); }
+/* Sheet: bottom sheet on phones, centred card on desktop */
+.ui-sheet-back { position: fixed; inset: 0; z-index: 95; background: rgba(0,0,0,.4); display: flex; align-items: flex-end; justify-content: center; animation: ap-in .2s ease both; }
+.ui-sheet { width: 100%; max-width: 560px; max-height: 88vh; overflow: auto; background: #fff; border-radius: var(--lf-r-lg) var(--lf-r-lg) 0 0; padding: 12px 20px calc(20px + env(safe-area-inset-bottom)); animation: ui-up .3s var(--lf-ease) both; }
+.ui-sheet-grip { display: block; width: 40px; height: 5px; border-radius: 3px; background: #d2d2d7; margin: 0 auto 12px; }
+.ui-sheet h3 { margin: 0 0 8px; font-size: 20px; }
+@media (min-width: 761px) { .ui-sheet-back { align-items: center; } .ui-sheet { border-radius: var(--lf-r-lg); } }
+@keyframes ui-up { from { transform: translateY(40px); opacity: 0; } }
+/* Toasts */
+.ui-toasts { position: fixed; left: 0; right: 0; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 120; display: grid; gap: 8px; justify-items: center; pointer-events: none; }
+.ui-toast { pointer-events: auto; max-width: min(92vw, 440px); padding: 12px 18px; border-radius: 16px; background: #1c1c1e; color: #fff; font-size: 15px; box-shadow: var(--lf-shadow-2); display: flex; gap: 12px; align-items: center; animation: ui-toast .35s var(--lf-ease) both; }
+.ui-toast.bad { background: #7f1d1d; }
+.ui-toast button { background: none; border: 0; color: #9fd0ff; font-weight: 700; font-size: 15px; }
+@keyframes ui-toast { from { transform: translateY(24px) scale(.96); opacity: 0; } }
+@media (min-width: 761px) { .ui-toasts { bottom: 24px; } }
+/* Dark mode (v1): inverts the page, then flips images and brand marks back */
+html[data-theme="dark"] { filter: invert(.92) hue-rotate(180deg); background: #fff; }
+html[data-theme="dark"] img, html[data-theme="dark"] video, html[data-theme="dark"] canvas, html[data-theme="dark"] .lifta-logo, html[data-theme="dark"] .ws-tile::before, html[data-theme="dark"] .pc-ring { filter: invert(1) hue-rotate(180deg); }
+.theme-toggle { min-width: 44px; min-height: 40px; border-radius: 999px; border: 1px solid var(--lf-line); background: #fff; font-size: 18px; }
+@media print { html[data-theme="dark"] { filter: none; } }
+@media (prefers-reduced-motion: reduce) { .ui-toast, .ui-sheet, .ui-sheet-back { animation: none; } button:active { transform: none !important; } }
+.cmd-input { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 14px; border: 1px solid var(--lf-line); border-radius: 16px; background: #fff; }
+.cmd-input input { flex: 1; border: 0; outline: 0; font: 17px inherit; font-family: inherit; background: transparent; min-width: 0; }
+.cmd-list { margin-top: 10px; display: grid; gap: 6px; min-height: 120px; }
+.cmd-hit { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 10px; border: 0; border-radius: 14px; background: transparent; text-align: left; font-family: inherit; color: inherit; }
+.cmd-hit.on, .cmd-hit:hover { background: #eef5f1; }
+.cmd-hit b { display: block; font-size: 16px; } .cmd-hit small { display: block; color: var(--lf-muted); font-size: 13px; }
+.cmd-ic { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: #e6f1ec; color: var(--lf-green); flex: none; }
+.search-fab { display: none; }
+.cmd-open { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--lf-line); background: #fff; font: 500 14px inherit; font-family: inherit; color: var(--lf-muted); }
+.cmd-open kbd { font: 600 12px inherit; background: #f0f0f3; border-radius: 6px; padding: 2px 6px; }
+@media (max-width: 760px) { .cmd-open kbd, .cmd-open .cmd-label { display: none; } .cmd-open { width: 44px; padding: 0; justify-content: center; } }

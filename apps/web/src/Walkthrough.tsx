@@ -17,8 +17,8 @@ const HomeScreen = ({ owner }: { owner: boolean }) => (
     <div className="wt-tiles">
       {owner && <span className="wt-tile dark">{t("Start a job")}</span>}
       {owner && <span className="wt-tile dark">{t("Invoices")}</span>}
-      <span className="wt-tile blue">{t("Receive")}</span>
-      <span className="wt-tile green">{t("Give a part")}</span>
+      <span className="wt-tile blue">{t("Part came in")}</span>
+      <span className="wt-tile green">{t("Part went out")}</span>
       <span className="wt-tile">{t("Find a part")}</span>
       <span className="wt-tile">{t("Count stock")}</span>
     </div>
@@ -35,7 +35,7 @@ const AddPartScreen = () => (
 );
 const CounterScreen = ({ mode }: { mode: "receive" | "give" }) => (
   <div className="wt-screen-body">
-    <div className="wt-tabs"><span className={mode === "receive" ? "on" : ""}>{t("Receive")}</span><span className={mode === "give" ? "on" : ""}>{t("Give a part")}</span></div>
+    <div className="wt-tabs"><span className={mode === "receive" ? "on" : ""}>{t("Part came in")}</span><span className={mode === "give" ? "on" : ""}>{t("Part went out")}</span></div>
     <Line a="Engine oil 5W-30 1L" b={t("Part no.") + " DEMO-001 · 12 " + t("in stock")} />
     <div className="wt-step"><span>−</span><b>{mode === "receive" ? 6 : 2}</b><span>+</span><small>{t("pieces")}</small></div>
     <span className="wt-btn">{hot(mode === "receive" ? t("Add {q} × {name} to stock", { q: 6, name: "Engine oil" }) : t("Record {q} × {name} leaving stock", { q: 2, name: "Engine oil" }))}</span>
@@ -99,7 +99,7 @@ type Step = { title: string; body: string; screen: React.ReactNode };
 function stepsFor(owner: boolean): Step[] {
   const home: Step = { title: t("Home: start here"), body: t("Home shows the jobs you can do today. Tap a card to start."), screen: <HomeScreen owner={owner} /> };
   const receive: Step = { title: t("Receive a part"), body: t("When parts arrive, open Parts counter, choose Receive, find the part, enter how many and confirm."), screen: <CounterScreen mode="receive" /> };
-  const give: Step = { title: t("Give a part"), body: t("When a part leaves the shelf, choose Give a part, find the part, enter how many and confirm."), screen: <CounterScreen mode="give" /> };
+  const give: Step = { title: t("Part went out"), body: t("When a part leaves the shelf, choose Part went out, find the part, enter how many and confirm."), screen: <CounterScreen mode="give" /> };
   if (!owner) {
     return [
       home,

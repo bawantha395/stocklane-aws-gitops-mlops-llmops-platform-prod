@@ -1,3 +1,5 @@
+import { Ban, CheckCircle2, ClipboardList, CircleDashed, CircleDollarSign, FileText, Trash2 } from "lucide-react";
+import { t } from "../i18n";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
@@ -80,9 +82,19 @@ export function useDebounced(value: string, ms = 250) {
 }
 
 const LABEL: Record<string, string> = { OPEN: "Open", INVOICED: "Invoiced", CANCELLED: "Cancelled", ARCHIVED: "Deleted", UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", VOID: "Void" };
-export const Pill = ({ s }: { s: string }) => <span className={"ws-pill " + s.toLowerCase()}>{LABEL[s] || s}</span>;
-export const Empty = ({ children }: { children: string }) => <div className="ws-empty">{children}</div>;
-export const Loading = ({ error }: { error?: string }) => <p className={error ? "stock-error" : "stock-help"} role={error ? "alert" : undefined}>{error || "Loading…"}</p>;
+const ICON: Record<string, typeof Ban> = { OPEN: CircleDashed, INVOICED: FileText, UNPAID: FileText, PARTIAL: CircleDollarSign, PAID: CheckCircle2, VOID: Ban, CANCELLED: Ban, ARCHIVED: Trash2 };
+/** Status: colour + icon + word, so it never relies on colour alone. */
+export const Pill = ({ s }: { s: string }) => { const I = ICON[s] || CircleDashed; return <span className={"ws-pill " + s.toLowerCase()}><I size={13} strokeWidth={2.4} aria-hidden="true" />{t(LABEL[s] || s)}</span>; };
+export const Empty = ({ children, action }: { children: string; action?: { label: string; onClick: () => void } }) => (
+  <div className="ws-empty">
+    <span className="ws-empty-ico" aria-hidden="true"><ClipboardList size={28} strokeWidth={1.6} /></span>
+    <span>{t(children)}</span>
+    {action && <button className="button primary" onClick={action.onClick}>{action.label}</button>}
+  </div>
+);
+export const Loading = ({ error }: { error?: string }) => error ? <p className="stock-error" role="alert">{error}</p> : (
+  <div className="ws-skel" aria-busy="true" aria-label={t("Loading…")}>{[0, 1, 2].map((i) => <span key={i} className="ws-skel-card"><i /><i /><i /></span>)}</div>
+);
 
 /** Asks for a reason (or a note) before a delete, a request or a rejection. */
 export function ReasonDialog({ title, help, label, confirm, required = true, onDone, onClose }: {

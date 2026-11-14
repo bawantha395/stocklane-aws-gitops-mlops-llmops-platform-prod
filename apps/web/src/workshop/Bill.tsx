@@ -20,12 +20,16 @@ export function Bill({ d }: { d: BillData }) {
   const title = d.status === "VOID" ? "VOID" : d.draft ? "DRAFT BILL" : d.tax_rate ? "TAX INVOICE" : "INVOICE";
   return (
     <article className="ws-bill" aria-label="Bill">
+      <i className="ws-bill-band" aria-hidden="true" />
       <header className="ws-bill-head">
-        <div>
+        <div className="ws-bill-brand">
+          <span className="ws-bill-mono" aria-hidden="true">{b.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "•"}</span>
+          <div>
           <h2>{b.name}</h2>
           {b.address && <p className="ws-pre">{b.address}</p>}
           <p>{[b.phone, b.email].filter(Boolean).join("  |  ")}</p>
           {b.reg_no && <p>{b.reg_no}</p>}
+          </div>
         </div>
         <div className="ws-bill-title">
           <strong>{title}</strong>

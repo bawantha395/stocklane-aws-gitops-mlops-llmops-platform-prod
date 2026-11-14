@@ -110,7 +110,7 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
   return (
     <section className="counter-screen" aria-label={t("Parts counter")}>
       <div className="counter-modes" role="tablist">
-        {(([["receive", t("Receive")], ["give", t("Give a part")]]) as [Mode, string][]).map(([m, label]) => (
+        {(([["receive", t("Part came in")], ["give", t("Part went out")]]) as [Mode, string][]).map(([m, label]) => (
           <button key={m} data-tour={"tab-" + m} role="tab" aria-selected={mode === m} className={mode === m ? "chosen " + m : m} onClick={() => switchMode(m)}>{label}</button>
         ))}
       </div>

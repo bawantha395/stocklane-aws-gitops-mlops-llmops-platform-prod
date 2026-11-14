@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { csv, download } from "../api";
+import { t } from "../i18n";
 import { Loading, addDays, lkr, today, useLoad, useWs } from "./common";
 
 type Rep = {
@@ -57,6 +58,37 @@ function DayChart({ days }: { days: Rep["by_day"] }) {
   );
 }
 
+/** Payment methods as a donut; every slice is also written out in the legend, never colour alone. */
+const METHOD_COL = ["#0f5a43", "#1d4ed8", "#b45309", "#7c3aed", "#52525b"];
+function Donut({ title, rows }: { title: string; rows: { label: string; value: number }[] }) {
+  const total = rows.reduce((a, r) => a + r.value, 0); if (!total) return null;
+  const R = 52, C = 2 * Math.PI * R; let acc = 0;
+  return (
+    <section className="ws-card ws-donut" aria-label={title}>
+      <h3>{title}</h3>
+      <div className="ws-donut-row">
+        <svg viewBox="0 0 140 140" width="140" height="140" role="img" aria-label={rows.map((r) => r.label + " " + Math.round((r.value / total) * 100) + "%").join(", ")}>
+          <circle cx="70" cy="70" r={R} fill="none" stroke="#eee" strokeWidth="18" />
+          {rows.map((r, i) => { const len = (r.value / total) * C, off = acc; acc += len; return <circle key={r.label} className="ws-arc" cx="70" cy="70" r={R} fill="none" stroke={METHOD_COL[i % METHOD_COL.length]} strokeWidth="18" strokeDasharray={Math.max(0, len - 2) + " " + C} strokeDashoffset={-off} transform="rotate(-90 70 70)" style={{ animationDelay: i * 120 + "ms", ["--len" as string]: len }} />; })}
+          <text x="70" y="66" textAnchor="middle" className="ws-donut-n">{compact(total)}</text><text x="70" y="84" textAnchor="middle" className="ws-tick">LKR</text>
+        </svg>
+        <ul className="ws-legend">{rows.map((r, i) => <li key={r.label}><i style={{ background: METHOD_COL[i % METHOD_COL.length] }} /><span>{r.label}</span><b>{Math.round((r.value / total) * 100)}%</b><small>{lkr(r.value)}</small></li>)}</ul>
+      </div>
+    </section>
+  );
+}
+/** Ranked horizontal bars (top parts, top work, who owes). One colour, value written at the end of each bar. */
+function Bars({ title, rows }: { title: string; rows: { label: string; value: number; note?: string }[] }) {
+  if (!rows.length) return null;
+  const max = Math.max(...rows.map((r) => r.value), 1);
+  return (
+    <section className="ws-card ws-bars" aria-label={title}>
+      <h3>{title}</h3>
+      <ol>{rows.map((r, i) => <li key={r.label + i}><span className="ws-bar-l">{r.label}{r.note && <small>{r.note}</small>}</span><span className="ws-bar-t"><i style={{ width: Math.max(3, (r.value / max) * 100) + "%", animationDelay: i * 70 + "ms" }} /></span><b>{lkr(r.value)}</b></li>)}</ol>
+    </section>
+  );
+}
+
 function Block({ title, rows, head }: { title: string; head: [string, string, string?]; rows: [string, string, string?][] }) {
   if (!rows.length) return null;
   return (
@@ -102,10 +134,10 @@ export function Reports() {
           <DayChart days={data.by_day} />
           <div className="ws-two">
             <Block title="By mechanic" head={["Mechanic", "Jobs", "Billed"]} rows={data.by_mechanic.map((m) => [m.mechanic, String(m.jobs), lkr(m.total)])} />
-            <Block title="Payments by method" head={["Method", "Amount"]} rows={data.by_method.map((m) => [m.method.charAt(0) + m.method.slice(1).toLowerCase(), lkr(m.amount)])} />
-            <Block title="Top parts" head={["Part", "Qty", "Amount"]} rows={data.top_parts.map((p) => [p.name, String(p.quantity), lkr(p.amount)])} />
-            <Block title="Top labour" head={["Work", "Times", "Amount"]} rows={data.top_labour.map((p) => [p.name, String(p.times), lkr(p.amount)])} />
-            <Block title="Unpaid by age" head={["Age", "Amount"]} rows={[["0 to 7 days", lkr(data.ageing.d0_7)], ["8 to 30 days", lkr(data.ageing.d8_30)], ["31 to 60 days", lkr(data.ageing.d31_60)], ["Over 60 days", lkr(data.ageing.d60_plus)]]} />
+            <Donut title={t("Payments by method")} rows={data.by_method.map((m) => ({ label: m.method.charAt(0) + m.method.slice(1).toLowerCase(), value: m.amount }))} />
+            <Bars title={t("Top parts")} rows={data.top_parts.map((p) => ({ label: p.name, value: p.amount, note: "×" + p.quantity }))} />
+            <Bars title={t("Top labour")} rows={data.top_labour.map((p) => ({ label: p.name, value: p.amount, note: "×" + p.times }))} />
+            <Bars title={t("Unpaid by age")} rows={[{ label: "0 to 7 days", value: data.ageing.d0_7 }, { label: "8 to 30 days", value: data.ageing.d8_30 }, { label: "31 to 60 days", value: data.ageing.d31_60 }, { label: "Over 60 days", value: data.ageing.d60_plus }].filter((r) => r.value > 0)} />
           </div>
           {!!data.unpaid_list.length && (
             <section className="ws-card"><h3>Unpaid invoices, oldest first</h3>

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Camera, Car, X } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
@@ -17,11 +17,21 @@ export function Face({ id }: { id?: string }) {
   return id ? <Photo id={id} className="ws-face" /> : <span className="ws-face none"><Car size={20} /></span>;
 }
 
-function Lightbox({ id, onClose }: { id: string; onClose: () => void }) {
+/** Opens from the thumbnail: the picture grows out of where it was tapped (shared-element feel). */
+function Lightbox({ id, onClose, from }: { id: string; onClose: () => void; from?: DOMRect | null }) {
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = box.current; if (!el || !from || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const to = el.getBoundingClientRect();
+    const dx = from.left + from.width / 2 - (to.left + to.width / 2), dy = from.top + from.height / 2 - (to.top + to.height / 2), sc = Math.max(0.1, from.width / to.width);
+    el.style.transition = "none"; el.style.transform = "translate(" + dx + "px," + dy + "px) scale(" + sc + ")"; el.style.opacity = "0.6"; el.style.borderRadius = "20px";
+    void el.getBoundingClientRect();
+    el.style.transition = "transform .42s cubic-bezier(.22,1,.36,1), opacity .3s ease"; el.style.transform = "none"; el.style.opacity = "1";
+  }, [from]);
   return (
     <div className="ws-lightbox" role="dialog" aria-modal="true" onClick={onClose}>
       <button className="icon-button" aria-label={t("Close")} onClick={onClose}><X size={20} /></button>
-      <Photo id={id} size="full" />
+      <div ref={box} className="ws-lb-box"><Photo id={id} size="full" /></div>
     </div>
   );
 }
@@ -29,11 +39,12 @@ function Lightbox({ id, onClose }: { id: string; onClose: () => void }) {
 /** Takes one photo: the phone camera (or a file on a computer). In practice mode it uses a drawn sample instead. */
 function Take({ kind, label, onId, disabled, className = "button secondary small" }: { kind: "plate" | "front" | "damage"; label: string; onId: (id: string) => void; disabled?: boolean; className?: string }) {
   const input = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [busy, setBusy] = useState(false), [error, setError] = useState(""), [pct, setPct] = useState(0), last = useRef<Blob | undefined>(undefined);
+  useEffect(() => { if (!busy) return; setPct(8); const id = setInterval(() => setPct((p) => (p < 90 ? p + (90 - p) * 0.12 : p)), 250); return () => clearInterval(id); }, [busy]);
   const send = async (file: Blob | undefined) => {
     if (!file) return;
-    setBusy(true); setError("");
-    try { onId(await uploadPhoto(file)); } catch (e) { setError((e as Error).message); } finally { setBusy(false); if (input.current) input.current.value = ""; }
+    last.current = file; setBusy(true); setError("");
+    try { onId(await uploadPhoto(file)); last.current = undefined; } catch (e) { setError((e as Error).message); } finally { setBusy(false); if (input.current) input.current.value = ""; }
   };
   return (
     <>
@@ -41,41 +52,42 @@ function Take({ kind, label, onId, disabled, className = "button secondary small
         <Camera size={16} /> {busy ? t("Uploading…") : label}
       </button>
       <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void send(e.target.files?.[0])} />
-      {error && <small role="alert" className="stock-error">{error}</small>}
+      {busy && <span className="ws-upbar" role="progressbar" aria-label={t("Uploading…")} aria-valuenow={Math.round(pct)}><i style={{ width: pct + "%" }} /></span>}
+      {error && <small role="alert" className="stock-error">{error} {last.current && <button type="button" className="ws-retry" onClick={() => void send(last.current)}>{t("Retry")}</button>}</small>}
     </>
   );
 }
 
 /** One photo with a fixed meaning (plate or front): shows the picture with a retake and remove, or a button. */
 export function PhotoSlot({ kind, label, id, onId, disabled, saved }: { kind: "plate" | "front"; label: string; id: string; onId: (id: string) => void; disabled?: boolean; saved?: boolean }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false), [rect, setRect] = useState<DOMRect | null>(null);
   return (
     <div className={"ws-photo-slot" + (id ? " has" : "")}>
       <span className="ws-photo-label">{label}{saved && id ? " · " + t("saved") : ""}</span>
       {id ? (
         <>
-          <button type="button" className="ws-photo-pic" onClick={() => setOpen(true)} aria-label={label}><Photo id={id} /></button>
+          <button type="button" className="ws-photo-pic" onClick={(e) => { setRect(e.currentTarget.getBoundingClientRect()); setOpen(true); }} aria-label={label}><Photo id={id} /></button>
           {!disabled && <button type="button" className="ws-photo-x" aria-label={t("Remove")} onClick={() => onId("")}><X size={14} /></button>}
         </>
       ) : <Take kind={kind} label={t("Take photo")} onId={onId} disabled={disabled} />}
-      {open && <Lightbox id={id} onClose={() => setOpen(false)} />}
+      {open && <Lightbox id={id} from={rect} onClose={() => setOpen(false)} />}
     </div>
   );
 }
 
 /** Several photos (condition before fixing): thumbnails to open and remove, plus an Add button. */
 export function PhotoStrip({ ids, onAdd, onRemove, max = 6, disabled }: { ids: string[]; onAdd: (id: string) => void; onRemove: (id: string) => void; max?: number; disabled?: boolean }) {
-  const [open, setOpen] = useState("");
+  const [open, setOpen] = useState(""), [rect, setRect] = useState<DOMRect | null>(null);
   return (
     <div className="ws-photo-strip">
       {ids.map((id) => (
         <span className="ws-thumb" key={id}>
-          <button type="button" aria-label={t("Open photo")} onClick={() => setOpen(id)}><Photo id={id} /></button>
+          <button type="button" aria-label={t("Open photo")} onClick={(e) => { setRect(e.currentTarget.getBoundingClientRect()); setOpen(id); }}><Photo id={id} /></button>
           {!disabled && <button type="button" className="ws-photo-x" aria-label={t("Remove")} onClick={() => onRemove(id)}><X size={14} /></button>}
         </span>
       ))}
       {!disabled && ids.length < max && <Take kind="damage" label={ids.length ? t("Add") : t("Add condition photo")} onId={onAdd} />}
-      {open && <Lightbox id={open} onClose={() => setOpen("")} />}
+      {open && <Lightbox id={open} from={rect} onClose={() => setOpen("")} />}
     </div>
   );
 }

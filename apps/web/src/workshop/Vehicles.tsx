@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+import { DueCard, VehicleCard } from "./Cards";
 import { Face, Photo } from "./Photos";
 import { useState } from "react";
 import { download } from "../api";
@@ -54,16 +56,11 @@ export function Vehicles() {
   const { data, error } = useLoad<Vehicle[]>("/api/workshop/vehicles?search=" + encodeURIComponent(term));
   return (
     <>
-      <div className="ws-toolbar"><input aria-label="Search vehicles" placeholder="Search number, owner, phone or model" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="ws-toolbar"><input aria-label="Search vehicles" placeholder={t("Search number, owner, phone or model")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {!data ? <Loading error={error} /> : (
-        <div className="ws-list">
-          {data.map((v) => (
-            <button className="ws-item" key={v.id} onClick={() => go({ name: "vehicle", id: v.id })}>
-              <Face id={v.front_photo} /><span className="ws-item-main"><strong>{v.registration}</strong><span>{v.owner}{v.make ? " · " + v.make : ""}</span><small>{v.phone}</small></span>
-              <span className="ws-item-side"><small>{kmText(v.last_km)}</small>{v.next_service_date && <small>Next: {v.next_service_date}</small>}</span>
-            </button>
-          ))}
-          {!data.length && <Empty>{term ? "No vehicle matches." : "No vehicles yet. A vehicle is added by itself when you create its first job."}</Empty>}
+        <div className="ws-cards">
+          {data.map((v) => <VehicleCard key={v.id} v={v} onOpen={() => go({ name: "vehicle", id: v.id })} />)}
+          {!data.length && <Empty action={term ? undefined : { label: "+ " + t("New job"), onClick: () => go({ name: "new" }) }}>{term ? "No vehicle matches." : "No vehicles yet. A vehicle is added by itself when you create its first job."}</Empty>}
         </div>
       )}
     </>
@@ -135,24 +132,19 @@ export function Due() {
   const { go, business } = useWs();
   const { data, error } = useLoad<Vehicle[]>("/api/workshop/service-due");
   if (!data) return <Loading error={error} />;
-  const why: Record<string, string> = { overdue: "Overdue", soon: "Due soon", km: "Near service km" };
+  const why: Record<string, string> = { overdue: t("Overdue"), soon: t("Due soon"), km: t("Near service km") };
   return (
     <>
-      <p className="muted">Vehicles due within 14 days, or within 300 km of the service odometer. Call or message the owner, then start a job.</p>
-      <div className="ws-list">
+      <p className="muted">{t("Vehicles due within 14 days, or within 300 km of the service odometer. Call or message the owner, then start a job.")}</p>
+      <div className="ws-cards">
         {data.map((v) => (
-          <div className="ws-item static" key={v.id}>
-            <span className="ws-item-main">
-              <strong>{v.registration}</strong><span>{v.owner}{v.make ? " · " + v.make : ""}</span>
-              <small>{v.next_service_date || ""}{v.next_service_km ? "  " + kmText(v.next_service_km) : ""}</small>
-              <span className="ws-contact">
-                {v.phone && <a className="button secondary small" href={"tel:" + v.phone}>Call</a>}
+          <DueCard key={v.id} v={v} why={why[v.reason || ""]}>
+            <span className="ws-contact">
+                {v.phone && <a className="button secondary small" href={"tel:" + v.phone}>{t("Call")}</a>}
                 {v.phone && <a className="button secondary small" target="_blank" rel="noreferrer" href={waLink(v.phone, "Hello " + (v.owner || "") + ", " + business.name + " here. Your " + v.registration + " is due for service" + (v.next_service_date ? " on " + v.next_service_date : "") + ". Would you like to book a time?")}>WhatsApp</a>}
-                <button className="button primary small" onClick={() => go({ name: "new", reg: v.registration })}>New job</button>
+                <button className="button primary small" onClick={() => go({ name: "new", reg: v.registration })}>{t("New job")}</button>
               </span>
-            </span>
-            <span className="ws-item-side"><span className={"ws-pill " + (v.reason === "overdue" ? "void" : "unpaid")}>{why[v.reason || ""]}</span></span>
-          </div>
+          </DueCard>
         ))}
         {!data.length && <Empty>Nothing due. Put a next service date on a job and it shows up here.</Empty>}
       </div>

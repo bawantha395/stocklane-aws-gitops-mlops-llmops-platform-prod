@@ -1,28 +1,15 @@
+import { t } from "../i18n";
+import { Banknote, CalendarClock, ClipboardCheck, Receipt, TrendingUp, Wrench } from "lucide-react";
+import { JobCard } from "./Cards";
 import { useState } from "react";
-import { Face } from "./Photos";
-import { Empty, Loading, Pill, ReasonDialog, dateOnly, lkr, useCommand, useDebounced, useLoad, useWs, type DeleteRequest, type Job, type Vehicle } from "./common";
+import { Empty, Loading, ReasonDialog, dateOnly, lkr, useCommand, useDebounced, useLoad, useWs, type DeleteRequest, type Job, type Vehicle } from "./common";
 
 type Dash = {
   today: { date: string; invoices: number; billed: number; received: number }; month: { from: string; invoices: number; billed: number; received: number };
   open_jobs: Job[]; open_count: number; unpaid_count: number; unpaid_total: number; oldest_unpaid_days: number; due_count: number; delete_requests?: DeleteRequest[];
 };
 
-export function JobItem({ j, onOpen }: { j: Job; onOpen: () => void }) {
-  const when = j.status === "OPEN" && j.age_days != null ? (j.age_days === 0 ? "Today" : j.age_days + " d open") : dateOnly(j.created_at);
-  return (
-    <button className="ws-item ws-jobcard" onClick={onOpen}>
-      <Face id={j.front_photo} />
-      <span className="ws-item-main">
-        <strong className="ws-plate">{j.registration}</strong>
-        {j.vehicle && <span className="ws-vmodel">{j.vehicle}</span>}
-        <span className="ws-cust">{j.customer}{j.phone ? <small> · {j.phone}</small> : null}</span>
-        <small className="ws-work">{j.summary || "No complaint noted"}</small>
-        {j.delete_requested && <small className="ws-flag">Delete requested</small>}
-      </span>
-      <span className="ws-item-side"><b>{lkr(j.total)}</b><Pill s={j.status} /><small>{[j.invoice_number, when].filter(Boolean).join(" · ")}{j.photo_count ? " · \u{1F4F7} " + j.photo_count : ""}</small></span>
-    </button>
-  );
-}
+export const JobItem = JobCard;
 
 export function Dashboard() {
   const { go, owner } = useWs();
@@ -35,7 +22,7 @@ export function Dashboard() {
   return (
     <div className="ws-home">
       <div className="ws-search">
-        <input aria-label="Find a vehicle" placeholder="Find a vehicle: number, name or phone" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input aria-label="Find a vehicle" placeholder={t("Find a vehicle: number, name or phone")} value={q} onChange={(e) => setQ(e.target.value)} />
         {q.trim().length >= 2 && (
           <div className="ws-search-results">
             {(found.data || []).slice(0, 6).map((v) => (
@@ -51,12 +38,12 @@ export function Dashboard() {
       {!data ? <Loading error={error} /> : (
         <>
           <div className="ws-kpis">
-            <button className="ws-kpi" onClick={() => go({ name: "jobs" })}><small>Open jobs</small><b>{data.open_count}</b><span>in the workshop now</span></button>
-            <div className="ws-kpi"><small>Billed today</small><b>{lkr(data.today.billed)}</b><span>{data.today.invoices} invoice{data.today.invoices === 1 ? "" : "s"}</span></div>
-            <div className="ws-kpi"><small>Received today</small><b>{lkr(data.today.received)}</b><span>cash, card and bank</span></div>
-            <button className="ws-kpi warn" onClick={() => go({ name: "invoices" })}><small>Customers owe</small><b>{lkr(data.unpaid_total)}</b><span>{data.unpaid_count} invoice{data.unpaid_count === 1 ? "" : "s"}{data.oldest_unpaid_days > 7 ? ", oldest " + data.oldest_unpaid_days + " days" : ""}</span></button>
-            <button className="ws-kpi" onClick={() => go({ name: "due" })}><small>Service due</small><b>{data.due_count}</b><span>vehicles to call</span></button>
-            {owner && <div className="ws-kpi"><small>Billed this month</small><b>{lkr(data.month.billed)}</b><span>{data.month.invoices} invoice{data.month.invoices === 1 ? "" : "s"}</span></div>}
+            <button className="ws-kpi" onClick={() => go({ name: "jobs" })}><small><Wrench size={15} /> {t("Open jobs")}</small><b>{data.open_count}</b><span>{t("in the workshop now")}</span></button>
+            <div className="ws-kpi"><small><Receipt size={15} /> {t("Billed today")}</small><b>{lkr(data.today.billed)}</b><span>{data.today.invoices} invoice{data.today.invoices === 1 ? "" : "s"}</span></div>
+            <div className="ws-kpi"><small><Banknote size={15} /> {t("Received today")}</small><b>{lkr(data.today.received)}</b><span>{t("cash, card and bank")}</span></div>
+            <button className="ws-kpi warn" onClick={() => go({ name: "invoices" })}><small><ClipboardCheck size={15} /> {t("Customers owe")}</small><b>{lkr(data.unpaid_total)}</b><span>{data.unpaid_count} invoice{data.unpaid_count === 1 ? "" : "s"}{data.oldest_unpaid_days > 7 ? ", oldest " + data.oldest_unpaid_days + " days" : ""}</span></button>
+            <button className="ws-kpi" onClick={() => go({ name: "due" })}><small><CalendarClock size={15} /> {t("Service due")}</small><b>{data.due_count}</b><span>{t("vehicles to call")}</span></button>
+            {owner && <div className="ws-kpi"><small><TrendingUp size={15} /> {t("Billed this month")}</small><b>{lkr(data.month.billed)}</b><span>{data.month.invoices} invoice{data.month.invoices === 1 ? "" : "s"}</span></div>}
           </div>
           {owner && !!data.delete_requests?.length && (
             <section className="ws-card ws-requests" aria-label="Delete requests">
@@ -73,10 +60,10 @@ export function Dashboard() {
               ))}
             </section>
           )}
-          <div className="ws-section-head"><h3>Open jobs</h3><button className="button primary small" onClick={() => go({ name: "new" })}>+ New job</button></div>
-          <div className="ws-list">
+          <div className="ws-section-head"><h3>{t("Open jobs")}</h3><button className="button primary small" onClick={() => go({ name: "new" })}>+ {t("New job")}</button></div>
+          <div className="ws-cards">
             {data.open_jobs.map((j) => <JobItem key={j.id} j={j} onOpen={() => go({ name: "job", id: j.id })} />)}
-            {!data.open_jobs.length && <Empty>No open jobs. Press New job when a vehicle comes in.</Empty>}
+            {!data.open_jobs.length && <Empty action={{ label: "+ " + t("New job"), onClick: () => go({ name: "new" }) }}>No open jobs. Press New job when a vehicle comes in.</Empty>}
           </div>
         </>
       )}

@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+import { toast } from "../ui";
 import { JobPhotos } from "./Photos";
 import { useEffect, useMemo, useState } from "react";
 import { Bill, PrintButton, billTotals, type BillData } from "./Bill";
@@ -16,6 +18,7 @@ export function JobPage({ id }: { id: string }) {
   const [f, setF] = useState<Record<string, string>>({});
   const [parts, setParts] = useState<PartRow[]>([]), [labour, setLabour] = useState<LabourRow[]>([]);
   const [dialog, setDialog] = useState<"" | "delete" | "request" | "reject" | "approve">(""), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState(""), [preview, setPreview] = useState(false);
+  useEffect(() => { if (saved) toast(saved); }, [saved]);
   const command = useCommand();
 
   const adopt = (j: Job) => {
@@ -47,7 +50,7 @@ export function JobPage({ id }: { id: string }) {
     parts: lines.parts, labour: lines.labour, discount: num(f.discount), next_service_date: f.next_service_date, next_service_km: f.next_service_km === "" ? null : Number(f.next_service_km),
   });
   const save = async () => { const j = await command<Job>("/api/workshop/jobs/" + id, body(), "PATCH"); adopt(j); return j; };
-  const run = async (work: () => Promise<void>) => { setBusy(true); setError(""); setSaved(""); try { await work(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
+  const run = async (work: () => Promise<void>) => { setBusy(true); setError(""); setSaved(""); try { await work(); } catch (e) { setError((e as Error).message); toast((e as Error).message, { bad: true, action: { label: t("Retry"), run: () => void run(work) }, ms: 8000 }); } finally { setBusy(false); } };
   const invoice = () => {
     if (!confirm("Create the invoice for LKR " + lkr(totals.total) + "? The job will be locked.")) return;
     void run(async () => {
@@ -86,42 +89,42 @@ export function JobPage({ id }: { id: string }) {
       <div className="ws-job-head">
         <div><h2>{job.registration}</h2><p>{dateOnly(job.created_at)} <Pill s={job.status} /></p></div>
         <div className="ws-bar">
-          <button className="button secondary small" onClick={() => go({ name: "vehicle", id: job.vehicle_key })}>Vehicle file</button>
+          <button className="button secondary small" onClick={() => go({ name: "vehicle", id: job.vehicle_key })}>{t("Vehicle file")}</button>
           {job.invoice_id && <button className="button primary small" onClick={() => go({ name: "invoice", id: job.invoice_id! })}>Invoice {job.invoice_number}</button>}
         </div>
       </div>
 
       {waiting && (
         <div className="ws-note" role="status">
-          <b>Delete requested</b> by {req!.requested_by}: {req!.reason}. {owner ? "Approve it to move this job to the Archive." : "Waiting for the owner."}
-          {owner && <span className="ws-note-actions"><button className="button primary small" onClick={() => setDialog("approve")}>Approve and delete</button><button className="button secondary small" onClick={() => setDialog("reject")}>Reject</button></span>}
+          <b>{t("Delete requested")}</b> by {req!.requested_by}: {req!.reason}. {owner ? "Approve it to move this job to the Archive." : "Waiting for the owner."}
+          {owner && <span className="ws-note-actions"><button className="button primary small" onClick={() => setDialog("approve")}>{t("Approve and delete")}</button><button className="button secondary small" onClick={() => setDialog("reject")}>{t("Reject")}</button></span>}
         </div>
       )}
       {req?.status === "REJECTED" && <div className="ws-note" role="status">The owner did not approve the earlier delete request{req.note ? ": " + req.note : ""}.</div>}
 
       <section className="ws-card">
-        <h3>Customer and vehicle</h3>
+        <h3>{t("Customer and vehicle")}</h3>
         <div className="ws-grid2">
-          <label className="ws-field">Customer name<input disabled={locked} value={f.customer || ""} onChange={(e) => set("customer", e.target.value)} /></label>
-          <label className="ws-field">Contact number<input disabled={locked} inputMode="tel" value={f.phone || ""} onChange={(e) => set("phone", e.target.value)} /></label>
-          <label className="ws-field">Make and model<input disabled={locked} value={f.vehicle || ""} onChange={(e) => set("vehicle", e.target.value)} /></label>
-          <label className="ws-field">Odometer (km)<input disabled={locked} inputMode="numeric" value={f.odometer || ""} onChange={(e) => set("odometer", e.target.value.replace(/\D/g, ""))} /></label>
-          <label className="ws-field">Mechanic<input disabled={locked} value={f.mechanic || ""} onChange={(e) => set("mechanic", e.target.value)} /></label>
-          <label className="ws-field">Complaint / work<textarea disabled={locked} rows={2} value={f.summary || ""} onChange={(e) => set("summary", e.target.value)} /></label>
+          <label className="ws-field">{t("Customer name")}<input disabled={locked} value={f.customer || ""} onChange={(e) => set("customer", e.target.value)} /></label>
+          <label className="ws-field">{t("Contact number")}<input disabled={locked} inputMode="tel" value={f.phone || ""} onChange={(e) => set("phone", e.target.value)} /></label>
+          <label className="ws-field">{t("Make and model")}<input disabled={locked} value={f.vehicle || ""} onChange={(e) => set("vehicle", e.target.value)} /></label>
+          <label className="ws-field">{t("Odometer (km)")}<input disabled={locked} inputMode="numeric" value={f.odometer || ""} onChange={(e) => set("odometer", e.target.value.replace(/\D/g, ""))} /></label>
+          <label className="ws-field">{t("Mechanic")}<input disabled={locked} value={f.mechanic || ""} onChange={(e) => set("mechanic", e.target.value)} /></label>
+          <label className="ws-field">{t("Complaint / work")}<textarea disabled={locked} rows={2} value={f.summary || ""} onChange={(e) => set("summary", e.target.value)} /></label>
         </div>
       </section>
 
       <JobPhotos id={id} start={job} locked={locked} />
 
       <section className="ws-card">
-        <h3>Parts</h3>
+        <h3>{t("Parts")}</h3>
         <datalist id="ws-part-names">{sugg?.parts?.map((s) => <option key={s.name} value={s.name} />)}</datalist>
         <datalist id="ws-work-names">{sugg?.labour?.map((s) => <option key={s.description} value={s.description} />)}</datalist>
         {parts.map((p, i) => (
           <div className="ws-line" key={i}>
-            <input className="ws-l-name" disabled={locked} list="ws-part-names" aria-label="Part name" placeholder="Part name" value={p.name} onChange={(e) => partName(i, e.target.value)} />
+            <input className="ws-l-name" disabled={locked} list="ws-part-names" aria-label="Part name" placeholder={t("Part name")} value={p.name} onChange={(e) => partName(i, e.target.value)} />
             <input className="ws-l-qty" disabled={locked} aria-label="Quantity" inputMode="decimal" value={p.quantity} onChange={(e) => part(i, { quantity: e.target.value })} />
-            <input className="ws-l-price" disabled={locked} aria-label="Unit price" inputMode="decimal" placeholder="Price" value={p.unit_price} onChange={(e) => part(i, { unit_price: e.target.value })} />
+            <input className="ws-l-price" disabled={locked} aria-label="Unit price" inputMode="decimal" placeholder={t("Price")} value={p.unit_price} onChange={(e) => part(i, { unit_price: e.target.value })} />
             <output className="ws-l-total">{lkr(num(p.quantity) * num(p.unit_price))}</output>
             {!locked && <button className="ws-l-del" aria-label="Remove part" onClick={() => { setParts(parts.filter((_, k) => k !== i)); setDirty(true); }}>×</button>}
           </div>
@@ -132,11 +135,11 @@ export function JobPage({ id }: { id: string }) {
             {sugg?.parts?.slice(0, 5).map((s) => <button key={s.name} className="ws-quick" onClick={() => { setParts([...parts, { name: s.name, quantity: "1", unit_price: String(s.price) }]); setDirty(true); }}>{s.name}</button>)}
           </div>
         )}
-        <h3>Labour</h3>
+        <h3>{t("Labour")}</h3>
         {labour.map((l, i) => (
           <div className="ws-line labour" key={i}>
-            <input className="ws-l-name" disabled={locked} list="ws-work-names" aria-label="Labour description" placeholder="What was done" value={l.description} onChange={(e) => workName(i, e.target.value)} />
-            <input className="ws-l-price" disabled={locked} aria-label="Labour amount" inputMode="decimal" placeholder="Amount" value={l.amount} onChange={(e) => work(i, { amount: e.target.value })} />
+            <input className="ws-l-name" disabled={locked} list="ws-work-names" aria-label="Labour description" placeholder={t("What was done")} value={l.description} onChange={(e) => workName(i, e.target.value)} />
+            <input className="ws-l-price" disabled={locked} aria-label="Labour amount" inputMode="decimal" placeholder={t("Amount")} value={l.amount} onChange={(e) => work(i, { amount: e.target.value })} />
             {!locked && <button className="ws-l-del" aria-label="Remove labour" onClick={() => { setLabour(labour.filter((_, k) => k !== i)); setDirty(true); }}>×</button>}
           </div>
         ))}
@@ -147,19 +150,19 @@ export function JobPage({ id }: { id: string }) {
           </div>
         )}
         <dl className="ws-sum">
-          <div><dt>Parts</dt><dd>{lkr(totals.parts)}</dd></div>
-          <div><dt>Labour</dt><dd>{lkr(totals.labour)}</dd></div>
+          <div><dt>{t("Parts")}</dt><dd>{lkr(totals.parts)}</dd></div>
+          <div><dt>{t("Labour")}</dt><dd>{lkr(totals.labour)}</dd></div>
           <div><dt>Discount{!owner && !locked && business.mechanic_discount_pct != null ? <small> (up to {business.mechanic_discount_pct}%)</small> : null}</dt><dd><input disabled={locked} inputMode="decimal" aria-label="Discount" placeholder="0" value={f.discount || ""} onChange={(e) => set("discount", e.target.value)} /></dd></div>
           {totals.tax > 0 && <div><dt>{business.tax_name} ({rate}%)</dt><dd>{lkr(totals.tax)}</dd></div>}
-          <div className="grand"><dt>Total (LKR)</dt><dd>{lkr(totals.total)}</dd></div>
+          <div className="grand"><dt>{t("Total (LKR)")}</dt><dd>{lkr(totals.total)}</dd></div>
         </dl>
       </section>
 
       <section className="ws-card">
-        <h3>Next service (optional)</h3>
+        <h3>{t("Next service (optional)")}</h3>
         <div className="ws-grid2">
-          <label className="ws-field">Date<input disabled={locked} type="date" value={f.next_service_date || ""} onChange={(e) => set("next_service_date", e.target.value)} /></label>
-          <label className="ws-field">At odometer (km)<input disabled={locked} inputMode="numeric" value={f.next_service_km || ""} onChange={(e) => set("next_service_km", e.target.value.replace(/\D/g, ""))} /></label>
+          <label className="ws-field">{t("Date")}<input disabled={locked} type="date" value={f.next_service_date || ""} onChange={(e) => set("next_service_date", e.target.value)} /></label>
+          <label className="ws-field">{t("At odometer (km)")}<input disabled={locked} inputMode="numeric" value={f.next_service_km || ""} onChange={(e) => set("next_service_km", e.target.value.replace(/\D/g, ""))} /></label>
         </div>
         {!locked && (
           <div className="ws-add">
@@ -167,21 +170,21 @@ export function JobPage({ id }: { id: string }) {
             {odo > 0 && [5000, 10000].map((n) => <button key={n} className="ws-quick" onClick={() => set("next_service_km", String(odo + n))}>+{n.toLocaleString("en")} km ({kmText(odo + n)})</button>)}
           </div>
         )}
-        <label className="ws-field">Notes<textarea disabled={locked} rows={2} value={f.notes || ""} onChange={(e) => set("notes", e.target.value)} /></label>
+        <label className="ws-field">{t("Notes")}<textarea disabled={locked} rows={2} value={f.notes || ""} onChange={(e) => set("notes", e.target.value)} /></label>
       </section>
 
       <PastRepairs regKey={job.vehicle_key} skipJob={id} />
       {error && <p role="alert" className="stock-error">{error}</p>}
-      {saved && <p className="stock-notice ws-notice" role="status">{saved}</p>}
+      
       <div className="ws-actionbar">
         <span className="ws-actionbar-total"><small>{dirty ? "Unsaved changes" : "Total"}</small><b>LKR {lkr(totals.total)}</b></span>
-        <button className="button secondary" disabled={busy} onClick={() => setPreview(true)}>Preview bill</button>
-        {!!job.undo_seconds_left && !waiting && <button className="button secondary" disabled={busy} onClick={undo}>Undo job</button>}
-        {!locked && !owner && !waiting && <button className="button secondary" disabled={busy} onClick={() => setDialog("request")}>Request delete</button>}
-        {owner && (job.status === "OPEN" || job.status === "CANCELLED") && <button className="button secondary" disabled={busy} onClick={() => setDialog("delete")}>Delete job</button>}
-        {!locked && owner && <button className="button secondary" disabled={busy} onClick={cancel}>Cancel job</button>}
-        {!locked && <button className="button secondary" disabled={busy || !dirty} onClick={() => void run(async () => { await save(); setSaved("Saved."); })}>Save</button>}
-        {!locked && <button data-tour="create-invoice" className="button primary" disabled={busy || (!lines.parts.length && !lines.labour.length)} onClick={invoice}>Create invoice</button>}
+        <button className="button secondary" disabled={busy} onClick={() => setPreview(true)}>{t("Preview bill")}</button>
+        {!!job.undo_seconds_left && !waiting && <button className="button secondary" disabled={busy} onClick={undo}>{t("Undo job")}</button>}
+        {!locked && !owner && !waiting && <button className="button secondary" disabled={busy} onClick={() => setDialog("request")}>{t("Request delete")}</button>}
+        {owner && (job.status === "OPEN" || job.status === "CANCELLED") && <button className="button secondary" disabled={busy} onClick={() => setDialog("delete")}>{t("Delete job")}</button>}
+        {!locked && owner && <button className="button secondary" disabled={busy} onClick={cancel}>{t("Cancel job")}</button>}
+        {!locked && <button className="button secondary" disabled={busy || !dirty} onClick={() => void run(async () => { await save(); setSaved("Saved."); })}>{t("Save")}</button>}
+        {!locked && <button data-tour="create-invoice" className="button primary" disabled={busy || (!lines.parts.length && !lines.labour.length)} onClick={invoice}>{t("Create invoice")}</button>}
       </div>
       {dialog === "delete" && <ReasonDialog title="Delete this job?" help="It moves to the Archive and disappears from jobs and the vehicle history. You can restore it later." label="Reason" confirm="Delete job"
         onDone={async (reason) => { await command(base + "/archive", { reason }); removed("Job deleted. It is in the Archive."); }} onClose={() => setDialog("")} />}
