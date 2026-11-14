@@ -653,11 +653,10 @@ button.ws-kpi:hover { transform: translateY(-4px); box-shadow: 0 22px 40px -20px
 .ws-bill-notax { font-weight: 700; color: var(--muted); margin: 10px 0 !important; }
 .ws-bill-pay-box { margin: 12px 0; padding: 10px 14px; border-left: 4px solid var(--ws-accent, var(--l-0f5a43)); background: var(--wash-2); border-radius: 6px; max-width: 420px; }
 .ws-bill-pay-box small { color: var(--brand-ink); font-weight: 700; }
-.ws-bill-signrow { display: flex; align-items: flex-end; gap: 28px; margin-top: 36px; }
-.ws-bill-signrow .ws-bill-sign { margin-top: 0; }
-.ws-bill-stamp { transform: rotate(-10deg); font-weight: 800; font-size: 34px; line-height: 1; font-family: inherit; letter-spacing: .06em; color: transparent; -webkit-text-stroke: 2px #2f4fb5; padding: 0 14px; border: 3px solid #2f4fb5; border-radius: 12px; opacity: .55; pointer-events: none; }
-.ws-bill-stamp.void { -webkit-text-stroke-color: #73737a; border-color: var(--l-73737a); }
-@media (max-width: 700px) { .ws-bill-stamp { font-size: 26px; padding: 0 8px; } .ws-bill-signrow { gap: 14px; } .ws-bill-signrow .ws-bill-sign { width: 150px; } }
+/* PAID / VOID: a large diagonal watermark across the middle of the bill - outlined letters inside a rounded border, soft purple-blue */
+.ws-bill-stamp { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%) rotate(-18deg); font-weight: 800; font-size: 130px; line-height: 1.05; letter-spacing: .06em; font-family: inherit; color: transparent; -webkit-text-stroke: 3px #7a6fd0; padding: 0 34px; border: 10px solid #7a6fd0; border-radius: 40px; opacity: .38; pointer-events: none; user-select: none; white-space: nowrap; z-index: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.ws-bill-stamp.void { -webkit-text-stroke-color: #73737a; border-color: #73737a; }
+@media (max-width: 700px) { .ws-bill-stamp { font-size: 72px; -webkit-text-stroke-width: 2px; border-width: 6px; border-radius: 22px; padding: 0 18px; } }
 /* ===== Phase 1: scroll feel + type scale + tidy-up ===== */
 .ws h1.ws-large { font-weight: 700; font-size: clamp(30px, 5vw, 40px); line-height: 1.1; font-family: inherit; letter-spacing: -.02em; margin: 2px 0 14px; }
 .ws .eyebrow { font-size: 13px; letter-spacing: .12em; }
@@ -752,3 +751,4 @@ button.ws-kpi:hover { transform: translateY(-4px); box-shadow: 0 22px 40px -20px
 .ws-list-row input { min-width: 0; }
 .ws-list-row .ws-lr-amt { width: 110px; flex: none; }
 .ws-list-row .ws-l-del { flex: none; }
+html.ws-receipt-mode .ws-bill-stamp { display: none !important; }

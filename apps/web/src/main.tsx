@@ -258,6 +258,20 @@ function App() {
     try { return localStorage.getItem("lifta.start") === "done"; } catch { return false; }
   });
   const swipeY = useRef<number | null>(null);
+  // Phones: the top bar slides away while reading down the page and returns the moment you scroll back up. The tabs stay.
+  const [hdrHidden, setHdrHidden] = useState(false);
+  useEffect(() => {
+    let last = window.scrollY, ticking = false;
+    const f = () => {
+      if (ticking) return; ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false; const y = window.scrollY, d = y - last;
+        if (y < 90) setHdrHidden(false); else if (d > 8) setHdrHidden(true); else if (d < -8) setHdrHidden(false);
+        if (Math.abs(d) > 8) last = y;
+      });
+    };
+    window.addEventListener("scroll", f, { passive: true }); return () => window.removeEventListener("scroll", f);
+  }, []);
   function setDock(hidden: boolean) {
     setDockHidden(hidden);
     try { localStorage.setItem("lifta.dock", hidden ? "hidden" : "shown"); } catch { /* private mode */ }
@@ -860,7 +874,7 @@ function App() {
   const pickNav = (key: View | "tour") => { if (key === "tour") { setMenuOpen(false); setChooser(true); } else navigate(key); };
   const moreActive = view === "stock" || view === "activity" || view === "analysis";
   return (
-    <div className="stock-shell" data-dock={dockHidden ? "hidden" : "shown"}>
+    <div className="stock-shell" data-dock={dockHidden ? "hidden" : "shown"} data-hdr={hdrHidden ? "hidden" : "shown"}>
       <aside className="stock-sidebar" {...swipe}>
         <a
           className="stock-brand"

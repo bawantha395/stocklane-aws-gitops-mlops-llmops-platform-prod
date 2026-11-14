@@ -64,10 +64,10 @@ export function Dashboard() {
               ))}
             </section>
           )}
-          <div className="ws-section-head"><h3>{t("Open jobs")}</h3><button className="button primary small" onClick={() => go({ name: "new" })}>+ {t("New job")}</button></div>
+          <div className="ws-section-head"><h3>{t("Open jobs")}</h3></div>
           <div className="ws-cards">
             {data.open_jobs.map((j) => <JobItem key={j.id} j={j} onOpen={() => go({ name: "job", id: j.id })} />)}
-            {!data.open_jobs.length && <Empty action={{ label: "+ " + t("New job"), onClick: () => go({ name: "new" }) }}>No open jobs. Press New job when a vehicle comes in.</Empty>}
+            {!data.open_jobs.length && <Empty>No open jobs. Press New job when a vehicle comes in.</Empty>}
           </div>
         </>
       )}

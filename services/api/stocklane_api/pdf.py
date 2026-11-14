@@ -135,6 +135,22 @@ class Doc:
         ops = self.pages[page]
         ops.append('q %s RG %s rg 2 w 1 Tr BT /F2 %.1f Tf %.4f %.4f %.4f %.4f %.1f %.1f Tm (%s) Tj ET Q' % (_rgb(color), _rgb(color), size, c, sn, -sn, c, tx, ty, _esc(label)))
 
+    def watermark(self, label, color, page, size=120, angle=18):
+        """A big diagonal watermark behind a page's content: outlined letters in a rounded border, in a light solid tint (drawn first, so the content stays on top)."""
+        import math
+        c, sn = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+        w = width(label, size, True) + size * 0.14
+        ox = W / 2 - (w / 2) * c + size * 0.36 * sn
+        oy = H / 2 - (w / 2) * sn - size * 0.36 * c
+        x0, x1, y0, y1, r = -size * 0.3, w + size * 0.3, -size * 0.22, size * 0.94, size * 0.3
+        k = r * 0.5523
+        path = ('%.1f %.1f m %.1f %.1f l %.1f %.1f %.1f %.1f %.1f %.1f c %.1f %.1f l %.1f %.1f %.1f %.1f %.1f %.1f c '
+                '%.1f %.1f l %.1f %.1f %.1f %.1f %.1f %.1f c %.1f %.1f l %.1f %.1f %.1f %.1f %.1f %.1f c S') % (
+            x0 + r, y0, x1 - r, y0, x1 - r + k, y0, x1, y0 + r - k, x1, y0 + r, x1, y1 - r, x1, y1 - r + k, x1 - r + k, y1, x1 - r, y1,
+            x0 + r, y1, x0 + r - k, y1, x0, y1 - r + k, x0, y1 - r, x0, y0 + r, x0, y0 + r - k, x0 + r - k, y0, x0 + r, y0)
+        self.pages[page].insert(0, 'q %.4f %.4f %.4f %.4f %.1f %.1f cm %s RG %.1f w %s %.1f w BT 1 Tr /F2 %.1f Tf %.1f 0 Td (%s) Tj ET Q' % (
+            c, sn, -sn, c, ox, oy, _rgb(color), size * 0.07, path, size * 0.025, size, size * 0.07, _esc(label)))
+
     def paragraph(self, x, s, max_width, size=10, bold=False, color=INK, lead=1.35):
         for part in wrap(s, max_width, size, bold):
             self.room(size * lead)

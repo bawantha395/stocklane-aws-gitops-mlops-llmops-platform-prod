@@ -146,3 +146,31 @@ html, body { overflow-x: clip; }
   }
   .stock-shell .ws-sticky::before, .stock-shell .ws-tabs::before { content: none !important; }
 }
+
+/* One compact top area: the tabs bar no longer repeats the page title (it is in the heading and the tab itself) */
+.ws-mini { display: none !important; }
+.ws-sticky { padding-top: 6px; }
+.counter-lowchip { display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0; vertical-align: middle; color: #8a4b12; background: rgba(224, 140, 40, .18); border: 1px solid rgba(224, 140, 40, .4); }
+html[data-theme="dark"] .counter-lowchip { color: #f0b266; }
+/* Phones: header slides up and away on scroll down; the tabs take its place just under the dock */
+@media (max-width: 760px) {
+  html .stock-shell .stock-header { transition: transform .22s ease, opacity .18s ease; }
+  .ws-sticky, .ws-tabs { transition: top .22s ease; }
+  .stock-shell[data-hdr="hidden"] .stock-header { transform: translateY(-120%); opacity: 0; pointer-events: none; }
+  .stock-shell[data-hdr="hidden"] .ws-sticky, .stock-shell[data-hdr="hidden"] .ws-tabs { top: calc(84px + env(safe-area-inset-top)) !important; }
+  .stock-shell[data-hdr="hidden"][data-dock="hidden"] .ws-sticky, .stock-shell[data-hdr="hidden"][data-dock="hidden"] .ws-tabs { top: calc(30px + env(safe-area-inset-top)) !important; }
+}
+
+/* Desktop: at the top of the page the tabs are just pills under the title (no band); the frosted bar appears only once they stick under the top bar */
+@media (min-width: 761px) {
+  .stock-shell .ws-sticky:not(.shrunk), .stock-shell .ws-tabs:not(.shrunk) {
+    background: transparent !important; border-bottom-color: transparent !important; box-shadow: none !important;
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  }
+  .stock-shell .ws-sticky { transition: background .2s ease, box-shadow .2s ease; }
+}
+@media (min-width: 761px) { .stock-shell .ws-sticky.shrunk, .stock-shell .ws-tabs.shrunk { background: rgba(var(--w), .8) !important; box-shadow: 0 8px 20px -16px rgba(var(--sh), .3) !important; } }
+
+/* Toasts live outside the app shell: give them the app font, and keep them clear of the page's main buttons on desktop */
+.ui-toasts { font-family: "Inter", "SF Pro Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+@media (min-width: 761px) { .ui-toasts { left: auto; right: 24px; bottom: 24px; justify-items: end; } }

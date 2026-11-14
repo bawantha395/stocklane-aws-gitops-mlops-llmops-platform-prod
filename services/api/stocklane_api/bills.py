@@ -208,7 +208,8 @@ def invoice(i):
     d.line(R - 170, d.y, R, d.y)
     d.text(R, d.y + 12, 'Authorised signature', 8.5, align='r', color=MUTED)
     if status in ('PAID', 'VOID'):
-        d.stamp('PAID' if status == 'PAID' else 'VOID', R - 230, d.y - 4, (0.18, 0.31, 0.71) if status == 'PAID' else (0.45, 0.45, 0.48), size=32, angle=10, page=len(d.pages) - 1)
+        for n in range(len(d.pages)):
+            d.watermark('PAID' if status == 'PAID' else 'VOID', (0.77, 0.75, 0.92) if status == 'PAID' else (0.8, 0.8, 0.82), n)
     return d.render()
 
 

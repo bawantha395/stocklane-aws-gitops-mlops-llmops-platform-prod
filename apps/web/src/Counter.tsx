@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Camera as CameraIcon, Check, Loader2, Minus, Plus } from "lucide-react";
 import { t, useLang } from "./i18n";
+import { toast } from "./ui";
 import { api, shrink, type Match, type Product, type BarcodeLookup, type Movement } from "./api";
 
 const Camera = React.lazy(() => import("./Camera").then((m) => ({ default: m.Camera })));
@@ -50,6 +51,9 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
     setPart(null); setCandidates([]); setPhotoId("");
     setQuantity(1); setSearch(""); setError(""); setDone(message); commandKey.current = key();
   };
+  const low = (p: Item, left: number) => p.reorder_level != null && Number(p.reorder_level) > 0 && left <= Number(p.reorder_level);
+  // Every counter entry can be taken back for a few seconds: it records the opposite movement, so the history stays honest.
+  const offerUndo = (label: string, run: () => Promise<unknown>) => toast(label, { ms: 8000, action: { label: t("Undo"), run: () => { run().then(() => { onChanged(); toast(t("Undone.")); }).catch((e) => toast((e as Error).message, { bad: true })); } } });
   const switchMode = (next: Mode) => { setMode(next); reset(); };
 
   const onQR = useCallback((value: string) => {
@@ -87,7 +91,11 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
         // A confirmed photo becomes a reference and future training data for the photo model.
         try { await api("/api/vision/references", { method: "POST", body: JSON.stringify({ productId: part.id, imageId: photoId }) }); } catch { /* the movement is already recorded */ }
       }
-      onChanged(); reset(t("Recorded: {q} × {name} taken out.", { q: amount(quantity), name: part.name }) + (job ? " " + t("Added to the bill of {job}.", { job: job.registration }) : ""));
+      const left = Number(part.quantity) - quantity, undoQty = quantity, undoPart = part;
+      onChanged(); reset(t("Recorded: {q} × {name} taken out.", { q: amount(quantity), name: part.name }) + (job ? " " + t("Added to the bill of {job}.", { job: job.registration }) : "") + (low(part, left) ? " " + t("Running low: {n} left.", { n: amount(Math.max(0, left)) }) : ""));
+      offerUndo(t("{q} × {name} taken out.", { q: amount(undoQty), name: undoPart.name }), () => job
+        ? api("/api/workshop/jobs/" + job.id + "/stock", { method: "POST", body: JSON.stringify({ productId: undoPart.id, quantity: undoQty, op: "return" }) }, key())
+        : api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "RECEIPT", productId: undoPart.id, quantity: undoQty, note: "Undo of a counter entry" }) }, key()));
     } catch (e) { setError((e as Error).message); commandKey.current = key(); }
     finally { setBusy(false); }
   };
@@ -117,7 +125,9 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
       if (photoId) {
         try { await api("/api/vision/references", { method: "POST", body: JSON.stringify({ productId: part.id, imageId: photoId }) }); } catch { /* the receipt is already recorded */ }
       }
+      const undoQty = quantity, undoPart = part;
       onChanged(); reset(t("Recorded: {q} × {name} added to stock.", { q: amount(quantity), name: part.name }));
+      offerUndo(t("{q} × {name} added.", { q: amount(undoQty), name: undoPart.name }), () => api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: undoPart.id, quantity: undoQty, note: "Undo of a counter entry" }) }, key()));
     } catch (e) { setError((e as Error).message); commandKey.current = key(); }
     finally { setBusy(false); }
   };
@@ -156,7 +166,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
           <div className="counter-step">
             <h2><span>1</span> {mode === "receive" ? t("Which part came in?") : t("Which part?")}</h2>
             {part ? (
-              <div className="counter-chosen"><strong>{part.name}</strong><small>{t("Part no.")} {part.part_number || t("Not set")} · {t("System no.")} {part.sku} · {amount(Number(part.quantity))} {t("in stock")}{part.location ? " · " + part.location : ""}</small><button onClick={() => { setPart(null); setPhotoId(""); }}>{t("Change")}</button></div>
+              <div className="counter-chosen"><strong>{part.name}{low(part, Number(part.quantity)) && <span className="counter-lowchip" data-testid="counter-low">{t("Running low")}</span>}</strong><small>{t("Part no.")} {part.part_number || t("Not set")} · {t("System no.")} {part.sku} · {amount(Number(part.quantity))} {t("in stock")}{part.location ? " · " + part.location : ""}</small><button onClick={() => { setPart(null); setPhotoId(""); }}>{t("Change")}</button></div>
             ) : (
               <>
                 <button data-tour="open-camera" className="counter-big wide" disabled={busy} onClick={() => setCamera(true)}><CameraIcon size={30} /> {busy ? t("Checking the photo…") : t("Open camera")}</button>

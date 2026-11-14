@@ -29,7 +29,7 @@ export function Jobs() {
         rows={shown.map((j) => ({ Date: dateOnly(j.created_at), "Vehicle no.": j.registration, Customer: j.customer, Phone: j.phone, Work: j.summary, Status: j.status, Invoice: j.invoice_number || "", "Total (LKR)": j.total }))} />
       <div className="ws-cards">
         {shown.map((j) => <JobItem key={j.id} j={j} onOpen={() => go({ name: "job", id: j.id })} />)}
-        {!shown.length && <Empty action={data.length ? undefined : { label: "+ " + t("New job"), onClick: () => go({ name: "new" }) }}>{data.length ? "No jobs match." : "No jobs yet. Start the first one when a vehicle comes in."}</Empty>}
+        {!shown.length && <Empty>{data.length ? "No jobs match." : "No jobs yet. Start the first one when a vehicle comes in."}</Empty>}
       </div>
     </>
   );

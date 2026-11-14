@@ -64,7 +64,7 @@ export function Vehicles() {
       {!data ? <Loading error={error} /> : (
         <div className="ws-cards">
           {shown.map((v) => <VehicleCard key={v.id} v={v} onOpen={() => go({ name: "vehicle", id: v.id })} />)}
-          {!shown.length && <Empty action={term || range.k !== "all" ? undefined : { label: "+ " + t("New job"), onClick: () => go({ name: "new" }) }}>{term || range.k !== "all" ? "No vehicle matches." : "No vehicles yet. A vehicle is added by itself when you create its first job."}</Empty>}
+          {!shown.length && <Empty>{term || range.k !== "all" ? "No vehicle matches." : "No vehicles yet. A vehicle is added by itself when you create its first job."}</Empty>}
         </div>
       )}
     </>

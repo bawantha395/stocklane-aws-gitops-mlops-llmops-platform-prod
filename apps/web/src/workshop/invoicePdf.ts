@@ -52,6 +52,14 @@ class Doc {
     const a = (angle * Math.PI) / 180, c = Math.cos(a).toFixed(4), sn = Math.sin(a).toFixed(4);
     this.pages[page].push(`BT /F2 ${size} Tf ${rgb(color)} rg ${c} ${sn} -${sn} ${c} ${f1(x)} ${f1(H - y)} Tm (${esc(label)}) Tj ET`);
   }
+  /** A big diagonal watermark behind a page's content: outlined letters in a rounded border, in a light solid tint (drawn first, so the content stays on top). */
+  watermark(label: string, color: RGB, page: number, size = 120, angle = 18) {
+    const a = (angle * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a), w = width(label, size, true) + size * 0.14;
+    const ox = W / 2 - (w / 2) * c + size * 0.36 * sn, oy = H / 2 + (w / 2) * sn + size * 0.36 * c;
+    const x0 = -size * 0.3, x1 = w + size * 0.3, y0 = -size * 0.22, y1 = size * 0.94, r = size * 0.3, k = r * 0.5523;
+    const path = `${f1(x0 + r)} ${f1(y0)} m ${f1(x1 - r)} ${f1(y0)} l ${f1(x1 - r + k)} ${f1(y0)} ${f1(x1)} ${f1(y0 + r - k)} ${f1(x1)} ${f1(y0 + r)} c ${f1(x1)} ${f1(y1 - r)} l ${f1(x1)} ${f1(y1 - r + k)} ${f1(x1 - r + k)} ${f1(y1)} ${f1(x1 - r)} ${f1(y1)} c ${f1(x0 + r)} ${f1(y1)} l ${f1(x0 + r - k)} ${f1(y1)} ${f1(x0)} ${f1(y1 - r + k)} ${f1(x0)} ${f1(y1 - r)} c ${f1(x0)} ${f1(y0 + r)} l ${f1(x0)} ${f1(y0 + r - k)} ${f1(x0 + r - k)} ${f1(y0)} ${f1(x0 + r)} ${f1(y0)} c S`;
+    this.pages[page].unshift(`q ${c.toFixed(4)} ${sn.toFixed(4)} -${sn.toFixed(4)} ${c.toFixed(4)} ${f1(ox)} ${f1(H - oy)} cm ${rgb(color)} RG ${f1(size * 0.07)} w ${path} ${f1(size * 0.025)} w BT 1 Tr /F2 ${size} Tf ${f1(size * 0.07)} 0 Td (${esc(label)}) Tj ET Q`);
+  }
   /** A JPEG (as a binary string) placed at x, y with the given size. */
   image(x: number, y: number, w: number, h: number, bin: string, iw: number, ih: number, c: number) {
     this.images.push({ bin, w: iw, h: ih, c });
@@ -198,7 +206,7 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   d.y = d.pages.length === 1 && d.y < H - MARGIN - 80 ? Math.max(d.y + 24, H - MARGIN - 50) : d.y + 24;
   d.line(R - 170, d.y, R, d.y);
   d.text(R, d.y + 12, "Authorised signature", 8.5, false, "r", MUTED);
-  if (status === "PAID" || status === "VOID") d.stamp(status === "PAID" ? "PAID" : "VOID", R - 270, d.y + 2, status === "PAID" ? [0.18, 0.31, 0.71] : [0.75, 0.2, 0.2], d.pages.length - 1, 32, 10);
+  if (status === "PAID" || status === "VOID") for (let n = 0; n < d.pages.length; n++) d.watermark(status === "PAID" ? "PAID" : "VOID", status === "PAID" ? [0.77, 0.75, 0.92] : [0.8, 0.8, 0.82], n);
   return d.render();
 }
 
