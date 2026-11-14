@@ -67,12 +67,23 @@ def failure(error):
 
 def propose(settings, image, known=None):
     """Suggest catalogue fields; `known` holds fields already read from the label text."""
-    if not settings.bedrock_model_id:
+    backup = getattr(settings, 'gemini_api_key', '')
+    if not settings.bedrock_model_id and not backup:
         return {}, 'manual'
-    try:
-        return _invoke(settings,image,known or {})
-    except Exception as error:
-        raise failure(error) from None
+    problem = None
+    if settings.bedrock_model_id:
+        try:
+            return _invoke(settings,image,known or {})
+        except Exception as error:
+            problem = failure(error)
+            logging.getLogger(__name__).warning('Bedrock failed code=%s', problem.code)
+    if backup:
+        from . import gemini  # imported here: gemini imports this module
+        try:
+            return gemini.propose(settings, image, known or {})
+        except BedrockUnavailable as error:
+            problem = problem or error
+    raise problem from None
 
 
 def region(settings):

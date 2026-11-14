@@ -14,7 +14,13 @@ class Settings:
         self.bedrock_model_id = e.get('BEDROCK_MODEL_ID', '')
         self.bedrock_region = e.get('BEDROCK_REGION', '')
         self.bedrock_daily_request_limit = int(e.get('BEDROCK_DAILY_LIMIT', '50'))
+        self.gemini_api_key = e.get('GEMINI_API_KEY', '')
+        self.gemini_model = e.get('GEMINI_MODEL', 'gemini-3.8-flash')
         self.textract_fallback = e.get('TEXTRACT_FALLBACK', 'false') == 'true'
         self.textract_region = e.get('TEXTRACT_REGION', '')
         self.match_threshold = float(e.get('MATCH_THRESHOLD', '0.92'))
         self.max_upload_bytes = int(e.get('MAX_UPLOAD_BYTES', str(4 * 1024 * 1024)))  # Lambda's request limit is 6 MB
+
+    @property
+    def ai_enabled(self):
+        return bool(self.bedrock_model_id or self.gemini_api_key)

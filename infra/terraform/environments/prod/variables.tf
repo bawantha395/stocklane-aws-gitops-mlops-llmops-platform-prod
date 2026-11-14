@@ -74,3 +74,15 @@ variable "warm_vision" {
   type    = bool
   default = true
 }
+
+variable "gemini_api_key" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Free Google AI Studio key, used only when Bedrock cannot answer. Empty switches the backup off."
+}
+
+variable "gemini_model" {
+  type    = string
+  default = "gemini-3.8-flash"
+}

@@ -118,6 +118,8 @@ resource "aws_lambda_function" "vision" {
       BEDROCK_REGION      = var.bedrock_region
       BEDROCK_DAILY_LIMIT = tostring(var.bedrock_daily_limit)
       TEXTRACT_FALLBACK   = "true"
+      GEMINI_API_KEY      = var.gemini_api_key
+      GEMINI_MODEL        = var.gemini_model
     })
   }
   logging_config {

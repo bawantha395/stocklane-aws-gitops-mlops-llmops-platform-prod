@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
 import { Camera as CameraIcon, X } from "lucide-react";
+import { markNativePick, clearNativePick } from "./resume";
 
 /**
  * One live camera for everything at the counter: a Stocklane QR in view is read by itself,
@@ -141,8 +142,8 @@ export function Camera({
             <CameraIcon size={22} /> Take photo
           </button>
         )}
-        <input ref={picker} hidden type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && onPhoto(e.target.files[0])} />
-        <button className="button secondary full" onClick={() => picker.current?.click()}>
+        <input ref={picker} hidden type="file" accept="image/*" onChange={(e) => { clearNativePick(); if (e.target.files?.[0]) onPhoto(e.target.files[0]); }} />
+        <button className="button secondary full" onClick={() => { markNativePick(); picker.current?.click(); }}>
           Choose a photo from this device
         </button>
       </section>

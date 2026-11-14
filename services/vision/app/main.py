@@ -92,7 +92,7 @@ def create_app():
         encoder = model.encoder(settings)
         return {'modelReady': encoder is not None, 'modelVersion': encoder.version if encoder else None,
                 'workshopCalibrated': bool(encoder and encoder.manifest.get('workshopCalibrated')),
-                'bedrockConfigured': bool(settings.bedrock_model_id), 'bedrockModelId': settings.bedrock_model_id or None,
+                'bedrockConfigured': settings.ai_enabled, 'bedrockModelId': settings.bedrock_model_id or None,
                 'bedrockRegion': (settings.bedrock_region or settings.aws_region) if settings.bedrock_model_id else None,
                 'automaticPosting': False, 'mode': 'cognito'}
 
@@ -198,9 +198,9 @@ def create_app():
                 source = textract.SOURCE
         problem = None
         missing = [n for n in DRAFT_FIELDS if n not in fields]
-        if settings.bedrock_model_id and not missing:
+        if settings.ai_enabled and not missing:
             ai = {'status': 'not_needed'}
-        if settings.bedrock_model_id and missing:
+        if settings.ai_enabled and missing:
             used = store.spend_allowance()
             if used > settings.bedrock_daily_request_limit:
                 if not fields:
@@ -208,11 +208,11 @@ def create_app():
                 ai = {'status': 'limit_reached'}
             else:
                 try:
-                    proposed, _ = propose(settings, image_bytes, fields)
+                    proposed, used_by = propose(settings, image_bytes, fields)
                     suggestions = {k: v for k, v in proposed.items() if k in DRAFT_FIELDS and k not in fields and v}
                     ai = {'status': 'used'}
                     if not fields:
-                        source = 'bedrock'
+                        source = used_by
                 except Exception as error:
                     problem = error if isinstance(error, BedrockUnavailable) else failure(error)
                     ai = {'status': 'unavailable', 'code': problem.code, 'message': problem.message.split('. ')[0]}

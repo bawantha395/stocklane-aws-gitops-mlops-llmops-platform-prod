@@ -52,6 +52,7 @@ import { StockReport } from "./StockReport";
 import { Workshop } from "./workshop";
 import { ReorderCard } from "./ReorderCard";
 import { Counter, type Mode as CounterMode } from "./Counter";
+import { saveNav, loadNav, markNativePick, lostNativePick, clearNativePick } from "./resume";
 import { dock } from "./dock";
 import { suggestFields, type Field, type Suggestion } from "./suggestions";
 import {
@@ -185,8 +186,9 @@ async function apiPhoto(id: string) {
   return r.blob();
 }
 function App() {
-  const [view, setView] = useState<View>("home");
-  const [counterMode, setCounterMode] = useState<CounterMode>("receive");
+  const [view, setView] = useState<View>(() => (loadNav().view as View) || "home");
+  const [counterMode, setCounterMode] = useState<CounterMode>(() => (loadNav().mode as CounterMode) || "receive");
+  useEffect(() => { saveNav(view, counterMode); }, [view, counterMode]);
   const businessName = useBusinessName();
   const [dockHidden, setDockHidden] = useState(() => {
     try { return localStorage.getItem("lifta.dock") === "hidden"; } catch { return false; }
@@ -340,6 +342,7 @@ function App() {
     } finally {
       setLoading(false);
       setBooted(true);
+      if (lostNativePick()) setNotice("Your phone reloaded Lifta while its camera app was open, so the photo did not arrive. Use Open camera, then Take photo. That camera stays inside Lifta.");
     }
   }, []);
   useEffect(() => {
@@ -430,6 +433,7 @@ function App() {
     [items, view],
   );
   const analyse = async (photo: File) => {
+    clearNativePick();
     const target = photoTarget.current;
     photoTarget.current = "";
     const run = ++sequence.current;
@@ -1022,7 +1026,7 @@ function App() {
                       <button
                         className="button secondary"
                         disabled={busy || allComplete || locked}
-                        onClick={() => file.current?.click()}
+                        onClick={() => { markNativePick(); file.current?.click(); }}
                       >
                         <Camera size={18} /> Identify from photo
                       </button>
@@ -1299,6 +1303,7 @@ function App() {
                           disabled={busy}
                           onClick={() => {
                             photoTarget.current = active.id;
+                            markNativePick();
                             file.current?.click();
                           }}
                         >

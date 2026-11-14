@@ -60,6 +60,17 @@ variable "bedrock_region" {
   default = ""
 }
 
+variable "gemini_api_key" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "gemini_model" {
+  type    = string
+  default = "gemini-3.8-flash"
+}
+
 variable "bedrock_daily_limit" {
   type    = number
   default = 50

@@ -45,6 +45,8 @@ module "api" {
   bedrock_invoke_arn = module.ml.bedrock_invoke_arn
   bedrock_model_id   = var.bedrock_model_id
   bedrock_region     = module.ml.bedrock_region
+  gemini_api_key     = var.gemini_api_key
+  gemini_model       = var.gemini_model
   warm_vision        = var.warm_vision
 }
 
