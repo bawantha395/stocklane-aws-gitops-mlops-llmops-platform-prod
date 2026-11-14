@@ -85,3 +85,55 @@ def many(value, field='Photos', limit=6):
     if len(out) > limit:
         raise bad('Up to %d photos' % limit)
     return out
+
+
+# ---------- the business logo: one small JPEG, replaced as a whole ----------
+LOGO_MAX = 150_000
+
+
+def jpeg_info(raw):
+    """(width, height, components) read from the JPEG's frame header, so the PDF can embed it without any image library."""
+    i = 2
+    while i + 9 < len(raw):
+        if raw[i] != 0xFF:
+            i += 1
+            continue
+        marker = raw[i + 1]
+        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+            i += 2
+            continue
+        length = int.from_bytes(raw[i + 2:i + 4], 'big')
+        if marker in (0xC0, 0xC1, 0xC2):
+            return int.from_bytes(raw[i + 7:i + 9], 'big'), int.from_bytes(raw[i + 5:i + 7], 'big'), raw[i + 9]
+        i += 2 + length
+    raise bad('The logo is not a valid JPEG')
+
+
+def logo_check(value):
+    raw = jpeg(value, 'The logo', LOGO_MAX)
+    w, h, comps = jpeg_info(raw)
+    if comps not in (1, 3) or not (32 <= w <= 1600 and 32 <= h <= 1600):
+        raise bad('The logo must be a normal colour or grey picture between 32 and 1600 pixels')
+    return raw, w, h, comps
+
+
+def logo_save(raw, version):
+    s3().put_object(Bucket=bucket(), Key='workshop/logo/%s.jpg' % version, Body=raw, ContentType='image/jpeg', CacheControl='private, max-age=31536000')
+
+
+def logo_bytes(version):
+    """The stored logo, or None when it cannot be read (a bill is never blocked by a logo problem)."""
+    if not version or not re.fullmatch(r'[0-9a-f]{32}', str(version)):
+        return None
+    try:
+        return s3().get_object(Bucket=bucket(), Key='workshop/logo/%s.jpg' % version)['Body'].read()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def logo_drop(version):
+    try:
+        if version and re.fullmatch(r'[0-9a-f]{32}', str(version)):
+            s3().delete_object(Bucket=bucket(), Key='workshop/logo/%s.jpg' % version)
+    except Exception:  # noqa: BLE001
+        pass

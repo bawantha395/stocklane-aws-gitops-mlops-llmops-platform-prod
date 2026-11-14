@@ -34,6 +34,12 @@ export function ToastHost() {
   return <div className="ui-toasts" aria-live="polite">{items.map((x) => <div key={x.id} className={"ui-toast" + (x.bad ? " bad" : "")} role="status"><span>{x.text}</span>{x.action && <button onClick={() => { x.action!.run(); items = items.filter((i) => i.id !== x.id); subs.forEach((f) => f()); }}>{x.action.label}</button>}</div>)}</div>;
 }
 
-/** Light / dark, remembered on this device. */
-export const getTheme = () => { try { return localStorage.getItem("lifta.theme") === "dark" ? "dark" : "light"; } catch { return "light"; } };
-export const applyTheme = (m: "light" | "dark") => { document.documentElement.dataset.theme = m; try { localStorage.setItem("lifta.theme", m); } catch { /* ignore */ } };
+/** Auto (follows the phone or computer), Light or Dark; remembered on this device. */
+export type ThemePref = "auto" | "light" | "dark";
+export const getTheme = (): ThemePref => { try { const v = localStorage.getItem("lifta.theme"); return v === "dark" || v === "light" ? v : "auto"; } catch { return "auto"; } };
+const resolve = (m: ThemePref) => m === "auto" ? (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light") : m;
+export const applyTheme = (m: ThemePref) => {
+  document.documentElement.dataset.theme = resolve(m);
+  try { if (m === "auto") localStorage.removeItem("lifta.theme"); else localStorage.setItem("lifta.theme", m); } catch { /* ignore */ }
+};
+if (typeof window !== "undefined" && window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { if (getTheme() === "auto") applyTheme("auto"); });

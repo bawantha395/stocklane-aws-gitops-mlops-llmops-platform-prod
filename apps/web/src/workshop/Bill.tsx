@@ -1,4 +1,5 @@
 import { QrImg } from "./QrImg";
+import { useLogo } from "../BizLogo";
 import { addDays, dateOnly, kmText, lkr, num, round2, type Business, type Labour, type Part, type Payment } from "./common";
 
 export type BillData = {
@@ -7,8 +8,11 @@ export type BillData = {
   tax_name?: string; tax_rate: number; payments?: Payment[]; paid?: number; next_service_date?: string; next_service_km?: number | null;
 };
 
+/** A part line's amount: quantity times price, less the line's own discount percent. */
+export const partAmount = (p: Part) => round2((num(p.quantity) * num(p.unit_price) * (100 - num(p.discount_pct))) / 100);
+
 export function billTotals(b: Pick<BillData, "parts" | "labour" | "discount" | "tax_rate">) {
-  const parts = b.parts.reduce((s, p) => s + round2(num(p.quantity) * num(p.unit_price)), 0);
+  const parts = b.parts.reduce((s, p) => s + partAmount(p), 0);
   const labour = b.labour.reduce((s, l) => s + num(l.amount), 0);
   const subtotal = parts + labour - num(b.discount);
   const tax = subtotal > 0 ? round2((subtotal * num(b.tax_rate)) / 100) : 0;
@@ -17,14 +21,14 @@ export function billTotals(b: Pick<BillData, "parts" | "labour" | "discount" | "
 
 /** The bill as it prints: also used on screen as the preview. */
 export function Bill({ d }: { d: BillData }) {
-  const t = billTotals(d), b = d.business, paid = d.paid || 0;
+  const t = billTotals(d), b = d.business, paid = d.paid || 0, logo = useLogo();
   const title = d.status === "VOID" ? "VOID" : d.draft ? "DRAFT BILL" : d.tax_rate ? "TAX INVOICE" : "INVOICE";
   return (
     <article className="ws-bill" aria-label="Bill">
       <i className="ws-bill-band" aria-hidden="true" />
       <header className="ws-bill-head">
         <div className="ws-bill-brand">
-          <span className="ws-bill-mono" aria-hidden="true">{b.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "•"}</span>
+          {logo ? <img className="ws-bill-logo" src={"data:image/jpeg;base64," + logo.data} alt="" /> : <span className="ws-bill-mono" aria-hidden="true">{b.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "•"}</span>}
           <div>
           <h2>{b.name}</h2>
           {b.address && <p className="ws-pre">{b.address}</p>}
@@ -49,7 +53,7 @@ export function Bill({ d }: { d: BillData }) {
         <table className="ws-bill-table">
           <thead><tr><th>#</th><th>Parts</th><th className="r">Qty</th><th className="r">Unit price</th><th className="r">Amount (LKR)</th></tr></thead>
           <tbody>
-            {d.parts.map((p, i) => <tr key={i}><td>{i + 1}</td><td>{p.name}</td><td className="r">{num(p.quantity)}</td><td className="r">{lkr(p.unit_price)}</td><td className="r">{lkr(round2(num(p.quantity) * num(p.unit_price)))}</td></tr>)}
+            {d.parts.map((p, i) => <tr key={i}><td>{i + 1}</td><td>{p.name}{num(p.discount_pct) > 0 && <small className="ws-line-off"> ({num(p.discount_pct)}% off)</small>}</td><td className="r">{num(p.quantity)}</td><td className="r">{lkr(p.unit_price)}</td><td className="r">{lkr(partAmount(p))}</td></tr>)}
             {!d.parts.length && <tr><td colSpan={5} className="muted">No parts</td></tr>}
           </tbody>
           <thead><tr><th>#</th><th colSpan={3}>Labour</th><th className="r">Amount (LKR)</th></tr></thead>

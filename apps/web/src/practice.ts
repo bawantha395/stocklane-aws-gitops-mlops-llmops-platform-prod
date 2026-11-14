@@ -27,7 +27,7 @@ export const mark = (name: string) => { if (!events.has(name)) { events.add(name
 export const probe = { view: "home" as string };
 
 type Row = Record<string, any>;
-const db = { settings: {} as Row, edits: {} as Record<string, Row>, archived: [] as Row[], log: [] as Row[], requests: [] as Row[], photos: {} as Record<string, { image: string; thumb: string }>, products: [] as Row[], movements: [] as Row[], jobs: [] as Row[], invoices: [] as Row[], seq: 0, created: 0, moved: 0, jobsMade: 0, paid: 0 };
+const db = { logo: null as null | { data: string; w: number; h: number }, settings: {} as Row, edits: {} as Record<string, Row>, archived: [] as Row[], log: [] as Row[], requests: [] as Row[], photos: {} as Record<string, { image: string; thumb: string }>, products: [] as Row[], movements: [] as Row[], jobs: [] as Row[], invoices: [] as Row[], seq: 0, created: 0, moved: 0, jobsMade: 0, paid: 0 };
 export const progress = () => ({ created: db.created, moved: db.moved, jobs: db.jobsMade, paid: db.paid });
 const now = () => new Date().toISOString();
 const next = (p: string) => p + String(++db.seq);
@@ -35,15 +35,15 @@ const regKey = (s: string) => String(s || "").replace(/[^A-Za-z0-9]/g, "").toUpp
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 function reset() {
-  db.settings = {}; db.edits = {}; db.archived = []; db.log = []; db.requests = []; db.photos = {}; db.seq = 0; db.created = 0; db.moved = 0; db.jobsMade = 0; db.paid = 0; db.jobs = []; db.invoices = []; db.movements = [];
+  db.settings = {}; db.logo = null; db.edits = {}; db.archived = []; db.log = []; db.requests = []; db.photos = {}; db.seq = 0; db.created = 0; db.moved = 0; db.jobsMade = 0; db.paid = 0; db.jobs = []; db.invoices = []; db.movements = [];
   const p = (name: string, brand: string, category: string, qty: number, location: string, part: string, extra: Row = {}) => ({
     id: next("p"), sku: "DEMO-" + String(db.seq).padStart(3, "0"), name, category, brand, grade: "", capacity: "", barcode: null, unit: "UNIT", quantity: qty,
     selling_price: 0, reorder_level: 5, image_id: null, part_number: part, location, archived: false, ...extra,
   });
   db.products = [
-    p("Oil filter small", "Demo Parts", "Filters", 8, "B2", "DP-OF-100"),
-    p("Brake pads front", "Demo Brakes", "Brakes", 14, "C3", "DB-BP-220"),
-    p("Engine oil 10W-40 4L", "Demo Oil Co", "Engine oil", 6, "A1", "DO-1040-4", { grade: "10W-40", capacity: "4 L" }),
+    p("Oil filter small", "Demo Parts", "Filters", 8, "B2", "DP-OF-100", { selling_price: 1800 }),
+    p("Brake pads front", "Demo Brakes", "Brakes", 14, "C3", "DB-BP-220", { selling_price: 6500 }),
+    p("Engine oil 10W-40 4L", "Demo Oil Co", "Engine oil", 6, "A1", "DO-1040-4", { grade: "10W-40", capacity: "4 L", selling_price: 4200 }),
   ];
 }
 reset();
@@ -90,13 +90,25 @@ export async function demoShot(kind: "plate" | "front" | "damage"): Promise<File
   return new File([blob], kind + ".jpg", { type: "image/jpeg" });
 }
 
+/** Width and height from a base64 JPEG's frame header. */
+function jpegSize(b64: string) {
+  const s = atob(b64 || "");
+  for (let i = 2; i + 9 < s.length;) {
+    if (s.charCodeAt(i) !== 255) { i++; continue; }
+    const m = s.charCodeAt(i + 1);
+    if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { i += 2; continue; }
+    if (m >= 0xc0 && m <= 0xc2) return { h: s.charCodeAt(i + 5) * 256 + s.charCodeAt(i + 6), w: s.charCodeAt(i + 7) * 256 + s.charCodeAt(i + 8) };
+    i += 2 + s.charCodeAt(i + 2) * 256 + s.charCodeAt(i + 3);
+  }
+  throw new ApiError("The logo is not a valid JPEG", 400);
+}
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 function business() {
-  return { name: getBusinessName(), address: "12 Demo Road", phone: "011 000 0000", email: "", reg_no: "", bank: "", footer: "", tax_name: "VAT", tax_rate: 0, mechanic_discount_pct: 10, payment_terms_days: 0, qr_url: "", warranty: "", ...db.settings };
+  return { name: getBusinessName(), address: "12 Demo Road", phone: "011 000 0000", email: "", reg_no: "", bank: "", footer: "", tax_name: "VAT", tax_rate: 0, mechanic_discount_pct: 10, payment_terms_days: 0, qr_url: "", warranty: "", invoice_prefix: "INV", default_reorder_level: 5, labour_items: [], mechanics: [], logo: db.logo ? { v: "demo", w: db.logo.w, h: db.logo.h, c: 3 } : null, ...db.settings };
 }
 function priced(j: Row) {
-  j.parts_total = round2(j.parts.reduce((s: number, p: Row) => s + Number(p.quantity) * Number(p.unit_price), 0));
+  j.parts_total = round2(j.parts.reduce((s: number, p: Row) => s + round2((Number(p.quantity) * Number(p.unit_price) * (100 - Number(p.discount_pct || 0))) / 100), 0));
   j.labour_total = round2(j.labour.reduce((s: number, l: Row) => s + Number(l.amount), 0));
   j.subtotal = round2(Math.max(0, j.parts_total + j.labour_total - Number(j.discount || 0)));
   j.tax = round2(j.subtotal * (Number(j.tax_rate || 0) / 100));
@@ -184,6 +196,11 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       if (method === "GET") return clone(db.movements);
       const item = db.products.find((x) => x.id === body.productId); if (!item) throw new ApiError("Part not found", 404);
       const q = Number(body.quantity);
+      if (body.kind === "COUNT") {
+        const before = Number(item.quantity); if (q === before) throw new ApiError("The count already matches the recorded stock", 400);
+        item.quantity = q; const cm = { id: next("m"), product_id: item.id, sku: item.sku, name: item.name, unit: item.unit, kind: q > before ? "COUNT_IN" : "COUNT_OUT", quantity: Math.abs(q - before), unit_price: 0, balance: q, job_id: null, issue_id: null, actor: "practice@example.com", note: "Count correction", created_at: new Date().toISOString() };
+        db.movements.unshift(cm); db.moved++; return clone(cm);
+      }
       if (body.kind === "STOCK_OUT" && q > Number(item.quantity)) throw new ApiError("Only " + item.quantity + " in stock.", 409);
       item.quantity = round2(Number(item.quantity) + (body.kind === "STOCK_OUT" ? -q : q));
       const m = { id: next("m"), product_id: item.id, sku: item.sku, name: item.name, unit: item.unit, kind: body.kind, quantity: q, unit_price: 0, balance: item.quantity, job_id: null, issue_id: null, actor: "Practice", note: body.note || "", created_at: now() };
@@ -211,8 +228,19 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       const shot = b && db.photos[b]; if (!shot) throw new ApiError("Photo not found", 404);
       return { data: url.searchParams.get("size") === "full" ? shot.image : shot.thumb };
     }
+    if (a === "logo") {
+      if (method === "PUT") { const { w, h } = jpegSize(body.image); db.logo = { data: body.image, w, h }; return { logo: { v: "demo", w, h, c: 3 } }; }
+      if (method === "DELETE") { db.logo = null; return { logo: null }; }
+      if (!db.logo) throw new ApiError("No logo", 404);
+      return { data: db.logo.data, v: "demo", w: db.logo.w, h: db.logo.h, c: 3 };
+    }
     if (a === "settings") {
-      if (method === "PUT") { db.settings = { ...db.settings, ...body }; }
+      if (method === "PUT") {
+        const prefix = String(body.invoice_prefix || "INV").trim().toUpperCase();
+        if (!/^[A-Z0-9]{1,6}$/.test(prefix)) throw new ApiError("The bill number prefix is 1 to 6 letters or numbers (no spaces)", 400);
+        const { logo: _logo, ...rest } = body; void _logo;
+        db.settings = { ...db.settings, ...rest, invoice_prefix: prefix };
+      }
       return business();
     }
     if (a === "report.pdf" || (a === "invoices" && seg[4] === "pdf") || (a === "vehicles" && seg[4] === "history.pdf")) return samplePdf(a === "report.pdf" ? "Workshop report" : a === "invoices" ? "Invoice" : "Vehicle history");
@@ -239,6 +267,30 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       return clone(keys.map((k) => vehicleView(k)).filter((v): v is NonNullable<ReturnType<typeof vehicleView>> => !!v && (v.registration + v.owner).toLowerCase().includes(term)).map(({ history, ...v }) => v));
     }
     if (a === "jobs") {
+      // stock parts: a line with product_id moves stock with it (same rules as the server)
+      const moveStock = (pid: string, qty: number, kind: "ISSUE" | "RETURN", j: Row, price: number) => {
+        const item = db.products.find((x) => x.id === pid); if (!item) throw new ApiError("Product not found", 404);
+        if (kind === "ISSUE" && Number(item.quantity) < qty) throw new ApiError("Only " + item.quantity + " of " + item.name + " in stock", 409);
+        item.quantity = round2(Number(item.quantity) + (kind === "ISSUE" ? -qty : qty));
+        db.movements.unshift({ id: next("m"), product_id: item.id, sku: item.sku, name: item.name, unit: item.unit, kind, quantity: qty, unit_price: price, balance: item.quantity, job_id: j.id, issue_id: null, actor: "Practice", note: (kind === "ISSUE" ? "Used on " : "Taken back from ") + j.registration, created_at: now() });
+        db.moved++; return Number(item.quantity);
+      };
+      const release = (j: Row) => { for (const l of (j.parts || []) as Row[]) if (l.product_id) { moveStock(l.product_id, Number(l.quantity), "RETURN", j, Number(l.unit_price)); delete l.product_id; } };
+      if (b && seg[4] === "stock" && method === "POST") {
+        const j = db.jobs.find((x) => x.id === b); if (!j) throw new ApiError("Not found", 404);
+        if (j.status !== "OPEN") throw new ApiError("This job already has an invoice", 409);
+        const q = Number(body.quantity); if (!(q > 0)) throw new ApiError("Quantity must be more than 0", 400);
+        const item = db.products.find((x) => x.id === body.productId); if (!item) throw new ApiError("Product not found", 404);
+        const line = (j.parts as Row[]).find((l) => l.product_id === item.id);
+        let balance: number;
+        if (body.op === "use") { balance = moveStock(item.id, q, "ISSUE", j, Number(item.selling_price)); if (line) line.quantity = Number(line.quantity) + q; else j.parts.push({ name: item.name, quantity: q, unit_price: Number(item.selling_price), product_id: item.id }); }
+        else {
+          if (!line) throw new ApiError("This part was not taken from stock for this job", 409);
+          if (q > Number(line.quantity)) throw new ApiError("Only " + line.quantity + " of this part are on the job", 409);
+          balance = moveStock(item.id, q, "RETURN", j, Number(line.unit_price)); line.quantity = Number(line.quantity) - q; if (line.quantity === 0) j.parts = j.parts.filter((l: Row) => l !== line);
+        }
+        priced(j); j.revision++; return { ...clone(j), stock: { product_id: item.id, balance } };
+      }
       if (!b) {
         if (method === "GET") return clone(rows(db.jobs));
         const j = priced({ id: next("j"), registration: String(body.registration || "").toUpperCase(), vehicle_key: regKey(body.registration), customer: body.customer || "", address: body.address || "", phone: body.phone || "", vehicle: body.vehicle || "",
@@ -252,9 +304,9 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       }
       const j = db.jobs.find((x) => x.id === b); if (!j) throw new ApiError("Not found", 404);
       const c = seg[4];
-      if (c === "cancel" && method === "POST") { j.status = "CANCELLED"; j.revision++; logIt("CANCELLED", j); return clone(j); }
-      if (c === "undo" && method === "POST") { db.jobs = db.jobs.filter((x) => x.id !== j.id); logIt("UNDONE", j); return { undone: true }; }
-      if (c === "archive" && method === "POST") { db.jobs = db.jobs.filter((x) => x.id !== j.id); db.archived.unshift({ ...j, status: "ARCHIVED", archive_reason: body.reason || "", archived_by: "Practice", archived_at: now() }); db.requests = db.requests.filter((r) => r.job_id !== j.id); logIt("ARCHIVED", j, body.reason || ""); return { archived: true }; }
+      if (c === "cancel" && method === "POST") { release(j); j.status = "CANCELLED"; j.revision++; logIt("CANCELLED", j); return clone(j); }
+      if (c === "undo" && method === "POST") { release(j); db.jobs = db.jobs.filter((x) => x.id !== j.id); logIt("UNDONE", j); return { undone: true }; }
+      if (c === "archive" && method === "POST") { release(j); db.jobs = db.jobs.filter((x) => x.id !== j.id); db.archived.unshift({ ...j, status: "ARCHIVED", archive_reason: body.reason || "", archived_by: "Practice", archived_at: now() }); db.requests = db.requests.filter((r) => r.job_id !== j.id); logIt("ARCHIVED", j, body.reason || ""); return { archived: true }; }
       if (c === "delete-request" && seg[5] === "reject" && method === "POST") { db.requests = db.requests.filter((r) => r.job_id !== j.id); j.delete_request = { job_id: j.id, registration: j.registration, customer: j.customer, reason: "", requested_by: "Practice", requested_at: now(), status: "REJECTED", note: body.note || "" }; delete j.delete_requested; logIt("REQUEST_REJECTED", j, body.note || ""); return { rejected: true }; }
       if (c === "delete-request" && method === "POST") { const r = { job_id: j.id, registration: j.registration, customer: j.customer, reason: body.reason || "", requested_by: "Practice", requested_at: now(), status: "PENDING" }; db.requests.push(r); j.delete_request = r; j.delete_requested = true; logIt("DELETE_REQUESTED", j, body.reason || ""); return { requested: true }; }
       if (c === "photos" && method === "POST") {
@@ -266,15 +318,19 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
         return { before_photos: list, front_photo: j.front_photo, plate_photo: j.plate_photo };
       }
       if (c === "invoice") {
-        const inv = { id: next("i"), invoice_number: "INV-" + String(db.invoices.length + 1).padStart(4, "0"), job_id: j.id, registration: j.registration, customer: j.customer, address: j.address, phone: j.phone, vehicle: j.vehicle, odometer: j.odometer, summary: j.summary,
+        const inv = { id: next("i"), invoice_number: String(db.settings.invoice_prefix || "INV") + "-" + String(db.invoices.length + 1).padStart(4, "0"), job_id: j.id, registration: j.registration, customer: j.customer, address: j.address, phone: j.phone, vehicle: j.vehicle, odometer: j.odometer, summary: j.summary,
           mechanic: j.mechanic, parts: j.parts, labour: j.labour, parts_total: j.parts_total, labour_total: j.labour_total, discount: j.discount, subtotal: j.subtotal, tax: j.tax, tax_name: "VAT", tax_rate: 0, total: j.total,
           paid: 0, status: "UNPAID", created_at: now(), payments: [] as Row[], currency: "LKR", business: business() };
         db.invoices.unshift(inv); j.status = "INVOICED"; j.invoice_id = inv.id; j.invoice_number = inv.invoice_number; j.revision++;
         return clone(inv);
       }
       if (method === "PATCH") {
+        const before = clone(j.parts);
         Object.assign(j, { customer: body.customer, address: body.address, phone: body.phone, vehicle: body.vehicle, odometer: body.odometer ?? undefined, summary: body.summary, mechanic: body.mechanic, notes: body.notes,
           parts: body.parts || [], labour: body.labour || [], discount: Number(body.discount || 0) });
+        const was = new Map(((before as Row[]) || []).filter((l) => l.product_id).map((l) => [l.product_id, Number(l.quantity)] as const));
+        const now_ = new Map((j.parts as Row[]).filter((l) => l.product_id).map((l) => [l.product_id, Number(l.quantity)] as const));
+        if (was.size !== now_.size || [...was].some(([k, v]) => now_.get(k) !== v)) { j.parts = before; throw new ApiError("Parts taken from stock change only with Pick from stock or Take back, so the stock stays right", 400); }
         priced(j); j.revision++;
       }
       return clone(j);

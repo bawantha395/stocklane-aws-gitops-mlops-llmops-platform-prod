@@ -67,7 +67,7 @@ def _rgb(c):
 
 class Doc:
     def __init__(self, footer=''):
-        self.pages, self.footer = [[]], footer
+        self.pages, self.footer, self.images = [[]], footer, []
         self.y = MARGIN
 
     @property
@@ -118,6 +118,12 @@ class Doc:
                 self.rect(x + c * cell, y + r * cell, (e - c) * cell + 0.2, cell + 0.2, INK)
                 c = e
 
+    def image(self, x, y, w, h, jpeg, iw, ih, comps=3):
+        """Draw a JPEG (kept as it is, DCT) with its top-left at (x, y), w by h points. At most a few small images per document."""
+        self.images.append((jpeg, iw, ih, comps))
+        self.rect(x - 1, y - 1, w + 2, h + 2, (1, 1, 1))
+        self.ops.append('q %.1f 0 0 %.1f %.1f %.1f cm /Im%d Do Q' % (w, h, x, H - y - h, len(self.images)))
+
     def stamp(self, label, x, y, color, size=56, angle=18, page=0):
         """A rotated outlined stamp (PAID, VOID) on the first page; y is measured from the top."""
         import math
@@ -140,14 +146,18 @@ class Doc:
         objects = [b'<< /Type /Catalog /Pages 2 0 R >>',
                    ('<< /Type /Pages /Kids [' + ' '.join(str(3 + i * 2) + ' 0 R' for i in range(count)) + '] /Count ' + str(count) + ' >>').encode()]
         regular, bold = 3 + count * 2, 4 + count * 2
+        xobjects = (' /XObject << ' + ' '.join('/Im%d %d 0 R' % (n + 1, 5 + count * 2 + n) for n in range(len(self.images))) + ' >>') if self.images else ''
         for number, ops in enumerate(self.pages):
             foot = ['BT /F1 8 Tf %s rg %.1f %.1f Td (%s) Tj ET' % (_rgb(MUTED), MARGIN, 24, _esc(self.footer)),
                     'BT /F1 8 Tf %s rg %.1f %.1f Td (Page %d of %d) Tj ET' % (_rgb(MUTED), W - MARGIN - width('Page %d of %d' % (number + 1, count), 8), 24, number + 1, count)]
             stream = '\n'.join(ops + foot).encode()
-            objects.append(('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Resources << /Font << /F1 %d 0 R /F2 %d 0 R >> >> /Contents %d 0 R >>' % (W, H, regular, bold, 4 + number * 2)).encode())
+            objects.append(('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Resources << /Font << /F1 %d 0 R /F2 %d 0 R >>%s >> /Contents %d 0 R >>' % (W, H, regular, bold, xobjects, 4 + number * 2)).encode())
             objects.append(b'<< /Length ' + str(len(stream)).encode() + b' >>\nstream\n' + stream + b'\nendstream')
         objects.append(b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>')
         objects.append(b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>')
+        for jpeg, iw, ih, comps in self.images:
+            space = '/DeviceGray' if comps == 1 else '/DeviceRGB'
+            objects.append(('<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace %s /BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n' % (iw, ih, space, len(jpeg))).encode() + jpeg + b'\nendstream')
         out, offsets = bytearray(b'%PDF-1.4\n'), []
         for index, body in enumerate(objects, 1):
             offsets.append(len(out))

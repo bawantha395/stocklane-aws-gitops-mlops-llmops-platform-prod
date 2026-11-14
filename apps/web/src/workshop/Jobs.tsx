@@ -36,7 +36,7 @@ export function Jobs() {
 }
 
 export function NewJob({ reg: start }: { reg?: string }) {
-  const { go } = useWs();
+  const { go, business } = useWs();
   const [f, setF] = useState({ registration: start || "", customer: "", address: "", phone: "", vehicle: "", odometer: "", summary: "", mechanic: "" });
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [plate, setPlate] = useState(""), [front, setFront] = useState(""), [before, setBefore] = useState<string[]>([]);
@@ -77,7 +77,7 @@ export function NewJob({ reg: start }: { reg?: string }) {
         <div className="ws-step" data-step="2">
         {lower && <p className="ws-warn">That is lower than the last recorded {kmText(v?.last_km)}. Check the reading.</p>}
         <label className="ws-field">{t("Complaint / work to do")}<textarea rows={2} value={f.summary} onChange={(e) => set("summary", e.target.value)} placeholder="Engine oil change, brake noise" /></label>
-        <label className="ws-field">{t("Mechanic")}<input value={f.mechanic} onChange={(e) => set("mechanic", e.target.value)} /></label>
+        <label className="ws-field">{t("Mechanic")}{(business.mechanics || []).length ? <select value={f.mechanic} onChange={(e) => set("mechanic", e.target.value)}><option value="">{t("Not chosen")}</option>{(business.mechanics || []).map((m) => <option key={m} value={m}>{m}</option>)}</select> : <input value={f.mechanic} onChange={(e) => set("mechanic", e.target.value)} />}</label>
         </div>
         <div className="ws-step" data-step="1">
         <div className="ws-photos" data-tour="job-photos">

@@ -31,7 +31,13 @@ route('POST', '/api/inventory/products', STAFF, lambda e, p, b, k: inventory.cre
 route('PATCH', '/api/inventory/products/([^/]+)', OWNER, lambda e, p, b, k: inventory.edit_product(k, p[0], actor(e), b))
 route('POST', '/api/inventory/products/([^/]+)/archive', OWNER, lambda e, p, b, k: inventory.archive_product(k, p[0], actor(e), b))
 route('GET', '/api/inventory/movements', STAFF, lambda e, p, b, k: inventory.movements())
-route('POST', '/api/inventory/movements', STAFF, lambda e, p, b, k: inventory.record_movement(k, actor(e), b))
+def movement(e, p, b, k):
+    if b.get('kind') == 'COUNT':
+        require(e, 'OWNER')  # fixing the books from a shelf count is the owner's decision
+    return inventory.record_movement(k, actor(e), b)
+
+
+route('POST', '/api/inventory/movements', STAFF, movement)
 route('GET', '/api/inventory/people', STAFF, lambda e, p, b, k: inventory.people())
 route('POST', '/api/inventory/people', OWNER, lambda e, p, b, k: inventory.add_person(k, actor(e), b))
 route('DELETE', '/api/inventory/people/([^/]+)', OWNER, lambda e, p, b, k: inventory.remove_person(p[0]))
@@ -46,6 +52,7 @@ route('POST', '/api/workshop/jobs', STAFF, lambda e, p, b, k: workshop.create_jo
 route('GET', '/api/workshop/archive', OWNER, lambda e, p, b, k: workshop.archive())
 route('GET', '/api/workshop/jobs/([^/]+)', STAFF, lambda e, p, b, k: workshop.get_job(p[0], actor(e), 'OWNER' in groups(e)))
 route('PATCH', '/api/workshop/jobs/([^/]+)', STAFF, lambda e, p, b, k: workshop.save_job(p[0], k, actor(e), b, 'OWNER' in groups(e)))
+route('POST', '/api/workshop/jobs/([^/]+)/stock', STAFF, lambda e, p, b, k: workshop.use_stock(p[0], k, actor(e), b))
 route('POST', '/api/workshop/jobs/([^/]+)/invoice', STAFF, lambda e, p, b, k: workshop.finalise(p[0], k, actor(e), b))
 route('POST', '/api/workshop/jobs/([^/]+)/archive', OWNER, lambda e, p, b, k: workshop.archive_job(p[0], k, actor(e), b))
 route('POST', '/api/workshop/jobs/([^/]+)/restore', OWNER, lambda e, p, b, k: workshop.restore_job(p[0], k, actor(e), b))
@@ -53,6 +60,9 @@ route('POST', '/api/workshop/jobs/([^/]+)/undo', STAFF, lambda e, p, b, k: works
 route('POST', '/api/workshop/jobs/([^/]+)/delete-request', STAFF, lambda e, p, b, k: workshop.request_delete(p[0], k, actor(e), b))
 route('POST', '/api/workshop/jobs/([^/]+)/delete-request/reject', OWNER, lambda e, p, b, k: workshop.reject_delete(p[0], k, actor(e), b))
 route('POST', '/api/workshop/jobs/([^/]+)/cancel', OWNER, lambda e, p, b, k: workshop.cancel_job(p[0], k, actor(e), b))
+route('GET', '/api/workshop/logo', STAFF, lambda e, p, b, k: workshop.logo_image())
+route('PUT', '/api/workshop/logo', OWNER, lambda e, p, b, k: workshop.save_logo(k, actor(e), b))
+route('DELETE', '/api/workshop/logo', OWNER, lambda e, p, b, k: workshop.remove_logo(k, actor(e), b))
 route('POST', '/api/workshop/photos', STAFF, lambda e, p, b, k: photos.save(b))
 route('GET', '/api/workshop/photos/([0-9a-f]{32})', STAFF, lambda e, p, b, k: photos.read(p[0], q(e, 'size', 'thumb')))
 route('POST', '/api/workshop/jobs/([^/]+)/photos', STAFF, lambda e, p, b, k: workshop.job_photos(p[0], k, actor(e), b))

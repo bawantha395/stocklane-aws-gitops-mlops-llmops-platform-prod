@@ -47,7 +47,7 @@ import "./glass.css";
 import "./theme.css";
 import "./tokens.css";
 import { ToastHost, applyTheme, getTheme } from "./ui";
-import { setBusinessName, useBusinessName } from "./businessName";
+import { getDefaultReorder, setBusinessName, setDefaultReorder, useBusinessName } from "./businessName";
 import { t, useLang, setLang } from "./i18n";
 import { Walkthrough } from "./Walkthrough";
 import { MechanicHome } from "./MechanicHome";
@@ -67,6 +67,7 @@ import { StockReport } from "./StockReport";
 import { Workshop } from "./workshop";
 import { DateChips, SummaryBar, ALL, inRange, useSaved, type Range } from "./workshop/DateRange";
 import { CommandBar } from "./CommandBar";
+import { CountStock } from "./CountStock";
 import { ReorderCard } from "./ReorderCard";
 import { Counter, type Mode as CounterMode } from "./Counter";
 import { saveNav, loadNav, markNativePick, lostNativePick, clearNativePick } from "./resume";
@@ -310,8 +311,7 @@ function App() {
     [showArchived, setShowArchived] = useState(false),
     [query, setQuery] = useState(""),
     [lowOnly, setLowOnly] = useState(false);
-  const [countId, setCountId] = useState(""),
-    [physical, setPhysical] = useState("");
+  const [countId, setCountId] = useState("");
   const photoTarget = useRef("");
   const file = useRef<HTMLInputElement>(null),
     sequence = useRef(0),
@@ -323,8 +323,8 @@ function App() {
     owner = !!session?.roles.includes("ROLE_OWNER");
   const visibleMoves = moves.filter((movement) => {
     const query = activitySearch.trim().toLowerCase();
-    const incoming = ["OPENING", "RECEIPT", "RETURN"].includes(movement.kind);
-    const outgoing = ["ISSUE", "STOCK_OUT"].includes(movement.kind);
+    const incoming = ["OPENING", "RECEIPT", "RETURN", "COUNT_IN"].includes(movement.kind);
+    const outgoing = ["ISSUE", "STOCK_OUT", "COUNT_OUT"].includes(movement.kind);
     const matchesKind =
       activityKind === "ALL" ||
       (activityKind === "IN" && incoming) ||
@@ -339,7 +339,7 @@ function App() {
     return matchesKind && matchesText && inRange(movement.created_at, activityRange);
   });
   const movementDirection = (kind: string) =>
-    ["OPENING", "RECEIPT", "RETURN"].includes(kind) ? "IN" : "OUT";
+    ["OPENING", "RECEIPT", "RETURN", "COUNT_IN"].includes(kind) ? "IN" : "OUT";
   const actorEmail = (actor?: string) =>
     actor?.includes("@") ? actor : "Email unavailable";
   const tell = (message: string) => setNotice(message);
@@ -378,7 +378,7 @@ function App() {
       setMoves(m);
       setSession(s);
       setStatus(v);
-      api<{ name: string }>("/api/workshop/settings").then((b) => setBusinessName(b.name)).catch(() => undefined);
+      api<{ name: string; default_reorder_level?: number }>("/api/workshop/settings").then((b) => { setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); }).catch(() => undefined);
       const key = "stocklane.tasks.v2." + s.name;
       if (storageKey.current !== key) {
         storageKey.current = key;
@@ -477,6 +477,8 @@ function App() {
     setCounterPick(picked);
     navigate("counter", true);
   };
+  // a job took a part from stock or gave it back: reload the parts so every screen shows the new quantity
+  useEffect(() => { const f = () => void refresh(); window.addEventListener("lifta:stock-changed", f); return () => window.removeEventListener("lifta:stock-changed", f); }, [refresh]);
   useEffect(() => { const f = (e: Event) => { setLowOnly(e.type === "lifta:low"); navigate("stock"); }; window.addEventListener("lifta:stock", f); window.addEventListener("lifta:low", f); return () => { window.removeEventListener("lifta:stock", f); window.removeEventListener("lifta:low", f); }; });
   const openWorkshop = (page: WsPage) => {
     setWsStart((w) => ({ page, n: w.n + 1 }));
@@ -506,7 +508,6 @@ function App() {
       }
       if (view === "count") {
         setCountId(id);
-        setPhysical("");
       } else {
         setSelected(id);
         setQuantity(1);
@@ -791,16 +792,24 @@ function App() {
       setError((e as Error).message);
     }
   };
-  const filtered = (source: Item[], text: string) =>
-    source.filter((p) => (!lowOnly || Number(p.quantity) <= Number(p.reorder_level)) &&
-      [p.name, p.brand, p.part_number, p.location, p.category, p.sku]
-        .join(" ")
-        .toLowerCase()
-        .includes(text.toLowerCase()),
-    );
+  // Every word typed must appear somewhere in the part's details; part numbers match with or without dashes and spaces.
+  const filtered = (source: Item[], text: string) => {
+    const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+    return source.filter((p) => {
+      if (lowOnly && !(Number(p.quantity) <= Number(p.reorder_level))) return false;
+      const hay = [p.name, p.brand, p.part_number, p.location, p.category, p.sku, p.grade, p.capacity].join(" ").toLowerCase(), flat = hay.replace(/[^a-z0-9]/g, "");
+      return words.every((w) => hay.includes(w) || flat.includes(w.replace(/[^a-z0-9]/g, "")));
+    });
+  };
   const allComplete = task.lines.length > 0 && task.lines.every(complete),
     locked = task.lines.some((l) => l.attempted);
-  const countItem = items.find((p) => p.id === countId);
+  const [recent, setRecent] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem("lifta.recent.parts") || "[]") as string[]; } catch { return []; } });
+  useEffect(() => {
+    if (view !== "find" || !selected) return;
+    setRecent((r) => { const n = [selected, ...r.filter((x) => x !== selected)].slice(0, 8); try { localStorage.setItem("lifta.recent.parts", JSON.stringify(n)); } catch { /* ignore */ } return n; });
+  }, [selected, view]);
+  const lowItems = items.filter((p) => Number(p.quantity) <= Number(p.reorder_level));
+  const recentItems = recent.map((id) => items.find((p) => p.id === id)).filter((p): p is Item => !!p).slice(0, 6);
   const showResults = (source: Item[]) =>
     source.slice(0, 30).map((p) => (
       <button
@@ -958,7 +967,7 @@ function App() {
               <button className={lang === "si" ? "on" : ""} onClick={() => setLang("si")}>සිං</button>
             </div>
             <button className="cmd-open" aria-label={t("Search anything")} onClick={() => setCmdOpen(true)}><Search size={18} /><span className="cmd-label">{t("Search")}</span><kbd>Ctrl K</kbd></button>
-            <button className="theme-toggle" aria-label={t("Dark mode")} onClick={() => { const m = getTheme() === "dark" ? "light" : "dark"; applyTheme(m); setThemeTick((n) => n + 1); }}>{getTheme() === "dark" ? "☀️" : "🌙"}</button>
+            <button className="theme-toggle" aria-label={t("Appearance") + ": " + t(getTheme() === "auto" ? "Auto" : getTheme() === "dark" ? "Dark" : "Light")} title={t("Appearance") + ": " + t(getTheme() === "auto" ? "Auto" : getTheme() === "dark" ? "Dark" : "Light")} onClick={() => { const c = getTheme(); applyTheme(c === "auto" ? "light" : c === "light" ? "dark" : "auto"); setThemeTick((n) => n + 1); }}>{getTheme() === "auto" ? "🌗" : getTheme() === "dark" ? "🌙" : "☀️"}</button>
             <button
               className="icon-button"
               aria-label="Refresh stock"
@@ -1218,6 +1227,27 @@ function App() {
                 </div>
                 {!active && (
                   <>
+                    {view === "find" && (
+                      <>
+                        <div className="find-bar">
+                          <label className="search-box">
+                            <Search size={19} />
+                            <input aria-label="Search catalogue" autoFocus={typeof matchMedia !== "undefined" && matchMedia("(pointer: fine)").matches} disabled={busy} value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Name, part number or shelf")} />
+                          </label>
+                          <button type="button" className="button primary find-scan" disabled={busy} onClick={() => setScanner(true)} aria-label="Scan QR label"><ScanLine size={20} /> <span>{t("Scan")}</span></button>
+                          <button type="button" className="button secondary find-scan" disabled={busy} onClick={() => { markNativePick(); file.current?.click(); }} aria-label="Identify from photo"><Camera size={20} /> <span>{t("Photo")}</span></button>
+                        </div>
+                        <details className="find-paste">
+                          <summary>{t("Barcode scanner or paste code")}</summary>
+                          <form onSubmit={(e) => { e.preventDefault(); chooseQR(qr); }}>
+                            <input aria-label="QR value" value={qr} onChange={(e) => setQr(e.target.value)} placeholder="Scan or paste product QR" />
+                            <button className="button secondary" disabled={!qr || busy}>Find</button>
+                          </form>
+                        </details>
+                      </>
+                    )}
+                    {view !== "find" && (
+                      <>
                     <button
                       className="scan-launch"
                       disabled={busy || allComplete || locked}
@@ -1271,6 +1301,8 @@ function App() {
                         placeholder="Search name or manufacturer part number"
                       />
                     </div>
+                      </>
+                    )}
                     {busy && (
                       <p role="status" className="stock-help">
                         Checking the item…
@@ -1330,7 +1362,14 @@ function App() {
                         )}
                       </div>
                     )}
-                    {!search && !match && (
+                    {view === "find" && !search && !match && !busy && (
+                      <>
+                        {lowItems.length > 0 && (<><h3 className="find-h">{t("Running low")} <small>{lowItems.length}</small></h3><div className="lookup-results">{showResults(lowItems.slice(0, 5))}</div></>)}
+                        {recentItems.length > 0 && (<><h3 className="find-h">{t("Recent")}</h3><div className="lookup-results">{showResults(recentItems)}</div></>)}
+                        {!lowItems.length && !recentItems.length && <p className="stock-help">{t("Type a name, part number or shelf. Or scan the QR label.")}</p>}
+                      </>
+                    )}
+                    {view !== "find" && !search && !match && (
                       <p className="stock-help">
                         A QR is the quickest way. No QR? Use a photo or search
                         above.
@@ -1338,7 +1377,7 @@ function App() {
                     )}
                     {(!inTask || direction === "IN") &&
                       !locked &&
-                      !allComplete && (
+                      !allComplete && (view !== "find" || (search.trim() !== "" && filtered(items, search).length === 0)) && (
                         <div className="new-item-prompt">
                           <span>Not in your catalogue?</span>
                           <div>
@@ -1355,7 +1394,11 @@ function App() {
                               className="stock-link"
                               disabled={busy}
                               onClick={() => {
-                                setDraft(null);
+                                if (view === "find" && search.trim()) {
+                                  // Carry what was typed into the new item form.
+                                  fromCounter.current = true; setImageId("");
+                                  setDraft({ id: "barcode-typed", image_id: "", fields: {}, suggestions: { name: search.trim() }, labelSuggestions: {}, source: "barcode" } as unknown as Draft);
+                                } else setDraft(null);
                                 setNewItem(true);
                               }}
                             >
@@ -1498,6 +1541,12 @@ function App() {
                             }}
                           >
                             Give this item
+                          </button>
+                          <button
+                            className="button secondary"
+                            onClick={() => { setCountId(active.id); navigate("count"); }}
+                          >
+                            {t("Count this item")}
                           </button>
                           <button
                             className="button secondary"
@@ -1826,126 +1875,13 @@ function App() {
             </button>
             <div className="stock-title">
               <div>
-                <p className="eyebrow">PHYSICAL STOCK CHECK</p>
-                <h1>Count stock</h1>
-                <p>Compare what is on the shelf with the recorded quantity.</p>
+                <p className="eyebrow">{t("PHYSICAL STOCK CHECK")}</p>
+                <h1>{t("Count stock")}</h1>
+                <p>{t("Compare what is on the shelf with the recorded quantity.")}</p>
               </div>
             </div>
-            <section className="stock-panel count-panel">
-              <button className="scan-launch" onClick={() => setScanner(true)}>
-                <ScanLine size={30} />
-                <span>
-                  <strong>Scan item QR</strong>
-                  <small>Choose what you are counting</small>
-                </span>
-                <ArrowRight />
-              </button>
-              <label className="stock-field">
-                Or search by part number
-                <input
-                  aria-label="Search count items"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Name or manufacturer part number"
-                />
-              </label>
-              {search && (
-                <div className="lookup-results">
-                  {filtered(items, search)
-                    .slice(0, 20)
-                    .map((p) => (
-                      <button
-                        className="lookup-row"
-                        key={p.id}
-                        onClick={() => {
-                          setCountId(p.id);
-                          setPhysical("");
-                          setSearch("");
-                        }}
-                      >
-                        <ItemPhoto item={p} />
-                        <span>
-                          <strong>{p.name}</strong>
-                          <small>Part no. {p.part_number || "Not set"} · System no. {p.sku}</small>
-                        </span>
-                      </button>
-                    ))}
-                </div>
-              )}
-              {countItem && (
-                <>
-                  <div className="identified-item">
-                    <ItemPhoto item={countItem} />
-                    <div>
-                      <h2>{countItem.name}</h2>
-                      <p>
-                        {countItem.brand} ·{" "}
-                        {countItem.part_number || countItem.sku}
-                      </p>
-                      <span className="shelf-chip">
-                        {countItem.location || "Shelf not set"}
-                      </span>
-                    </div>
-                  </div>
-                  <label className="stock-field">
-                    Physically counted quantity
-                    <input
-                      type="number"
-                      min="0"
-                      step={countItem.unit === "UNIT" ? 1 : 0.001}
-                      value={physical}
-                      onChange={(e) => setPhysical(e.target.value)}
-                    />
-                  </label>
-                  {physical !== "" &&
-                    Number.isFinite(Number(physical)) &&
-                    Number(physical) >= 0 &&
-                    (Number(physical) === 0 ||
-                      validQuantity(Number(physical), countItem.unit)) && (
-                      <div
-                        className={
-                          "count-result " +
-                          (Number(physical) === Number(countItem.quantity)
-                            ? "balanced"
-                            : "difference")
-                        }
-                      >
-                        <h3>
-                          {Number(physical) === Number(countItem.quantity)
-                            ? "The count matches"
-                            : "There is a difference"}
-                        </h3>
-                        <p>
-                          Recorded: <b>{number(countItem.quantity)}</b> ·
-                          Counted: <b>{number(Number(physical))}</b>
-                        </p>
-                        <p>
-                          Difference:{" "}
-                          <b>
-                            {number(
-                              Number(physical) - Number(countItem.quantity),
-                            )}
-                          </b>
-                        </p>
-                      </div>
-                    )}
-                  <p className="stock-help">
-                    Comparison only. This does not change or save stock. Recheck
-                    any difference with the owner before recording a correction.
-                  </p>
-                  <button
-                    className="button secondary"
-                    onClick={() => {
-                      setCountId("");
-                      setPhysical("");
-                      setScanner(true);
-                    }}
-                  >
-                    Check another item
-                  </button>
-                </>
-              )}
-            </section>
+            <CountStock items={items} countId={countId} setCountId={setCountId} find={(q) => filtered(items, q)} openScanner={() => setScanner(true)}
+              owner={owner} photo={(p) => <ItemPhoto item={p as Item} />} onChanged={() => void refresh()} />
           </>
         )}
         {view === "analysis" && owner && <StockReport />}
@@ -2026,12 +1962,12 @@ function App() {
                         <span
                           className={
                             "movement-chip " +
-                            (["STOCK_OUT", "ISSUE"].includes(m.kind)
+                            (["STOCK_OUT", "ISSUE", "COUNT_OUT"].includes(m.kind)
                               ? "out"
                               : "in")
                           }
                         >
-                          {m.kind === "STOCK_OUT" || m.kind === "ISSUE"
+                          {m.kind === "COUNT_IN" ? t("Count: found extra") : m.kind === "COUNT_OUT" ? t("Count: found missing") : m.kind === "STOCK_OUT" || m.kind === "ISSUE"
                             ? m.kind === "ISSUE"
                               ? "Issued to workshop"
                               : "Given out"
@@ -2241,7 +2177,7 @@ function ProductEditor({
     [location, setLocation] = useState(item?.location || ""),
     [quantity, setQuantity] = useState(0),
     [unit, setUnit] = useState(item?.unit || "UNIT"),
-    [reorder, setReorder] = useState(item ? Number(item.reorder_level) : 5),
+    [reorder, setReorder] = useState(item ? Number(item.reorder_level) : getDefaultReorder()),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   // Fields still showing a value the AI or the label filled in; editing or clearing one removes its badge.

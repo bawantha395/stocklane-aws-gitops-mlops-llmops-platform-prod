@@ -1,6 +1,7 @@
 /** Builds the invoice PDF in the browser from the invoice already on screen, so Download PDF never depends on the server. A4, Helvetica, ASCII only. */
 import QRCode from "qrcode";
 import { addDays, dateOnly, num, type Business, type Invoice } from "./common";
+import { peekLogo } from "../logoStore";
 
 type RGB = [number, number, number];
 const W = 595, H = 842, MARGIN = 40, R = W - MARGIN;
@@ -35,6 +36,7 @@ const qty = (n: unknown) => String(Number(num(n as number).toFixed(3)));
 
 class Doc {
   pages: string[][] = [[]];
+  images: { bin: string; w: number; h: number; c: number }[] = [];
   y = MARGIN;
   constructor(public footer: string) {}
   get ops() { return this.pages[this.pages.length - 1]; }
@@ -50,6 +52,12 @@ class Doc {
     const a = (angle * Math.PI) / 180, c = Math.cos(a).toFixed(4), sn = Math.sin(a).toFixed(4);
     this.pages[page].push(`BT /F2 ${size} Tf ${rgb(color)} rg ${c} ${sn} -${sn} ${c} ${f1(x)} ${f1(H - y)} Tm (${esc(label)}) Tj ET`);
   }
+  /** A JPEG (as a binary string) placed at x, y with the given size. */
+  image(x: number, y: number, w: number, h: number, bin: string, iw: number, ih: number, c: number) {
+    this.images.push({ bin, w: iw, h: ih, c });
+    this.rect(x, y, w, h, [1, 1, 1]);
+    this.ops.push(`q ${f1(w)} 0 0 ${f1(h)} ${f1(x)} ${f1(H - y - h)} cm /Im${this.images.length} Do Q`);
+  }
   /** A QR code drawn as plain squares, so it stays sharp at any size and needs no image. */
   qr(x: number, y: number, size: number, text: string) {
     const q = QRCode.create(text, { errorCorrectionLevel: "M" }), n = q.modules.size, cell = size / n;
@@ -63,19 +71,23 @@ class Doc {
     const count = this.pages.length;
     const objects: string[] = ["<< /Type /Catalog /Pages 2 0 R >>", `<< /Type /Pages /Kids [${this.pages.map((_, i) => `${3 + i * 2} 0 R`).join(" ")}] /Count ${count} >>`];
     const regular = 3 + count * 2, bold = 4 + count * 2;
+    const xobj = this.images.length ? ` /XObject << ${this.images.map((_, i) => `/Im${i + 1} ${5 + count * 2 + i} 0 R`).join(" ")} >>` : "";
     this.pages.forEach((ops, n) => {
       const label = `Page ${n + 1} of ${count}`;
       const stream = [...ops, `BT /F1 8 Tf ${rgb(MUTED)} rg ${MARGIN} 24 Td (${esc(this.footer)}) Tj ET`, `BT /F1 8 Tf ${rgb(MUTED)} rg ${f1(W - MARGIN - width(label, 8))} 24 Td (${label}) Tj ET`].join("\n");
-      objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> >> /Contents ${4 + n * 2} 0 R >>`);
+      objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >>${xobj} >> /Contents ${4 + n * 2} 0 R >>`);
       objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
     });
     objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>", "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+    for (const im of this.images) objects.push(`<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace ${im.c === 1 ? "/DeviceGray" : "/DeviceRGB"} /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bin.length} >>\nstream\n${im.bin}\nendstream`);
     let out = "%PDF-1.4\n"; const offsets: number[] = [];
     objects.forEach((body, i) => { offsets.push(out.length); out += `${i + 1} 0 obj\n${body}\nendobj\n`; });
     const start = out.length;
     out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n` + offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("");
     out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`;
-    return new Blob([new TextEncoder().encode(out)], { type: "application/pdf" });
+    // every character is below 256 (text is ASCII, JPEG is a binary string), so one char is one byte
+    const bytes = new Uint8Array(out.length); for (let i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 255;
+    return new Blob([bytes], { type: "application/pdf" });
   }
 }
 
@@ -94,9 +106,17 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   d.rect(0, 0, W, 12, ACCENT);
   const top = d.y;
   const mono = (b.name || "W").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "W";
-  d.rect(MARGIN, top, 36, 36, ACCENT);
-  d.text(MARGIN + 18 + width(mono, 14, true) / 2, top + 23, mono, 14, true, "r", [1, 1, 1]);
-  d.text(MARGIN + 46, top + 24, b.name || "Workshop", 18, true, "l", ACCENT);
+  const logo = peekLogo();
+  let nameX = MARGIN + 46;
+  if (logo) {
+    const lh = 38, lw = Math.min(96, (lh * logo.w) / logo.h), ah = (lw * logo.h) / logo.w;
+    d.image(MARGIN, top, lw, ah, atob(logo.data), logo.w, logo.h, logo.c);
+    nameX = MARGIN + lw + 10;
+  } else {
+    d.rect(MARGIN, top, 36, 36, ACCENT);
+    d.text(MARGIN + 18 + width(mono, 14, true) / 2, top + 23, mono, 14, true, "r", [1, 1, 1]);
+  }
+  d.text(nameX, top + 24, b.name || "Workshop", 18, true, "l", ACCENT);
   let y = top + 44;
   for (const part of [b.address, [b.phone, b.email].filter(Boolean).join(" | "), b.reg_no]) if (part) for (const row of wrap(part, 300, 9)) { d.text(MARGIN, y + 8, row, 9, false, "l", MUTED); y += 12; }
   d.text(R, top + 20, status === "VOID" ? "VOID" : taxRate ? "TAX INVOICE" : "INVOICE", 20, true, "r");
@@ -134,7 +154,7 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
     });
     d.y += 8;
   };
-  table("PARTS", (inv.parts || []).map((p) => ({ name: p.name, qty: p.quantity, price: p.unit_price, amount: num(p.quantity) * num(p.unit_price) })));
+  table("PARTS", (inv.parts || []).map((p) => ({ name: p.name + (num(p.discount_pct) > 0 ? " (" + qty(p.discount_pct) + "% off)" : ""), qty: p.quantity, price: p.unit_price, amount: Math.round(num(p.quantity) * num(p.unit_price) * (100 - num(p.discount_pct))) / 100 })));
   table("LABOUR", (inv.labour || []).map((l) => ({ name: l.description, amount: num(l.amount) })));
   // totals
   const totals: [string, string][] = [["Parts", money(inv.parts_total)], ["Labour", money(inv.labour_total)]];

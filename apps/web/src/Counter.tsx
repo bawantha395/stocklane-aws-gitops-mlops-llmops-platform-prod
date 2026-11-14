@@ -28,6 +28,19 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
   const [camera, setCamera] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [done, setDone] = useState("");
   const commandKey = useRef(key());
+  // "Part went out" can put the part straight on an open repair job: the job's bill and the stock change together
+  type OpenJob = { id: string; registration: string; customer: string };
+  const [jobs, setJobs] = useState<OpenJob[]>([]), [jobId, setJobId] = useState("");
+  useEffect(() => {
+    if (mode !== "give") return;
+    let live = true;
+    api<(OpenJob & { status: string })[]>("/api/workshop/jobs").then((r) => {
+      if (!live) return;
+      const open = r.filter((x) => x.status === "OPEN"); setJobs(open);
+      try { const last = JSON.parse(sessionStorage.getItem("lifta.counter.job") || "null"); if (last && Date.now() - last.at < 10 * 60 * 1000 && open.some((x) => x.id === last.id)) setJobId(last.id); } catch { /* ignore */ }
+    }).catch(() => setJobs([]));
+    return () => { live = false; };
+  }, [mode]);
 
   useEffect(() => { setMode(initialMode); }, [initialMode]);
   // A new item registered from this screen comes back selected, ready for its quantity.
@@ -66,12 +79,15 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
     if (!part) return;
     setBusy(true); setError("");
     try {
-      await api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: part.id, quantity, note: "Issued at the storeroom counter" }) }, commandKey.current);
+      const job = jobs.find((x) => x.id === jobId);
+      if (job) await api("/api/workshop/jobs/" + job.id + "/stock", { method: "POST", body: JSON.stringify({ productId: part.id, quantity, op: "use" }) }, commandKey.current);
+      else await api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: part.id, quantity, note: "Issued at the storeroom counter" }) }, commandKey.current);
+      try { if (job) sessionStorage.setItem("lifta.counter.job", JSON.stringify({ id: job.id, at: Date.now() })); else sessionStorage.removeItem("lifta.counter.job"); } catch { /* ignore */ }
       if (photoId) {
         // A confirmed photo becomes a reference and future training data for the photo model.
         try { await api("/api/vision/references", { method: "POST", body: JSON.stringify({ productId: part.id, imageId: photoId }) }); } catch { /* the movement is already recorded */ }
       }
-      onChanged(); reset(t("Recorded: {q} × {name} taken out.", { q: amount(quantity), name: part.name }));
+      onChanged(); reset(t("Recorded: {q} × {name} taken out.", { q: amount(quantity), name: part.name }) + (job ? " " + t("Added to the bill of {job}.", { job: job.registration }) : ""));
     } catch (e) { setError((e as Error).message); commandKey.current = key(); }
     finally { setBusy(false); }
   };
@@ -158,7 +174,16 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
               </div>
             </div>
           )}
-          {part && mode === "give" && <p className="stock-help counter-confirm-help">{t("No recipient details are required. Confirm the quantity leaving the storeroom.")}</p>}
+          {part && mode === "give" && (
+            <div className="counter-step counter-job">
+              <h2><span>3</span> {t("Which job is it for?")} <small>({t("optional")})</small></h2>
+              <select aria-label={t("Which job is it for?")} value={jobId} disabled={busy} onChange={(e) => setJobId(e.target.value)}>
+                <option value="">{t("No job, just take it out of stock")}</option>
+                {jobs.map((j) => <option key={j.id} value={j.id}>{j.registration} · {j.customer}</option>)}
+              </select>
+              <small className="stock-help">{jobId ? t("The part goes on this job's bill at its selling price.") : t("No recipient details are required. Confirm the quantity leaving the storeroom.")}</small>
+            </div>
+          )}
           {part && mode === "receive" && (
             <button className="button primary counter-confirm" disabled={busy || !(quantity > 0)} onClick={() => void receive()}>
               {busy ? t("Saving…") : t("Add {q} × {name} to stock", { q: amount(quantity), name: part.name })}
@@ -166,7 +191,7 @@ export function Counter({ items, initialMode = "receive", picked = null, photo, 
           )}
           {part && mode === "give" && (
             <button className="button primary counter-confirm" disabled={busy || !(quantity > 0)} onClick={() => void give()}>
-              {busy ? t("Saving…") : t("Record {q} × {name} leaving stock", { q: amount(quantity), name: part.name })}
+              {busy ? t("Saving…") : jobId ? t("Put {q} × {name} on the job", { q: amount(quantity), name: part.name }) : t("Record {q} × {name} leaving stock", { q: amount(quantity), name: part.name })}
             </button>
           )}
         </>

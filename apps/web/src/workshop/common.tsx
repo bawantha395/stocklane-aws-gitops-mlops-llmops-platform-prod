@@ -5,8 +5,8 @@ import { api } from "../api";
 
 export type PageName = "home" | "jobs" | "vehicles" | "due" | "invoices" | "archive" | "report" | "settings" | "new" | "job" | "vehicle" | "invoice";
 export type Page = { name: PageName; id?: string; reg?: string };
-export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string; qr_url?: string };
-export type Part = { name: string; quantity: number; unit_price: number };
+export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string; qr_url?: string; invoice_prefix?: string; default_reorder_level?: number; labour_items?: Labour[]; mechanics?: string[]; logo?: { v: string; w: number; h: number; c: number } | null };
+export type Part = { name: string; quantity: number; unit_price: number; product_id?: string; discount_pct?: number };
 export type Labour = { description: string; amount: number };
 export type Job = {
   id: string; registration: string; vehicle_key: string; customer: string; address?: string; phone: string; vehicle: string; odometer?: number; summary: string;
@@ -44,7 +44,7 @@ export const dateOnly = (s: string) => new Date(s).toLocaleDateString("en-CA", {
 export const today = () => dateOnly(new Date().toISOString());
 export const addDays = (iso: string, n: number) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 export const regKey = (s: string) => s.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-export const num = (s: string | number) => (Number.isFinite(Number(s)) ? Number(s) : 0);
+export const num = (s: string | number | undefined) => (Number.isFinite(Number(s)) ? Number(s) : 0);
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 /** WhatsApp click-to-chat link for a Sri Lankan number (07x becomes 947x). */
 export const waLink = (phone: string, message: string) => {
@@ -60,6 +60,8 @@ export function useCommand() {
     if (pending.current.body !== fingerprint) pending.current = { body: fingerprint, key: typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) };
     const value = await api<T>(path, { method, body: JSON.stringify(body) }, pending.current.key);
     pending.current = { body: "", key: "" };
+    // these change the stock too (a part used, taken back, or returned when a job is cancelled or deleted): other screens reload it
+    if (/\/api\/workshop\/jobs\/[^/]+\/(stock|cancel|archive|undo)$/.test(path)) window.dispatchEvent(new Event("lifta:stock-changed"));
     return value;
   };
 }

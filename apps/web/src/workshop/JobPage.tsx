@@ -2,11 +2,12 @@ import { t } from "../i18n";
 import { toast } from "../ui";
 import { JobPhotos } from "./Photos";
 import { useEffect, useMemo, useState } from "react";
-import { Bill, PrintButton, billTotals, type BillData } from "./Bill";
+import { Bill, PrintButton, billTotals, partAmount, type BillData } from "./Bill";
 import { PastRepairs } from "./Vehicles";
+import { StockPicker } from "./StockPicker";
 import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job } from "./common";
 
-type PartRow = { name: string; quantity: string; unit_price: string };
+type PartRow = { name: string; quantity: string; unit_price: string; product_id?: string; discount_pct?: string };
 type LabourRow = { description: string; amount: string };
 type Suggest = { parts: { name: string; price: number; uses: number }[]; labour: { description: string; amount: number; uses: number }[] };
 
@@ -17,7 +18,7 @@ export function JobPage({ id }: { id: string }) {
   const [job, setJob] = useState<Job | null>(null);
   const [f, setF] = useState<Record<string, string>>({});
   const [parts, setParts] = useState<PartRow[]>([]), [labour, setLabour] = useState<LabourRow[]>([]);
-  const [dialog, setDialog] = useState<"" | "delete" | "request" | "reject" | "approve">(""), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState(""), [preview, setPreview] = useState(false);
+  const [openOff, setOpenOff] = useState<number[]>([]), [picking, setPicking] = useState(false), [dialog, setDialog] = useState<"" | "delete" | "request" | "reject" | "approve">(""), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState(""), [preview, setPreview] = useState(false);
   useEffect(() => { if (saved) toast(saved); }, [saved]);
   const command = useCommand();
 
@@ -25,7 +26,7 @@ export function JobPage({ id }: { id: string }) {
     setJob(j); setDirty(false);
     setF({ customer: j.customer, phone: j.phone, vehicle: j.vehicle, odometer: j.odometer == null ? "" : String(j.odometer), summary: j.summary, mechanic: j.mechanic, notes: j.notes,
       discount: j.discount ? String(j.discount) : "", next_service_date: j.next_service_date || "", next_service_km: j.next_service_km == null ? "" : String(j.next_service_km) });
-    setParts(j.parts.map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: String(p.unit_price) })));
+    setParts(j.parts.map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: String(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(p.discount_pct ? { discount_pct: String(p.discount_pct) } : {}) })));
     setLabour(j.labour.map((l) => ({ description: l.description, amount: String(l.amount) })));
   };
   useEffect(() => { if (data) adopt(data); }, [data]);
@@ -36,8 +37,9 @@ export function JobPage({ id }: { id: string }) {
   }, [dirty]);
 
   const rate = job?.tax_rate ?? business.tax_rate;
+  const mechanicList = business.mechanics || [];
   const lines = useMemo(() => ({
-    parts: parts.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), quantity: num(p.quantity), unit_price: num(p.unit_price) })),
+    parts: parts.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), quantity: num(p.quantity), unit_price: num(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(num(p.discount_pct) > 0 ? { discount_pct: num(p.discount_pct) } : {}) })),
     labour: labour.filter((l) => l.description.trim()).map((l) => ({ description: l.description.trim(), amount: num(l.amount) })),
   }), [parts, labour]);
   const totals = billTotals({ ...lines, discount: num(f.discount), tax_rate: rate });
@@ -52,6 +54,18 @@ export function JobPage({ id }: { id: string }) {
   });
   const save = async () => { const j = await command<Job>("/api/workshop/jobs/" + id, body(), "PATCH"); adopt(j); return j; };
   const run = async (work: () => Promise<void>) => { setBusy(true); setError(""); setSaved(""); try { await work(); } catch (e) { setError((e as Error).message); toast((e as Error).message, { bad: true, action: { label: t("Retry"), run: () => void run(work) }, ms: 8000 }); } finally { setBusy(false); } };
+  // Taking a part from stock (or putting it back) changes the job and the stock together on the server. Anything typed but not saved is saved first.
+  const stockCall = async (productId: string, qty: number, op: "use" | "return") => {
+    if (dirty) await save();
+    const j = await command<Job & { stock?: { balance: number } }>("/api/workshop/jobs/" + id + "/stock", { productId, quantity: qty, op });
+    adopt(j);
+    return j.stock?.balance;
+  };
+  const stepStock = (p: PartRow, op: "use" | "return", all = false) => void run(async () => {
+    const have = num(p.quantity), qty = all ? have : Math.min(1, have);
+    const left = await stockCall(p.product_id!, op === "use" ? 1 : qty, op);
+    toast(op === "use" ? p.name + " +1. " + t("In stock") + ": " + left : p.name + " " + t("taken back to stock") + ". " + t("In stock") + ": " + left);
+  });
   const invoice = () => {
     if (!confirm("Create the invoice for LKR " + lkr(totals.total) + "? The job will be locked.")) return;
     void run(async () => {
@@ -70,6 +84,12 @@ export function JobPage({ id }: { id: string }) {
 
   const part = (i: number, patch: Partial<PartRow>) => { setParts(parts.map((x, k) => (k === i ? { ...x, ...patch } : x))); setDirty(true); };
   const work = (i: number, patch: Partial<LabourRow>) => { setLabour(labour.map((x, k) => (k === i ? { ...x, ...patch } : x))); setDirty(true); };
+  /** A small "% off" control under a part line: shown when the line has a discount, otherwise a one-tap link. */
+  const offRow = (p: PartRow, i: number) => {
+    if (locked && !num(p.discount_pct)) return null;
+    if (!num(p.discount_pct) && !openOff.includes(i)) return <button type="button" className="ws-l-offlink" onClick={() => setOpenOff([...openOff, i])}>{t("+ Discount on this line")}</button>;
+    return <label className="ws-l-off">{t("Discount on this line (%)")}<input disabled={locked} inputMode="decimal" aria-label="Line discount percent" placeholder="0" value={p.discount_pct || ""} onChange={(e) => part(i, { discount_pct: e.target.value.replace(/[^0-9.]/g, "") })} /></label>;
+  };
   const partName = (i: number, name: string) => {
     const hit = sugg?.parts?.find((s) => s.name.toLowerCase() === name.trim().toLowerCase());
     part(i, { name, ...(hit && !parts[i].unit_price ? { unit_price: String(hit.price) } : {}) });
@@ -111,11 +131,18 @@ export function JobPage({ id }: { id: string }) {
           <label className="ws-field">{t("Customer address")}<textarea disabled={locked} rows={2} value={f.address || ""} onChange={(e) => set("address", e.target.value)} /></label>
           <label className="ws-field">{t("Make and model")}<input disabled={locked} value={f.vehicle || ""} onChange={(e) => set("vehicle", e.target.value)} /></label>
           <label className="ws-field">{t("Odometer (km)")}<input disabled={locked} inputMode="numeric" value={f.odometer || ""} onChange={(e) => set("odometer", e.target.value.replace(/\D/g, ""))} /></label>
-          <label className="ws-field">{t("Mechanic")}<input disabled={locked} value={f.mechanic || ""} onChange={(e) => set("mechanic", e.target.value)} /></label>
+          <label className="ws-field">{t("Mechanic")}{mechanicList.length ? (
+            <select disabled={locked} value={f.mechanic || ""} onChange={(e) => set("mechanic", e.target.value)}>
+              <option value="">{t("Not chosen")}</option>
+              {(f.mechanic && !mechanicList.includes(f.mechanic) ? [f.mechanic] : []).concat(mechanicList).map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          ) : <input disabled={locked} value={f.mechanic || ""} onChange={(e) => set("mechanic", e.target.value)} />}</label>
           <label className="ws-field">{t("Complaint / work")}<textarea disabled={locked} rows={2} value={f.summary || ""} onChange={(e) => set("summary", e.target.value)} /></label>
         </div>
       </section>
 
+      {picking && <StockPicker taken={Object.fromEntries(parts.filter((p) => p.product_id).map((p) => [p.product_id!, num(p.quantity)]))} onClose={() => setPicking(false)}
+        onPick={async (p, qty) => { const left = await stockCall(p.id, qty, "use"); setPicking(false); toast(p.name + " " + t("added to the job") + ". " + t("In stock") + ": " + left); }} />}
       <JobPhotos id={id} start={job} locked={locked} />
 
       <section className="ws-card">
@@ -123,16 +150,33 @@ export function JobPage({ id }: { id: string }) {
         <datalist id="ws-part-names">{sugg?.parts?.map((s) => <option key={s.name} value={s.name} />)}</datalist>
         <datalist id="ws-work-names">{sugg?.labour?.map((s) => <option key={s.description} value={s.description} />)}</datalist>
         {parts.map((p, i) => (
+          p.product_id ? (
+            <div className="ws-line from-stock" key={p.product_id}>
+              <span className="ws-l-name stock-name"><b>{p.name}</b><small className="stock-tag">{t("From stock")}</small></span>
+              <span className="ws-l-qty stock-qty">
+                {!locked && <button type="button" className="ws-stk-step" aria-label={"Take one " + p.name + " back"} disabled={busy} onClick={() => stepStock(p, "return")}>−</button>}
+                <output>{p.quantity}</output>
+                {!locked && <button type="button" className="ws-stk-step" aria-label={"Add one more " + p.name} disabled={busy} onClick={() => stepStock(p, "use")}>+</button>}
+              </span>
+              <input className="ws-l-price" disabled={locked} aria-label="Unit price" inputMode="decimal" placeholder={t("Price")} value={p.unit_price} onChange={(e) => part(i, { unit_price: e.target.value })} />
+              <output className="ws-l-total">{lkr(partAmount({ name: p.name, quantity: num(p.quantity), unit_price: num(p.unit_price), discount_pct: num(p.discount_pct) }))}</output>
+              {!locked && <button className="ws-l-del" aria-label={"Take " + p.name + " back to stock"} title={t("Take back to stock")} disabled={busy} onClick={() => stepStock(p, "return", true)}>×</button>}
+              {offRow(p, i)}
+            </div>
+          ) : (
           <div className="ws-line" key={i}>
             <input className="ws-l-name" disabled={locked} list="ws-part-names" aria-label="Part name" placeholder={t("Part name")} value={p.name} onChange={(e) => partName(i, e.target.value)} />
             <input className="ws-l-qty" disabled={locked} aria-label="Quantity" inputMode="decimal" value={p.quantity} onChange={(e) => part(i, { quantity: e.target.value })} />
             <input className="ws-l-price" disabled={locked} aria-label="Unit price" inputMode="decimal" placeholder={t("Price")} value={p.unit_price} onChange={(e) => part(i, { unit_price: e.target.value })} />
-            <output className="ws-l-total">{lkr(num(p.quantity) * num(p.unit_price))}</output>
+            <output className="ws-l-total">{lkr(partAmount({ name: p.name, quantity: num(p.quantity), unit_price: num(p.unit_price), discount_pct: num(p.discount_pct) }))}</output>
             {!locked && <button className="ws-l-del" aria-label="Remove part" onClick={() => { setParts(parts.filter((_, k) => k !== i)); setDirty(true); }}>×</button>}
+            {offRow(p, i)}
           </div>
+          )
         ))}
         {!locked && (
           <div className="ws-add" data-tour="part-chips">
+            <button className="button primary small" disabled={busy} onClick={() => setPicking(true)}>{t("Pick from stock")}</button>
             <button className="button secondary small" onClick={() => { setParts([...parts, { name: "", quantity: "1", unit_price: "" }]); setDirty(true); }}>+ Add part</button>
             {sugg?.parts?.slice(0, 5).map((s) => <button key={s.name} className="ws-quick" onClick={() => { setParts([...parts, { name: s.name, quantity: "1", unit_price: String(s.price) }]); setDirty(true); }}>{s.name}</button>)}
           </div>
@@ -148,7 +192,7 @@ export function JobPage({ id }: { id: string }) {
         {!locked && (
           <div className="ws-add" data-tour="labour-chips">
             <button className="button secondary small" onClick={() => { setLabour([...labour, { description: "", amount: "" }]); setDirty(true); }}>+ Add labour</button>
-            {sugg?.labour?.slice(0, 5).map((s) => <button key={s.description} className="ws-quick" onClick={() => { setLabour([...labour, { description: s.description, amount: String(s.amount) }]); setDirty(true); }}>{s.description}</button>)}
+            {[...(business.labour_items || []).map((s) => ({ description: s.description, amount: s.amount })), ...(sugg?.labour || []).filter((s) => !(business.labour_items || []).some((x) => x.description.toLowerCase() === s.description.toLowerCase()))].slice(0, 8).map((s) => <button key={s.description} className="ws-quick" onClick={() => { setLabour([...labour, { description: s.description, amount: String(s.amount) }]); setDirty(true); }}>{s.description}</button>)}
           </div>
         )}
         <dl className="ws-sum">

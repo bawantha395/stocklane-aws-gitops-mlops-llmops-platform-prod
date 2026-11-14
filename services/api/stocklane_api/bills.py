@@ -19,15 +19,34 @@ def kms(v):
     return format(int(v), ',') + ' km'
 
 
+def shop_logo(business):
+    """(jpeg bytes, width, height, components) for the letterhead, from the bill's own header or else the shop's current logo; None when there is none."""
+    from . import photos
+    from .core import get
+    for meta in ((business or {}).get('logo'), (get('WSET', 'business') or {}).get('logo')):
+        raw = photos.logo_bytes((meta or {}).get('v'))
+        if raw:
+            return raw, int(meta['w']), int(meta['h']), int(meta.get('c', 3))
+    return None
+
+
 def letterhead(d, business, title, lines):
     """Brand band, monogram tile and business name on the left, document title and facts on the right."""
     top = d.y
     name = business.get('name') or 'Workshop'
     d.rect(0, 0, W, 9, ACCENT)
-    initials = ''.join(w[0] for w in name.split()[:2]).upper() or '-'
-    d.rect(MARGIN, top + 2, 40, 40, ACCENT)
-    d.text(MARGIN + 20 - width(initials, 16, True) / 2, top + 28, initials, 16, True, color=(1, 1, 1))
-    x0 = MARGIN + 52
+    logo = shop_logo(business)
+    if logo:
+        raw, iw, ih, comps = logo
+        lw, lh = min(96.0, 42.0 * iw / ih), 42.0
+        lw, lh = (lw, lw * ih / iw) if lw < 42.0 * iw / ih else (lw, lh)
+        d.image(MARGIN, top + 1, lw, lh, raw, iw, ih, comps)
+        x0 = MARGIN + lw + 12
+    else:
+        initials = ''.join(w[0] for w in name.split()[:2]).upper() or '-'
+        d.rect(MARGIN, top + 2, 40, 40, ACCENT)
+        d.text(MARGIN + 20 - width(initials, 16, True) / 2, top + 28, initials, 16, True, color=(1, 1, 1))
+        x0 = MARGIN + 52
     d.text(x0, top + 18, name, 18, True, color=ACCENT)
     y = top + 32
     for part in (business.get('address'), ' | '.join(x for x in (business.get('phone'), business.get('email')) if x), business.get('reg_no')):
@@ -111,7 +130,7 @@ def invoice(i):
             d.line(MARGIN, d.y, R, d.y)
         d.y += 8
 
-    rows('PARTS', [{'name': p['name'], 'qty': p['quantity'], 'price': p['unit_price'], 'amount': p['amount']} for p in i['parts']])
+    rows('PARTS', [{'name': p['name'] + (' (' + q(p['discount_pct']) + '% off)' if p.get('discount_pct') else ''), 'qty': p['quantity'], 'price': p['unit_price'], 'amount': p['amount']} for p in i['parts']])
     rows('LABOUR', [{'name': l['description'], 'amount': l['amount']} for l in i['labour']])
 
     # totals, right-aligned block

@@ -23,7 +23,7 @@ from .core import (COLOMBO, ApiError, bad, batch_get, check, command, conflict, 
                    public, put, query, unique, update, dumps)
 
 ZERO = Decimal(0)
-KINDS = {'OPENING', 'RECEIPT', 'ISSUE', 'RETURN', 'STOCK_OUT'}
+KINDS = {'OPENING', 'RECEIPT', 'ISSUE', 'RETURN', 'STOCK_OUT', 'COUNT'}
 OUT_KINDS = {'ISSUE', 'STOCK_OUT'}
 _cache = {'until': 0, 'value': None}
 
@@ -266,10 +266,13 @@ def movement_items(product, kind, quantity, price, job_id, issue_id, who, note, 
     added = quantity if kind in ('OPENING', 'RECEIPT', 'RETURN') else ZERO
     taken = quantity if kind in OUT_KINDS else ZERO
     returned = quantity if kind == 'RETURN' else ZERO
+    # A count correction is not a purchase or a sale: it moves the books to match the shelf, so it has its own signed total
+    # and never counts as demand for the forecast.
+    adjusted = quantity if kind == 'COUNT_IN' else -quantity if kind == 'COUNT_OUT' else ZERO
     items.append(update('DAY', day_of(created) + '#' + product['id'],
-                        'SET sku = :s, #n = :nm, #u = :u, product_id = :p ADD added :a, taken :t, returned :r',
+                        'SET sku = :s, #n = :nm, #u = :u, product_id = :p ADD added :a, taken :t, returned :r, adjusted :j',
                         {':s': product['sku'], ':nm': product['name'], ':u': product['unit'], ':p': product['id'],
-                         ':a': added, ':t': taken, ':r': returned}, names={'#n': 'name', '#u': 'unit'}))
+                         ':a': added, ':t': taken, ':r': returned, ':j': adjusted}, names={'#n': 'name', '#u': 'unit'}))
     return items, movement_id
 
 
@@ -282,9 +285,12 @@ def record_movement(key, who, body):
         if kind not in KINDS:
             raise bad('Unsupported movement type')
         quantity = num(m.get('quantity'))
-        if quantity <= 0 or quantity.as_tuple().exponent < -3:
-            raise bad('Quantity must be positive, with at most 3 decimals')
+        counting = kind == 'COUNT'
+        if quantity < 0 or (quantity == 0 and not counting) or quantity.as_tuple().exponent < -3:
+            raise bad('Quantity must be positive, with at most 3 decimals' if not counting else 'The counted quantity must be zero or more, with at most 3 decimals')
         note = text(m.get('note'), 'Note', 500, False)
+        if counting and (m.get('jobId') or m.get('issueId') or m.get('receiverId')):
+            raise bad('A count correction does not use a job or a receiver')
         job_id, issue_id, receiver_id = m.get('jobId'), m.get('issueId'), m.get('receiverId')
         counter_return = kind == 'RETURN' and not job_id
         on_job = kind == 'ISSUE' or (kind == 'RETURN' and not counter_return)
@@ -332,7 +338,16 @@ def record_movement(key, who, body):
             labels.append(None)
         elif kind == 'RETURN':
             price = ZERO
-        balance = product['quantity'] + (-quantity if kind in OUT_KINDS else quantity)
+        if counting:
+            # `quantity` is what was counted on the shelf; the ledger row stores the difference.
+            if quantity == product['quantity']:
+                raise bad('The count already matches the recorded stock')
+            balance = quantity
+            kind, quantity = ('COUNT_IN', balance - product['quantity']) if balance > product['quantity'] else ('COUNT_OUT', product['quantity'] - balance)
+            note = note or 'Count correction'
+            price = ZERO
+        else:
+            balance = product['quantity'] + (-quantity if kind in OUT_KINDS else quantity)
         if balance < 0:
             raise conflict('Insufficient stock for this issue')
         ops.append(update('PRODUCT', product['id'], 'SET quantity = :new',
@@ -352,6 +367,33 @@ def record_movement(key, who, body):
     result = command(key, 'movement', who, body, build)
     _cache['until'] = 0
     return result
+
+
+# ---------- stock used on a workshop job ----------
+def job_stock_ops(product, kind, quantity, job_id, who, note, price=None):
+    """Operations that take a part for a workshop job (ISSUE) or put it back (RETURN). The workshop adds them to its own
+    transaction, so the job line and the stock always change together. Returns (operations, balance after)."""
+    if kind not in ('ISSUE', 'RETURN'):
+        raise bad('Unsupported movement type')
+    if kind == 'ISSUE' and product.get('archived'):
+        raise conflict('This part is archived. Restore it before using it on a job')
+    if quantity <= 0 or quantity.as_tuple().exponent < -3:
+        raise bad('Quantity must be positive, with at most 3 decimals')
+    if product['unit'] == 'UNIT' and quantity != quantity.to_integral_value():
+        raise bad('Sealed units require a whole number')
+    balance = product['quantity'] + (-quantity if kind == 'ISSUE' else quantity)
+    if balance < 0:
+        raise conflict('Only %s of %s in stock' % (product['quantity'].normalize(), product['name']))
+    created = now()
+    # a returned part may belong to a product archived since; the quantity still has to come back
+    cond = 'quantity = :old' + (' and archived = :nf' if kind == 'ISSUE' else '')
+    values = {':new': balance, ':old': product['quantity']}
+    if kind == 'ISSUE':
+        values[':nf'] = False
+    ops = [update('PRODUCT', product['id'], 'SET quantity = :new', values, condition=cond)]
+    rows, _ = movement_items(product, kind, quantity, product['selling_price'] if price is None else price, job_id, None, who, note,
+                             None, None, created)
+    return ops + rows, balance
 
 
 # ---------- jobs (used by the workshop) ----------
@@ -404,20 +446,21 @@ def analysis(start, end, search='', category='', archived=True, page=0):
             chosen.append(p)
     totals = {}
     for d in query('DAY', lt=last):
-        t = totals.setdefault(d['product_id'], [ZERO, ZERO, ZERO])
-        net = d['added'] - d['taken']
+        t = totals.setdefault(d['product_id'], [ZERO, ZERO, ZERO, ZERO])
+        net = d['added'] - d['taken'] + d.get('adjusted', ZERO)
         if d['sk'][:10] < first:
             t[0] += net
         else:
             t[1] += d['added']
             t[2] += d['taken']
+            t[3] += d.get('adjusted', ZERO)
     rows = []
     for p in chosen[page * 100:page * 100 + 100]:
-        opening, added, taken = totals.get(p['id'], [ZERO, ZERO, ZERO])
+        opening, added, taken, adjusted = totals.get(p['id'], [ZERO, ZERO, ZERO, ZERO])
         rows.append({'id': p['id'], 'sku': p['sku'], 'name': p['name'], 'brand': p['brand'], 'part_number': p.get('part_number'),
                      'category': p['category'], 'location': p.get('location', ''), 'unit': p['unit'], 'archived': bool(p.get('archived')),
                      'available_now': p['quantity'], 'opening_quantity': opening, 'added_quantity': added,
-                     'taken_quantity': taken, 'closing_quantity': opening + added - taken})
+                     'taken_quantity': taken, 'adjusted_quantity': adjusted, 'closing_quantity': opening + added - taken + adjusted})
     return {'rows': rows, 'total': len(chosen), 'page': page, 'pageSize': 100, 'from': a.isoformat(), 'until': b.isoformat(), 'asOf': now()}
 
 
@@ -450,8 +493,10 @@ def history_snapshot(start_text, confirmed, who):
         day = datetime.fromisoformat(d['sk'][:10]).date()
         if day > until:
             raise bad('Future dated movements must be corrected before forecasting')
-        days.setdefault(d['product_id'], {})[day] = (d['added'] - d['taken'], d['taken'])
-        totals[d['product_id']] = totals.get(d['product_id'], ZERO) + d['added'] - d['taken']
+        net = d['added'] - d['taken'] + d.get('adjusted', ZERO)
+        # a part taken back (from a job or the counter) was not really used, so demand is what left minus what came back
+        days.setdefault(d['product_id'], {})[day] = (net, max(d['taken'] - d.get('returned', ZERO), ZERO))
+        totals[d['product_id']] = totals.get(d['product_id'], ZERO) + net
     rows = []
     for p in catalogue_rows:
         if p['quantity'] != totals.get(p['id'], ZERO):

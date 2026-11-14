@@ -16,7 +16,7 @@ import { reconnectPrinter } from "./printer";
 import { WsContext, useScrollFeel, type Business, type Page, type PageName } from "./common";
 
 import { toast } from "../ui";
-import { getBusinessName, setBusinessName } from "../businessName";
+import { getBusinessName, setBusinessName, setDefaultReorder } from "../businessName";
 const HELP: Partial<Record<PageName, string>> = {
   home: "Today in your workshop.", jobs: "Every vehicle that came in, with its repairs and bill.", new: "Fill in the vehicle and what needs doing.",
   vehicles: "Every vehicle you have served, with owner and history.", due: "Vehicles due for service soon. Call or message the owner.",
@@ -30,7 +30,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
   const [page, setPage] = useState<Page>(start || { name: "home" });
   const [, setNotice] = useState("");
   const [business, setBusiness] = useState<Business>({ ...FALLBACK, name: getBusinessName() });
-  const reloadBusiness = useCallback(() => { api<Business>("/api/workshop/settings").then((b) => { setBusiness(b); setBusinessName(b.name); }).catch(() => undefined); }, []);
+  const reloadBusiness = useCallback(() => { api<Business>("/api/workshop/settings").then((b) => { setBusiness(b); setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); }).catch(() => undefined); }, []);
   useEffect(reloadBusiness, [reloadBusiness]);
   useEffect(() => { void reconnectPrinter(); }, []);
   const go = useCallback((next: Page, message = "") => {

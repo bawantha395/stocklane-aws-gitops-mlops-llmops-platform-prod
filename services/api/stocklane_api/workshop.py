@@ -1,7 +1,8 @@
 """Workshop: vehicles, repair jobs with manual part and labour lines, invoices, payments, reports.
 
-It is separate from stock: nothing here reads or changes inventory. A job is OPEN until its invoice
-is created, then INVOICED. Every write is one transaction and edits use an optimistic revision, so
+A part line is free text, unless the part was taken from stock (use_stock): that line carries a product_id and
+its quantity only changes together with the stock, in one transaction. A job is OPEN until its invoice is
+created, then INVOICED. Cancelling or deleting an open job puts its stock parts back. Every write is one transaction and edits use an optimistic revision, so
 two people can never overwrite each other's work silently.
 
   WJOB/<id>             repair job (customer, vehicle, parts[], labour[], discount)
@@ -10,13 +11,15 @@ two people can never overwrite each other's work silently.
   WINV/<id>             invoice snapshot (with the business header of that day) + payments
   WSET/business         business name, address, bank details, footer, tax
 """
+import base64
+import hashlib
 import re
 import time
 import uuid
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from . import bills, photos
+from . import bills, inventory, photos
 from .core import COLOMBO, bad, batch_get, check, command, conflict, delete, get, missing, now, num, public, put, query
 
 LATIN = re.compile(r'[\x20-\x7e]*')
@@ -25,7 +28,8 @@ METHODS = ('CASH', 'CARD', 'BANK', 'OTHER')
 CHANGED = 'Someone changed this just now. Reload it and try again.'
 DEFAULT_BUSINESS = {'name': 'Workshop Suite', 'address': '', 'phone': '', 'email': '', 'reg_no': '', 'bank': '',
                     'footer': 'Thank you for your business.', 'tax_name': 'VAT', 'tax_rate': ZERO, 'mechanic_discount_pct': Decimal('10'),
-                    'payment_terms_days': 0, 'warranty': '', 'qr_url': '', 'qr_bits': ''}
+                    'payment_terms_days': 0, 'warranty': '', 'qr_url': '', 'qr_bits': '', 'invoice_prefix': 'INV', 'default_reorder_level': 5,
+                    'labour_items': [], 'mechanics': [], 'logo': None}
 
 
 # ---------- input checks ----------
@@ -104,8 +108,34 @@ def rows(value, size, name):
 
 
 def parts_in(value):
-    return [{'name': text(r.get('name'), 'Part name', 100, True), 'quantity': quantity(r.get('quantity', 1)),
-             'unit_price': money(r.get('unit_price', 0), 'Part price')} for r in rows(value, 60, 'parts')]
+    out = []
+    for r in rows(value, 60, 'parts'):
+        line = {'name': text(r.get('name'), 'Part name', 100, True), 'quantity': quantity(r.get('quantity', 1)),
+                'unit_price': money(r.get('unit_price', 0), 'Part price')}
+        if r.get('product_id'):
+            line['product_id'] = text(r['product_id'], 'Stock part', 64, True)
+        if r.get('discount_pct') not in (None, '', 0, '0'):
+            pct = num(r['discount_pct'], 'Line discount')
+            if pct < 0 or pct > 100 or pct.as_tuple().exponent < -2:
+                raise bad('A line discount is between 0 and 100 percent')
+            if pct > 0:
+                line['discount_pct'] = pct
+        out.append(line)
+    return out
+
+
+MAX_STOCK_LINES = 12  # keeps one cancel or delete inside a single transaction
+
+
+def stock_quantities(parts):
+    """{product_id: quantity} of the lines taken from stock."""
+    found = {}
+    for p in parts:
+        if p.get('product_id'):
+            if p['product_id'] in found:
+                raise bad('The same stock part is on this job twice')
+            found[p['product_id']] = p['quantity']
+    return found
 
 
 def labour_in(value):
@@ -113,8 +143,19 @@ def labour_in(value):
              'amount': money(r.get('amount', 0), 'Labour amount')} for r in rows(value, 30, 'labour')]
 
 
+def line_gross(p):
+    return p['quantity'] * p['unit_price']
+
+
 def line_total(p):
-    return (p['quantity'] * p['unit_price']).quantize(MONEY, ROUND_HALF_UP)
+    """Quantity times price, less the line's own discount (a percent) when it has one."""
+    return (line_gross(p) * (HUNDRED - p.get('discount_pct', ZERO)) / HUNDRED).quantize(MONEY, ROUND_HALF_UP)
+
+
+def discount_given(j):
+    """Everything taken off the bill: the bill discount plus every line discount."""
+    lines = sum((line_gross(p).quantize(MONEY, ROUND_HALF_UP) - line_total(p) for p in j.get('parts', [])), ZERO)
+    return j.get('discount', ZERO) + lines
 
 
 def totals(j, rate=ZERO):
@@ -155,6 +196,72 @@ def qr_bits(url, packed):
     return str(packed)
 
 
+PREFIX = re.compile(r'[A-Za-z0-9]{1,6}')
+
+
+def shop_lists(b):
+    """Bill number prefix, default reorder level, the shop's labour price list and its mechanics."""
+    prefix = str(b.get('invoice_prefix') or 'INV').strip().upper()
+    if not PREFIX.fullmatch(prefix):
+        raise bad('The bill number prefix is 1 to 6 letters or numbers (no spaces)')
+    level = num(b.get('default_reorder_level') if b.get('default_reorder_level') not in (None, '') else 5, 'Default reorder level')
+    if level < 0 or level > 100_000 or level.as_tuple().exponent < -3:
+        raise bad('The default reorder level must be 0 or more')
+    labour, seen = [], set()
+    for r in rows(b.get('labour_items') or [], 30, 'labour list'):
+        row = {'description': text(r.get('description'), 'Labour description', 100, True), 'amount': money(r.get('amount', 0), 'Labour amount')}
+        if row['description'].lower() in seen:
+            raise bad('"%s" is in the labour list twice' % row['description'])
+        seen.add(row['description'].lower())
+        labour.append(row)
+    names, seen = [], set()
+    if not isinstance(b.get('mechanics') or [], list) or len(b.get('mechanics') or []) > 20:
+        raise bad('Up to 20 mechanics')
+    for n in b.get('mechanics') or []:
+        name = text(n, 'Mechanic name', 60, True)
+        if name.lower() in seen:
+            raise bad('"%s" is in the mechanics list twice' % name)
+        seen.add(name.lower())
+        names.append(name)
+    return {'invoice_prefix': prefix, 'default_reorder_level': level, 'labour_items': labour, 'mechanics': names}
+
+
+def save_logo(key, who, body):
+    """Owner only. The logo is one small JPEG made by the phone or computer; it is stored once and drawn on the bill, the PDFs and the header."""
+    raw, width_, height, comps = photos.logo_check((body or {}).get('image'))
+    version = hashlib.sha256(raw).hexdigest()[:32]  # the same picture always gets the same name, so a retry is a replay
+    old = (get('WSET', 'business') or {}).get('logo') or {}
+    photos.logo_save(raw, version)
+
+    def build():
+        stored = get('WSET', 'business') or {'pk': 'WSET', 'sk': 'business'}
+        item = clean(dict(stored, logo={'v': version, 'w': width_, 'h': height, 'c': comps}, updated_at=now(), updated_by=who))
+        return [put(item)], [None], {'logo': item['logo']}
+    result = command(key, 'save-logo', who, {'version': version}, build)
+    if old.get('v') and old.get('v') != result['logo']['v']:
+        photos.logo_drop(old['v'])
+    return result
+
+
+def remove_logo(key, who, body):
+    def build():
+        stored = get('WSET', 'business') or {}
+        old = (stored.get('logo') or {}).get('v')
+        item = clean(dict({k: v for k, v in stored.items() if k != 'logo'}, pk='WSET', sk='business', updated_at=now(), updated_by=who))
+        return [put(item)], [None], {'logo': None, 'was': old}
+    result = command(key, 'remove-logo', who, body or {}, build)
+    photos.logo_drop(result.get('was'))
+    return {'logo': None}
+
+
+def logo_image():
+    logo = business().get('logo') or {}
+    raw = photos.logo_bytes(logo.get('v'))
+    if raw is None:
+        raise missing('No logo')
+    return {'data': base64.b64encode(raw).decode(), **logo}
+
+
 def save_business(key, who, body):
     def build():
         b = body or {}
@@ -167,12 +274,13 @@ def save_business(key, who, body):
         terms = num(b.get('payment_terms_days') if b.get('payment_terms_days') not in (None, '') else 0, 'Payment terms')
         if terms < 0 or terms > 90 or terms != terms.to_integral_value():
             raise bad('Payment terms must be a whole number of days between 0 and 90')
-        item = {'pk': 'WSET', 'sk': 'business', 'payment_terms_days': int(terms), 'warranty': lines_text(b.get('warranty'), 'Warranty note', 200), 'qr_url': text(b.get('qr_url'), 'QR link', 200), 'qr_bits': qr_bits(b.get('qr_url'), b.get('qr_bits')), 'name': text(b.get('name'), 'Business name', 60, True),
+        stored = get('WSET', 'business') or {}
+        item = {'pk': 'WSET', 'sk': 'business', 'logo': stored.get('logo'), **shop_lists(b), 'payment_terms_days': int(terms), 'warranty': lines_text(b.get('warranty'), 'Warranty note', 200), 'qr_url': text(b.get('qr_url'), 'QR link', 200), 'qr_bits': qr_bits(b.get('qr_url'), b.get('qr_bits')), 'name': text(b.get('name'), 'Business name', 60, True),
                 'address': lines_text(b.get('address'), 'Address', 200), 'phone': text(b.get('phone'), 'Phone', 60),
                 'email': text(b.get('email'), 'Email', 80), 'reg_no': text(b.get('reg_no'), 'Registration / tax number', 60),
                 'bank': lines_text(b.get('bank'), 'Bank details', 300), 'footer': lines_text(b.get('footer'), 'Footer', 300),
                 'tax_name': text(b.get('tax_name') or 'VAT', 'Tax name', 12, True), 'tax_rate': rate, 'mechanic_discount_pct': limit, 'updated_at': now(), 'updated_by': who}
-        return [put(item)], [None], public(item)
+        return [put(clean(item))], [None], public(item)
     return command(key, 'save-business', who, body, build)
 
 
@@ -396,6 +504,8 @@ def save_job(job_id, key, who, body, owner=True):
             j['odometer'] = km(b['odometer'], 'Odometer')
         if 'parts' in b:
             j['parts'] = parts_in(b['parts'])
+            if stock_quantities(j['parts']) != stock_quantities(current.get('parts', [])):
+                raise bad('Parts taken from stock change only with Pick from stock or Take back, so the stock stays right')
         if 'labour' in b:
             j['labour'] = labour_in(b['labour'])
         if 'discount' in b:
@@ -406,10 +516,10 @@ def save_job(job_id, key, who, body, owner=True):
             j['next_service_km'] = km(b['next_service_km'], 'Next service km')
         if totals(j)['subtotal'] < 0:
             raise bad('The discount is more than the bill')
-        if not owner and j.get('discount', ZERO) != current.get('discount', ZERO):
+        if not owner and discount_given(j) != discount_given(current):
             pct = business()['mechanic_discount_pct']
-            base = totals(j)['parts_total'] + totals(j)['labour_total']
-            if j['discount'] > (base * pct / HUNDRED).quantize(MONEY, ROUND_HALF_UP):
+            base = sum((line_gross(p).quantize(MONEY, ROUND_HALF_UP) for p in j['parts']), ZERO) + totals(j)['labour_total']
+            if discount_given(j) > (base * pct / HUNDRED).quantize(MONEY, ROUND_HALF_UP):
                 raise bad('A discount above %s%% needs the owner. Ask the owner to apply it.' % pct.normalize())
         j['revision'], j['updated_at'] = int(current['revision']) + 1, now()
         j = clean(j)
@@ -420,15 +530,85 @@ def save_job(job_id, key, who, body, owner=True):
     return command(key, 'save-job:' + job_id, who, body, build)
 
 
+def line_name(product):
+    """A stock part's name as a bill line (the PDFs are English only, so fall back to the part number)."""
+    name = ' '.join(str(product['name']).split())
+    return name[:100] if LATIN.fullmatch(name) else (product.get('part_number') or product['sku'])[:100]
+
+
+def use_stock(job_id, key, who, body):
+    """Take a part from stock onto an open job (op 'use'), or put some back (op 'return'). The job line, the revision and the
+    stock move in one transaction; the price is the part's selling price at that moment. No revision is needed: the request is
+    additive, so a retry with the same key is safe and a concurrent edit only makes it run again."""
+    def build():
+        current, b = job(job_id), body or {}
+        if current['status'] != 'OPEN':
+            raise conflict('This job already has an invoice')
+        op, qty = b.get('op'), quantity(b.get('quantity', 1))
+        if op not in ('use', 'return'):
+            raise bad('Choose use or return')
+        product = inventory.load_product(b.get('productId'))
+        parts = [dict(p) for p in current.get('parts', [])]
+        line = next((p for p in parts if p.get('product_id') == product['id']), None)
+        if op == 'use':
+            if line is None and len(stock_quantities(parts)) >= MAX_STOCK_LINES:
+                raise bad('At most %d stock parts on one job' % MAX_STOCK_LINES)
+            if line is None and len(parts) >= 60:
+                raise bad('Too many part lines on this job')
+            stock_ops, balance = inventory.job_stock_ops(product, 'ISSUE', qty, job_id, who, 'Used on ' + current['registration'])
+            if line:
+                line['quantity'] += qty
+            else:
+                parts.append({'name': line_name(product), 'quantity': qty, 'unit_price': product['selling_price'], 'product_id': product['id']})
+        else:
+            if not line:
+                raise conflict('This part was not taken from stock for this job')
+            if qty > line['quantity']:
+                raise conflict('Only %s of this part are on the job' % line['quantity'].normalize())
+            stock_ops, balance = inventory.job_stock_ops(product, 'RETURN', qty, job_id, who, 'Taken back from ' + current['registration'], line['unit_price'])
+            line['quantity'] -= qty
+            if line['quantity'] == 0:
+                parts.remove(line)
+        j = dict(current, parts=parts, revision=int(current['revision']) + 1, updated_at=now())
+        if totals(j)['subtotal'] < 0:
+            raise conflict('The discount is more than the bill. Lower the discount first')
+        j = clean(j)
+        rate = business()['tax_rate']
+        job_op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
+                     ExpressionAttributeValues={':r': current['revision'], ':open': 'OPEN'})
+        ops = [job_op, vehicle_put(j['vehicle_key'], vehicle_fields(j)), history_put(j, rate)] + stock_ops
+        # adding or returning a part never overwrites anyone's edit, so a concurrent save just makes this run again on the fresh job
+        return ops, [None] * len(ops), {**view(j, rate), 'stock': {'product_id': product['id'], 'balance': balance}}
+    return command(key, 'use-stock:' + job_id, who, body, build)
+
+
+def release_stock(current, who, why):
+    """When an open job is cancelled or deleted: every stock part goes back. The lines stay on the job as plain text,
+    so the history still shows what was planned and a restored job is an ordinary one."""
+    ops, parts = [], []
+    for p in current.get('parts', []):
+        pid = p.get('product_id')
+        if not pid:
+            parts.append(p)
+            continue
+        product = inventory.load_product(pid)
+        stock_ops, _ = inventory.job_stock_ops(product, 'RETURN', p['quantity'], current['id'], who, why, p['unit_price'])
+        ops += stock_ops
+        parts.append({k: v for k, v in p.items() if k != 'product_id'})
+    return ops, parts
+
+
 def cancel_job(job_id, key, who, body):
     def build():
         current = job(job_id)
         if current['status'] != 'OPEN':
             raise conflict('Only an open job can be cancelled')
-        j = dict(current, status='CANCELLED', revision=int(current['revision']) + 1, updated_at=now())
+        back, parts = release_stock(current, who, 'Job cancelled')
+        j = dict(current, parts=parts, status='CANCELLED', revision=int(current['revision']) + 1, updated_at=now())
         op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
                  ExpressionAttributeValues={':r': current['revision'], ':open': 'OPEN'})
-        return [op, history_put(j), audit('CANCELLED', j, who, text((body or {}).get('reason'), 'Reason', 200))], [CHANGED, None, None], view(j)
+        ops = [op, history_put(j), audit('CANCELLED', j, who, text((body or {}).get('reason'), 'Reason', 200))] + back
+        return ops, [CHANGED] + [None] * (len(ops) - 1), view(j)
     return command(key, 'cancel-job:' + job_id, who, body, build)
 
 
@@ -447,11 +627,13 @@ def _archive(current, who, reason, action):
         raise conflict('This job is already deleted')
     if current['status'] == 'INVOICED':
         raise conflict('A job with an invoice cannot be deleted. Void the invoice first (only when nothing was paid)')
-    j = clean(dict(current, status='ARCHIVED', prior_status=current['status'], archived_by=who, archived_at=now(),
+    back, parts = release_stock(current, who, 'Job deleted')
+    j = clean(dict(current, parts=parts, status='ARCHIVED', prior_status=current['status'], archived_by=who, archived_at=now(),
                    archive_reason=reason, revision=int(current['revision']) + 1, updated_at=now()))
     op = put(j, ConditionExpression='revision = :r and #s <> :done', ExpressionAttributeNames={'#s': 'status'},
              ExpressionAttributeValues={':r': current['revision'], ':done': 'INVOICED'})
-    return [op, history_put(j), audit(action, j, who, reason), delete('WREQ', j['id'])], [CHANGED, None, None, None], view(j)
+    ops = [op, history_put(j), audit(action, j, who, reason), delete('WREQ', j['id'])] + back
+    return ops, [CHANGED] + [None] * (len(ops) - 1), view(j)
 
 
 def archive_job(job_id, key, who, body):
@@ -545,13 +727,13 @@ def finalise(job_id, key, who, body):
         rate = shop['tax_rate']
         stamped = dict(current, tax_rate=rate)
         t, created, invoice_id = totals(stamped), now(), str(uuid.uuid4())
-        number = 'INV-' + datetime.now(COLOMBO).strftime('%Y%m%d') + '-' + invoice_id[:6].upper()
+        number = shop['invoice_prefix'] + '-' + datetime.now(COLOMBO).strftime('%Y%m%d') + '-' + invoice_id[:6].upper()
         keep = ('registration', 'vehicle_key', 'customer', 'address', 'phone', 'vehicle', 'odometer', 'summary', 'mechanic', 'parts', 'labour',
                 'next_service_date', 'next_service_km')
         invoice = clean({'pk': 'WINV', 'sk': invoice_id, 'id': invoice_id, 'invoice_number': number, 'job_id': job_id,
                          **{k: current.get(k) for k in keep}, **t, 'tax_name': shop['tax_name'], 'tax_rate': rate, 'currency': 'LKR',
                          'paid': ZERO, 'payments': [], 'status': invoice_status(t['total'], ZERO), 'revision': 0, 'approved_by': who,
-                         'created_at': created, 'business': {k: v for k, v in shop.items() if k in DEFAULT_BUSINESS and k != 'mechanic_discount_pct'}})
+                         'created_at': created, 'business': {k: v for k, v in shop.items() if k in DEFAULT_BUSINESS and k not in ('mechanic_discount_pct', 'labour_items', 'mechanics', 'default_reorder_level')}})
         j = clean(dict(stamped, status='INVOICED', invoice_id=invoice_id, invoice_number=number,
                        revision=int(current['revision']) + 1, updated_at=created))
         op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},

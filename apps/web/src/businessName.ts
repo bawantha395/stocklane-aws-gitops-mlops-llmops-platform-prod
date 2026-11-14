@@ -21,3 +21,8 @@ export function useBusinessName(): string {
     () => name,
   );
 }
+
+/** The shop's default reorder level for a new part (a Settings value), kept here so the part form can start from it. */
+let reorder = 5;
+export const setDefaultReorder = (n: unknown) => { const v = Number(n); if (Number.isFinite(v) && v >= 0) reorder = v; };
+export const getDefaultReorder = () => reorder;
