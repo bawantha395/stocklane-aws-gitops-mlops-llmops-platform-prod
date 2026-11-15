@@ -1,4 +1,5 @@
 import { QrImg } from "./QrImg";
+import { t as t_ } from "../i18n";
 import { useLogo } from "../BizLogo";
 import { addDays, dateOnly, kmText, lkr, num, round2, type Business, type Labour, type Part, type Payment } from "./common";
 import { workWarranty } from "./invoicePdf";
@@ -7,18 +8,19 @@ export type BillData = {
   business: Business; number?: string; date: string; status?: string; draft?: boolean; customer: string; address?: string; phone?: string; registration: string;
   vehicle?: string; odometer?: number | null; mechanic?: string; summary?: string; parts: Part[]; labour: Labour[]; discount: number;
   tax_name?: string; tax_rate: number; payments?: Payment[]; paid?: number; next_service_date?: string; next_service_km?: number | null;
-  brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean;
+  brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean; credit_total?: number;
 };
 
 /** A part line's amount: quantity times price, less the line's own discount percent. */
 export const partAmount = (p: Part) => round2((num(p.quantity) * num(p.unit_price) * (100 - num(p.discount_pct))) / 100);
 
-export function billTotals(b: Pick<BillData, "parts" | "labour" | "discount" | "tax_rate">) {
+export function billTotals(b: Pick<BillData, "parts" | "labour" | "discount" | "tax_rate"> & { credit_total?: number }) {
   const parts = b.parts.reduce((s, p) => s + partAmount(p), 0);
   const labour = b.labour.reduce((s, l) => s + num(l.amount), 0);
   const subtotal = parts + labour - num(b.discount);
   const tax = subtotal > 0 ? round2((subtotal * num(b.tax_rate)) / 100) : 0;
-  return { parts, labour, subtotal, tax, total: subtotal + tax };
+  const credit = num(b.credit_total);
+  return { parts, labour, subtotal, tax, credit, total: subtotal + tax - credit };
 }
 
 /** The bill as it prints: also used on screen as the preview. */
@@ -43,7 +45,7 @@ export function Bill({ d }: { d: BillData }) {
           {d.number && <b>{d.number}</b>}
           <span>Date: {d.date}</span>
           {!!b.payment_terms_days && !d.draft && <span>Due: {addDays(d.date, b.payment_terms_days)} ({b.payment_terms_days} days)</span>}
-          {d.status && !d.draft && <span>Status: {{ UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", VOID: "Void" }[d.status] || d.status}</span>}
+          {d.status && !d.draft && <span>Status: {{ UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", REFUNDED: "Refunded", VOID: "Void" }[d.status] || d.status}</span>}
         </div>
       </header>
       <section className="ws-bill-parties">
@@ -70,6 +72,7 @@ export function Bill({ d }: { d: BillData }) {
         <div><dt>Labour</dt><dd>{lkr(t.labour)}</dd></div>
         {num(d.discount) > 0 && <div><dt>Discount</dt><dd>-{lkr(d.discount)}</dd></div>}
         {t.tax > 0 && <div><dt>{d.tax_name || "VAT"} ({num(d.tax_rate)}%)</dt><dd>{lkr(t.tax)}</dd></div>}
+        {t.credit > 0 && <div><dt>{t_("Returned parts credit")}</dt><dd>-{lkr(t.credit)}</dd></div>}
         <div className="grand"><dt>TOTAL (LKR)</dt><dd>{lkr(t.total)}</dd></div>
         {paid > 0 && <div><dt>Paid</dt><dd>{lkr(paid)}</dd></div>}
         {!d.draft && d.status !== "VOID" && <div className="due"><dt>Balance due</dt><dd>{lkr(t.total - paid)}</dd></div>}

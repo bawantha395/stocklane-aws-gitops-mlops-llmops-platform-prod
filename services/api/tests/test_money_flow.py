@@ -178,7 +178,7 @@ def test_refund_then_void(api):
     back = ok(api('POST', '/api/workshop/invoices/%s/refund' % inv['id'], {'amount': 100, 'reason': 'Wrong filter'}))
     assert back['status'] == 'PARTIAL' and back['paid'] == inv['total'] - 100 and back['payments'][-1]['amount'] == -100
     full = ok(api('POST', '/api/workshop/invoices/%s/refund' % inv['id'], {'amount': back['paid'], 'reason': 'Customer cancelled'}))
-    assert full['paid'] == 0 and full['status'] == 'UNPAID'
+    assert full['paid'] == 0 and full['status'] == 'REFUNDED'
     ok(api('GET', '/api/workshop/invoices/%s/pdf' % inv['id']))
     ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {}))
     ok(api('GET', '/api/workshop/invoices/' + inv['id']))

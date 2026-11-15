@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { api } from "../api";
 
 export type PageName = "home" | "jobs" | "vehicles" | "due" | "invoices" | "archive" | "report" | "settings" | "new" | "job" | "vehicle" | "invoice" | "quotes" | "quote";
-export type Page = { name: PageName; id?: string; reg?: string };
+export type Page = { name: PageName; id?: string; reg?: string; kind?: "ESTIMATE" | "QUOTATION" };
 export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string; qr_url?: string; invoice_prefix?: string; default_reorder_level?: number; labour_items?: Labour[]; mechanics?: string[]; logo?: { v: string; w: number; h: number; c: number } | null };
 export type Part = { name: string; quantity: number; unit_price: number; product_id?: string; discount_pct?: number };
 export type Labour = { description: string; amount: number };
@@ -17,6 +17,7 @@ export type Job = {
   parts: Part[]; labour: Labour[]; discount: number; tax_rate?: number; parts_total: number; labour_total: number; subtotal: number; tax: number; total: number;
   next_service_date?: string; next_service_km?: number; created_at: string; lines?: number; age_days?: number;
   front_photo?: string; plate_photo?: string; before_photos?: string[]; photo_count?: number;
+  job_no?: string; chassis?: string; invoice_type?: "CASH" | "CREDIT" | "INSURANCE" | "WARRANTY"; out_at?: string; quote_number?: string;
   stage?: Stage; brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean;
   delete_requested?: boolean; delete_request?: DeleteRequest; undo_seconds_left?: number; archive_reason?: string; archived_by?: string; archived_at?: string;
 };
@@ -25,18 +26,20 @@ export type QuoteWork = { description: string; amount: number; section: "Rem/Ref
 export type QuoteStatus = "DRAFT" | "SENT" | "APPROVED" | "REJECTED" | "CONVERTED";
 export type QuoteVersion = { rev_no: number; at: string; by?: string; status: QuoteStatus; total: number; parts: Part[]; labour: QuoteWork[]; note?: string };
 export type Quote = {
-  id: string; number: string; status: QuoteStatus; revision: number; rev_no: number; registration: string; vehicle_key: string; vehicle?: string; customer?: string; phone?: string;
+  id: string; kind?: "ESTIMATE" | "QUOTATION"; number: string; status: QuoteStatus; revision: number; rev_no: number; registration: string; vehicle_key: string; vehicle?: string; odometer?: number | null; customer?: string; phone?: string;
   insurer?: string; insurer_branch?: string; claim_no?: string; policy_no?: string; issue?: string; valid_until?: string; photos?: string[]; parts: Part[]; labour: QuoteWork[];
   history: QuoteVersion[]; parts_total: number; labour_total: number; sections: Record<string, number>; total: number; parts_unpriced: number; created_at: string; updated_at: string;
   job_id?: string; lines?: number; photo_count?: number; front_photo?: string; rev_count?: number;
 };
 export type Visit = {
+  job_no?: string;
   id: string; created_at: string; summary: string; status: string; odometer?: number; total: number; invoice_number?: string; invoice_id?: string;
   parts?: Part[]; labour?: Labour[]; mechanic?: string; customer?: string;
+  paid?: number; balance?: number; pay_status?: "UNPAID" | "PARTIAL" | "PAID" | "REFUNDED";
 };
 export type OwnerChange = { at: string; from_owner?: string; from_phone?: string; to_owner: string; to_phone?: string; by?: string };
 export type Vehicle = {
-  id: string; registration: string; owner?: string; phone?: string; make?: string; notes?: string; last_km?: number; next_service_date?: string;
+  id: string; registration: string; owner?: string; phone?: string; make?: string; chassis?: string; notes?: string; last_km?: number; next_service_date?: string;
   next_service_km?: number; updated_at: string; reason?: string; history?: Visit[]; visits?: number; spent?: number; first_visit?: string | null; average_gap_days?: number | null;
   front_photo?: string; plate_photo?: string; owner_log?: OwnerChange[];
 };
@@ -44,10 +47,12 @@ export type Payment = { id: string; amount: number; method: string; note: string
 export type Invoice = {
   id: string; invoice_number: string; job_id: string; registration: string; customer: string; address?: string; phone?: string; vehicle?: string; odometer?: number; summary?: string; mechanic?: string;
   parts: Part[]; labour: Labour[]; parts_total: number; labour_total: number; discount: number; subtotal: number; tax: number; tax_name?: string; tax_rate: number; total: number;
-  paid: number; status: "UNPAID" | "PARTIAL" | "PAID" | "VOID"; created_at: string; payments: Payment[]; currency: string; business?: Business;
+  paid: number; status: "UNPAID" | "PARTIAL" | "PAID" | "REFUNDED" | "VOID"; created_at: string; payments: Payment[]; currency: string; business?: Business;
   next_service_date?: string; next_service_km?: number;
   brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean;
+  credit_total?: number; original_total?: number; credits?: { id: string; at: string; by: string; reason: string; amount: number; lines: { name: string; quantity: number; amount: number }[] }[];
 };
+export type Owing = { id: string; invoice_number: string; registration: string; customer: string; total: number; paid: number; balance: number; status: string; created_at: string; age_days: number };
 
 export type Ctx = { owner: boolean; business: Business; go: (p: Page, notice?: string) => void; reloadBusiness: () => void };
 export const WsContext = createContext<Ctx>(null as unknown as Ctx);
@@ -62,6 +67,8 @@ export const regKey = (s: string) => s.replace(/[^A-Za-z0-9]/g, "").toUpperCase(
 export const num = (s: string | number | undefined) => (Number.isFinite(Number(s)) ? Number(s) : 0);
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 /** WhatsApp click-to-chat link for a Sri Lankan number (07x becomes 947x). */
+/** Days past the payment terms (Setup; 7 days when none is set) for a bill that still has a balance. 0 when it is not late. */
+export const lateDays = (created: string, terms?: number) => Math.max(0, Math.floor((Date.now() - new Date(created).getTime()) / 86400000) - (terms || 7));
 export const waLink = (phone: string, message: string) => {
   let d = phone.replace(/\D/g, "");
   if (d.startsWith("0")) d = "94" + d.slice(1);
@@ -98,8 +105,8 @@ export function useDebounced(value: string, ms = 250) {
   return v;
 }
 
-const LABEL: Record<string, string> = { DRAFT: "Draft", SENT: "Sent", APPROVED: "Approved", REJECTED: "Rejected", CONVERTED: "Made into a job", OPEN: "Open", INVOICED: "Invoiced", CANCELLED: "Cancelled", ARCHIVED: "Deleted", UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", VOID: "Void" };
-const ICON: Record<string, typeof Ban> = { DRAFT: CircleDashed, SENT: FileText, APPROVED: CheckCircle2, REJECTED: Ban, CONVERTED: CheckCircle2, OPEN: CircleDashed, INVOICED: FileText, UNPAID: FileText, PARTIAL: CircleDollarSign, PAID: CheckCircle2, VOID: Ban, CANCELLED: Ban, ARCHIVED: Trash2 };
+const LABEL: Record<string, string> = { DRAFT: "Draft", SENT: "Sent", APPROVED: "Approved", REJECTED: "Rejected", CONVERTED: "Made into a job", OPEN: "Open", INVOICED: "Invoiced", CANCELLED: "Cancelled", ARCHIVED: "Deleted", UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", REFUNDED: "Refunded", VOID: "Void" };
+const ICON: Record<string, typeof Ban> = { DRAFT: CircleDashed, SENT: FileText, APPROVED: CheckCircle2, REJECTED: Ban, CONVERTED: CheckCircle2, OPEN: CircleDashed, INVOICED: FileText, UNPAID: FileText, PARTIAL: CircleDollarSign, PAID: CheckCircle2, REFUNDED: Ban, VOID: Ban, CANCELLED: Ban, ARCHIVED: Trash2 };
 /** Status: colour + icon + word, so it never relies on colour alone. */
 export const Pill = ({ s }: { s: string }) => { const I = ICON[s] || CircleDashed; return <span className={"ws-pill " + s.toLowerCase()}><I size={13} strokeWidth={2.4} aria-hidden="true" />{t(LABEL[s] || s)}</span>; };
 export const Empty = ({ children, action }: { children: string; action?: { label: string; onClick: () => void } }) => (

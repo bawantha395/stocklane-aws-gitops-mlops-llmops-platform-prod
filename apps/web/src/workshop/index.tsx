@@ -20,7 +20,7 @@ import { toast } from "../ui";
 import { getBusinessName, setBusinessName, setDefaultReorder } from "../businessName";
 const HELP: Partial<Record<PageName, string>> = {
   home: "Today in your workshop.", jobs: "Every vehicle that came in, with its repairs and bill.", new: "Fill in the vehicle and what needs doing.",
-  quotes: "Estimates for insurance claims. Send a PDF, revise it, then make the job.", quote: "Fill in the insurer, the damage and the work by section.",
+  quotes: "Estimates (the price can still change, like an insurance repair) and quotations (a fixed price). Send a PDF, revise it, then make the job.", quote: "Fill in the vehicle, the damage and the work by section.",
   vehicles: "Every vehicle you have served, with owner and history.", due: "Vehicles due for service soon. Call or message the owner.",
   invoices: "Every bill. See who has paid and who still owes.", archive: "Deleted jobs are kept here. You can restore them.",
   report: "Sales, what is unpaid, and your best parts and work.", settings: "Your business details, tax and invoice header.",
@@ -48,7 +48,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
       void run.finished.finally(() => { document.documentElement.classList.remove("vt-go"); if (src) src.style.viewTransitionName = ""; });
     } else { apply(); window.scrollTo({ top: 0 }); }
   }, []);
-  const tabs: [PageName, string][] = [["home", t("Home")], ["jobs", t("Jobs")], ["quotes", t("Quotations")], ["vehicles", t("Vehicles")], ["due", t("Service due")], ["invoices", t("Invoices")], ...(owner ? ([["archive", t("Archive")], ["report", t("Sales report")], ["settings", t("Settings")]] as [PageName, string][]) : [])];
+  const tabs: [PageName, string][] = [["home", t("Home")], ["jobs", t("Jobs")], ["quotes", t("Quotes")], ["vehicles", t("Vehicles")], ["due", t("Service due")], ["invoices", t("Invoices")], ...(owner ? ([["archive", t("Archive")], ["report", t("Sales report")], ["settings", t("Settings")]] as [PageName, string][]) : [])];
   const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   useEffect(() => { const on = () => setOnline(true), off = () => setOnline(false); window.addEventListener("online", on); window.addEventListener("offline", off); return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); }; }, []);
   // Groups: each group opens its first page; pages inside a group show as small chips under the bar.
@@ -61,7 +61,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
     ...(owner ? [{ key: "setup", label: t("Setup"), pages: ["archive", "settings"] as PageName[] }] : []),
   ];
   const tab: PageName = page.name === "job" || page.name === "new" ? "jobs" : page.name === "quote" ? "quotes" : page.name === "vehicle" ? "vehicles" : page.name === "invoice" ? "invoices" : page.name;
-  const TITLES: Partial<Record<PageName, string>> = { home: t("Today"), jobs: t("Jobs"), new: t("New job"), job: t("Job"), quotes: t("Quotations"), quote: t("Quotation"), vehicles: t("Vehicles"), vehicle: t("Vehicle"), due: t("Service due"), invoices: t("Invoices"), invoice: t("Invoice"), archive: t("Archive"), report: t("Sales report"), settings: t("Settings") };
+  const TITLES: Partial<Record<PageName, string>> = { home: t("Today"), jobs: t("Jobs"), new: t("New job"), job: t("Job"), quotes: t("Estimates and quotations"), quote: t("Estimate or quotation"), vehicles: t("Vehicles"), vehicle: t("Vehicle"), due: t("Service due"), invoices: t("Invoices"), invoice: t("Invoice"), archive: t("Archive"), report: t("Sales report"), settings: t("Settings") };
   const title = TITLES[page.name] || business.name;
   const headRef = useRef<HTMLHeadingElement>(null), pageRef = useRef<HTMLDivElement>(null), [shrunk, setShrunk] = useState(false);
   useEffect(() => { const h = headRef.current; if (!h || !("IntersectionObserver" in window)) return; const io = new IntersectionObserver((es) => setShrunk(!es[0]!.isIntersecting), { rootMargin: (window.innerWidth <= 760 ? "-150px" : "-10px") + " 0px 0px 0px" }); io.observe(h); return () => io.disconnect(); }, [page.name]);
@@ -73,7 +73,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
   }, [page.name]);
   useScrollFeel(pageRef, page.name + (page.id || ""));
   const group = GROUPS.find((g) => g.pages.includes(tab)) || GROUPS[0]!;
-  const crumbs: { label: string; to: Page }[] = page.name === "job" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "new" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "quote" ? [{ label: t("Quotations"), to: { name: "quotes" } }] : page.name === "vehicle" ? [{ label: t("Vehicles"), to: { name: "vehicles" } }] : page.name === "invoice" ? [{ label: t("Invoices"), to: { name: "invoices" } }] : [];
+  const crumbs: { label: string; to: Page }[] = page.name === "job" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "new" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "quote" ? [{ label: t("Quotes"), to: { name: "quotes" } }] : page.name === "vehicle" ? [{ label: t("Vehicles"), to: { name: "vehicles" } }] : page.name === "invoice" ? [{ label: t("Invoices"), to: { name: "invoices" } }] : [];
   return (
     <WsContext.Provider value={{ owner, business, go, reloadBusiness }}>
       <section className="ws" aria-label="Workshop">
@@ -96,7 +96,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
         {page.name === "home" && <Dashboard />}
         {page.name === "jobs" && <Jobs />}
         {page.name === "quotes" && <Quotes />}
-        {page.name === "quote" && page.id && <QuotePage key={page.id} id={page.id} />}
+        {page.name === "quote" && page.id && <QuotePage key={page.id + (page.kind || "")} id={page.id} kind={page.kind} />}
         {page.name === "new" && <NewJob key={page.reg || "new"} reg={page.reg} />}
         {page.name === "job" && page.id && <JobPage key={page.id} id={page.id} />}
         {page.name === "vehicles" && <Vehicles />}

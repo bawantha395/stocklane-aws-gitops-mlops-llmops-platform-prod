@@ -51,7 +51,7 @@ export function receiptBytes(inv: Invoice, shop: Business, width = paperColumns(
   const size = (n: 0 | 0x11) => raw(GS, 0x21, n);
   const rule = (c = "-") => line(c.repeat(width));
   const wrapped = (s: string) => wrapText(s, width).forEach(line);
-  const t = billTotals({ parts: inv.parts, labour: inv.labour, discount: inv.discount, tax_rate: inv.tax_rate });
+  const t = billTotals({ parts: inv.parts, labour: inv.labour, discount: inv.discount, tax_rate: inv.tax_rate, credit_total: inv.credit_total });
   const paid = Number(inv.paid || 0);
 
   raw(ESC, 0x40); // initialise
@@ -87,6 +87,7 @@ export function receiptBytes(inv: Invoice, shop: Business, width = paperColumns(
   pair("Parts", money(t.parts), width).forEach(line);
   pair("Labour", money(t.labour), width).forEach(line);
   if (Number(inv.discount) > 0) pair("Discount", "-" + money(inv.discount), width).forEach(line);
+  if (t.credit > 0) pair("Returned parts", "-" + money(t.credit), width).forEach(line);
   if (t.tax > 0) pair((inv.tax_name || "VAT") + " " + Number(inv.tax_rate) + "%", money(t.tax), width).forEach(line);
   rule("=");
   bold(true); size(0x11); pair("TOTAL", money(t.total), Math.floor(width / 2)).forEach(line); size(0); bold(false);

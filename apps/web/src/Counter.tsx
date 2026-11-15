@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Camera as CameraIcon, Check, Loader2, Minus, Plus } from "lucide-react";
 import { t, useLang } from "./i18n";
 import { toast } from "./ui";
-import { api, shrink, type Match, type Product, type BarcodeLookup, type Movement } from "./api";
+import { api, openPdf, shrink, type Match, type Product, type BarcodeLookup, type Movement } from "./api";
 
 const Camera = React.lazy(() => import("./Camera").then((m) => ({ default: m.Camera })));
 
@@ -34,6 +34,10 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
   }, [listOpen]);
   const [camera, setCamera] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [done, setDone] = useState("");
+  // The note for the last entry (GRN for a part that came in, GIN for one that went out): print it from the confirmation.
+  const [note, setNote] = useState<{ id: string; no: string } | null>(null);
+  const [supplier, setSupplier] = useState(() => { try { return sessionStorage.getItem("lifta.supplier") || ""; } catch { return ""; } }), [reference, setReference] = useState(""), [cost, setCost] = useState("");
+  useEffect(() => { if (part?.supplier) setSupplier(part.supplier); }, [part?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const commandKey = useRef(key());
   // "Part went out" can put the part straight on an open repair job: the job's bill and the stock change together
   type OpenJob = { id: string; registration: string; customer: string };
@@ -55,7 +59,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
 
   const reset = (message = "") => {
     setPart(null); setCandidates([]); setPhotoId("");
-    setQuantity(1); setSearch(""); setError(""); setDone(message); commandKey.current = key();
+    setQuantity(1); setSearch(""); setError(""); setDone(message); commandKey.current = key(); if (!message) setNote(null);
   };
   const low = (p: Item, left: number) => p.reorder_level != null && Number(p.reorder_level) > 0 && left <= Number(p.reorder_level);
   // Every counter entry can be taken back for a few seconds: it records the opposite movement, so the history stays honest.
@@ -91,7 +95,10 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
     try {
       const job = jobs.find((x) => x.id === jobId);
       if (job) await api("/api/workshop/jobs/" + job.id + "/stock", { method: "POST", body: JSON.stringify({ productId: part.id, quantity, op: "use" }) }, commandKey.current);
-      else await api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: part.id, quantity, note: "Issued at the storeroom counter" }) }, commandKey.current);
+      else {
+        const out = await api<{ id: string; doc_no?: string }>("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: part.id, quantity, note: "Issued at the storeroom counter" }) }, commandKey.current);
+        if (out?.doc_no) setNote({ id: out.id, no: out.doc_no });
+      }
       try { if (job) sessionStorage.setItem("lifta.counter.job", JSON.stringify({ id: job.id, at: Date.now() })); else sessionStorage.removeItem("lifta.counter.job"); } catch { /* ignore */ }
       if (photoId) {
         // A confirmed photo becomes a reference and future training data for the photo model.
@@ -127,7 +134,10 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
     if (!part) return;
     setBusy(true); setError("");
     try {
-      await api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "RECEIPT", productId: part.id, quantity, note: "Received at the counter" }) }, commandKey.current);
+      const res = await api<{ id: string; doc_no?: string }>("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "RECEIPT", productId: part.id, quantity, note: "Received at the counter", supplier: supplier.trim() || undefined, reference: reference.trim() || undefined, unitCost: cost.trim() || undefined }) }, commandKey.current);
+      if (res?.doc_no) setNote({ id: res.id, no: res.doc_no });
+      try { if (supplier.trim()) sessionStorage.setItem("lifta.supplier", supplier.trim()); } catch { /* ignore */ }
+      setReference(""); setCost("");
       if (photoId) {
         try { await api("/api/vision/references", { method: "POST", body: JSON.stringify({ productId: part.id, imageId: photoId }) }); } catch { /* the receipt is already recorded */ }
       }
@@ -166,7 +176,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
           <button key={m} data-tour={"tab-" + m} role="tab" aria-selected={mode === m} className={mode === m ? "chosen " + m : m} onClick={() => switchMode(m)}>{label}</button>
         ))}
       </div>
-      {done && <p className="counter-done" role="status"><Check size={20} /> {done}</p>}
+      {done && <p className="counter-done" role="status"><Check size={20} /> {done}{note && <> <button type="button" className="doc-link" data-tour="counter-note" onClick={() => void openPdf("/api/inventory/movements/" + note.id + "/note.pdf", note.no + ".pdf").catch((e) => toast((e as Error).message, { bad: true }))}>{note.no} · {t("Print note")}</button></>}</p>}
       {error && (
         <div className="stock-error stock-error-toast" role="alert">
           <strong>{t("Could not complete that action")}</strong>
@@ -240,6 +250,17 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
                 {jobs.map((j) => <option key={j.id} value={j.id}>{j.registration} · {j.customer}</option>)}
               </select>
               <small className="stock-help">{jobId ? t("The part goes on this job's bill at its selling price.") : t("No recipient details are required. Confirm the quantity leaving the storeroom.")}</small>
+            </div>
+          )}
+          {part && mode === "receive" && (
+            <div className="counter-step counter-grn" data-tour="counter-grn">
+              <h2><span>3</span> {t("Goods received note")} <small>({t("optional")})</small></h2>
+              <div className="ws-grid2">
+                <label className="ws-field">{t("Supplier")}<input value={supplier} maxLength={100} list="counter-suppliers" disabled={busy} onChange={(e) => setSupplier(e.target.value)} placeholder="Lanka Spares" /><datalist id="counter-suppliers">{[...new Set(items.map((p) => (p.supplier || "").trim()).filter(Boolean))].sort().map((s) => <option key={s} value={s} />)}</datalist></label>
+                <label className="ws-field">{t("Supplier invoice or delivery no.")}<input value={reference} maxLength={60} disabled={busy} onChange={(e) => setReference(e.target.value)} placeholder="DN-1234" /></label>
+              </div>
+              <label className="ws-field">{t("Cost price per unit (LKR)")} <small>({t("optional")})</small><input value={cost} inputMode="decimal" maxLength={12} disabled={busy} onChange={(e) => setCost(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="1350.00" /></label>
+              <small className="stock-help">{t("What the supplier charged for one. Only the owner can see this price later.")} {t("A GRN number is made for this entry. You can print the note after saving.")}</small>
             </div>
           )}
           {part && mode === "receive" && (

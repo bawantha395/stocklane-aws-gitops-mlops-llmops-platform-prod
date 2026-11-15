@@ -29,17 +29,20 @@ def session(e, p, b, k):
 
 
 route('GET', '/api/inventory/session', None, session)
-route('GET', '/api/inventory/products', STAFF, lambda e, p, b, k: inventory.products())
+route('GET', '/api/inventory/products', STAFF, lambda e, p, b, k: inventory.products('OWNER' in groups(e)))
 route('GET', '/api/inventory/products/archived', OWNER, lambda e, p, b, k: inventory.archived_products())
 route('GET', '/api/inventory/catalogue', STAFF, lambda e, p, b, k: inventory.catalogue())
 route('POST', '/api/inventory/products', STAFF, lambda e, p, b, k: inventory.create_product(k, actor(e), b))
 route('PATCH', '/api/inventory/products/([^/]+)', OWNER, lambda e, p, b, k: inventory.edit_product(k, p[0], actor(e), b))
 route('POST', '/api/inventory/products/([^/]+)/archive', OWNER, lambda e, p, b, k: inventory.archive_product(k, p[0], actor(e), b))
-route('GET', '/api/inventory/movements', STAFF, lambda e, p, b, k: inventory.movements())
+route('GET', '/api/inventory/movements/([^/]+)/note.pdf', STAFF, lambda e, p, b, k: ('pdf',) + workshop.stock_note_pdf(p[0], 'OWNER' in groups(e) and q(e, 'cost') == '1'))
+route('POST', '/api/inventory/movements/([^/]+)/cost', OWNER, lambda e, p, b, k: inventory.set_cost(k, p[0], actor(e), b))
+route('GET', '/api/inventory/movements', STAFF, lambda e, p, b, k: inventory.movements('OWNER' in groups(e)))
 def movement(e, p, b, k):
     if b.get('kind') == 'COUNT':
         require(e, 'OWNER')  # fixing the books from a shelf count is the owner's decision
-    return inventory.record_movement(k, actor(e), b)
+    result = inventory.record_movement(k, actor(e), b)
+    return result if 'OWNER' in groups(e) else inventory.hide_cost(result)
 
 
 route('POST', '/api/inventory/movements', STAFF, movement)
@@ -49,6 +52,7 @@ route('DELETE', '/api/inventory/people/([^/]+)', OWNER, lambda e, p, b, k: inven
 route('GET', '/api/inventory/people/([^/]+)/handovers', STAFF, lambda e, p, b, k: inventory.handovers(p[0]))
 route('GET', '/api/inventory/analysis', OWNER, lambda e, p, b, k: inventory.analysis(
     q(e, 'from'), q(e, 'until'), q(e, 'search'), q(e, 'category'), q(e, 'archived', 'true') != 'false', int(q(e, 'page', '0') or 0)))
+route('GET', '/api/inventory/analysis.pdf', OWNER, lambda e, p, b, k: ('pdf',) + workshop.stock_report_pdf(q(e, 'from'), q(e, 'until'), q(e, 'search'), q(e, 'category')))
 route('GET', '/api/inventory/analysis/daily', OWNER, lambda e, p, b, k: inventory.daily(q(e, 'from'), q(e, 'until')))
 route('POST', '/api/inventory/analysis/forecast/history', OWNER, lambda e, p, b, k: forecast.export_history(actor(e)))
 route('GET', '/api/forecast', OWNER, lambda e, p, b, k: forecast.current())
@@ -85,12 +89,14 @@ route('GET', '/api/workshop/invoices/([^/]+)', STAFF, lambda e, p, b, k: worksho
 route('GET', '/api/workshop/invoices/([^/]+)/pdf', STAFF, lambda e, p, b, k: ('pdf',) + workshop.pdf(p[0]))
 route('POST', '/api/workshop/invoices/([^/]+)/payments', STAFF, lambda e, p, b, k: workshop.pay(p[0], k, actor(e), b))
 route('POST', '/api/workshop/invoices/([^/]+)/refund', OWNER, lambda e, p, b, k: workshop.refund(p[0], k, actor(e), b))
+route('POST', '/api/workshop/invoices/([^/]+)/return', OWNER, lambda e, p, b, k: workshop.return_parts(p[0], k, actor(e), b))
 route('POST', '/api/workshop/invoices/([^/]+)/void', OWNER, lambda e, p, b, k: workshop.void_invoice(p[0], k, actor(e), b))
 route('GET', '/api/workshop/vehicles', STAFF, lambda e, p, b, k: workshop.vehicles(q(e, 'search')))
 route('GET', '/api/workshop/vehicles/([^/]+)', STAFF, lambda e, p, b, k: workshop.vehicle(p[0]))
 route('GET', '/api/workshop/vehicles/([^/]+)/history.pdf', STAFF, lambda e, p, b, k: ('pdf',) + workshop.vehicle_pdf(p[0]))
 route('PATCH', '/api/workshop/vehicles/([^/]+)', STAFF, lambda e, p, b, k: workshop.edit_vehicle(p[0], k, actor(e), b))
 route('POST', '/api/workshop/vehicles/([^/]+)/owner', STAFF, lambda e, p, b, k: workshop.new_owner(p[0], k, actor(e), b))
+route('GET', '/api/workshop/owing', STAFF, lambda e, p, b, k: workshop.owing(q(e, 'reg') or '', q(e, 'phone') or ''))
 route('GET', '/api/workshop/service-due', STAFF, lambda e, p, b, k: workshop.service_due())
 route('GET', '/api/workshop/dashboard', STAFF, lambda e, p, b, k: workshop.dashboard())
 route('GET', '/api/workshop/suggestions', STAFF, lambda e, p, b, k: workshop.suggestions())

@@ -7,7 +7,7 @@ import { Bill, autoPrintOn } from "./Bill";
 import { downloadInvoicePdf, shareInvoicePdf } from "./invoicePdf";
 import { printerConnected, receiptBytes, sendToPrinter } from "./printer";
 import { DateChips, SummaryBar, cap, ALL, inRange, useSaved, type Range } from "./DateRange";
-import { Empty, Loading, Pill, dateOnly, lkr, num, today, useCommand, useLoad, useWs, waLink, type Invoice } from "./common";
+import { lateDays, Empty, Loading, Pill, dateOnly, lkr, num, today, useCommand, useLoad, useWs, waLink, type Invoice } from "./common";
 
 type Row = Omit<Invoice, "payments" | "parts" | "labour">;
 
@@ -53,10 +53,45 @@ export function Invoices() {
   );
 }
 
+/** The customer brings parts back after the bill: pick what came back, the stock and the bill follow. */
+function ReturnParts({ inv, onClose, onDone }: { inv: Invoice; onClose: () => void; onDone: () => Promise<void> }) {
+  const command = useCommand();
+  const [qty, setQty] = useState<Record<number, string>>({}), [reason, setReason] = useState(""), [method, setMethod] = useState("CASH"), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const left = (i: number) => num(inv.parts[i].quantity) - num((inv.parts[i] as { returned?: number }).returned);
+  const picked = inv.parts.map((_, i) => ({ index: i, quantity: num(qty[i]) })).filter((r) => r.quantity > 0);
+  const credit = picked.reduce((s, r) => s + (num(inv.parts[r.index].unit_price) * r.quantity * (100 - num(inv.parts[r.index].discount_pct))) / 100, 0) * (1 + num(inv.tax_rate) / 100);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!picked.length) { setErr(t("Pick the parts that came back")); return; }
+    setBusy(true); setErr("");
+    try { await command("/api/workshop/invoices/" + inv.id + "/return", { lines: picked, reason, refundMethod: method }); await onDone(); }
+    catch (x) { setErr((x as Error).message); setBusy(false); }
+  };
+  return (
+    <form className="ws-card ws-pay ws-return" onSubmit={submit} data-tour="return-parts">
+      <h3>{t("Parts came back")} <small>{inv.invoice_number}</small></h3>
+      <p className="muted">{t("The parts go back into stock and the bill goes down. If the customer already paid, you give the extra money back.")}</p>
+      {inv.parts.map((p, i) => left(i) > 0 && (
+        <label className="ws-field ws-return-line" key={i}>
+          <span>{p.name}{p.product_id ? "" : " (" + t("not from stock") + ")"} <small>{t("up to")} {left(i)}</small></span>
+          <input inputMode="decimal" value={qty[i] || ""} placeholder="0" onChange={(e) => setQty((x) => ({ ...x, [i]: e.target.value }))} />
+        </label>
+      ))}
+      {!inv.parts.some((_, i) => left(i) > 0) && <p className="muted">{t("Every part on this bill was already returned.")}</p>}
+      <label className="ws-field">{t("Reason")} *<input required value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Wrong part, not needed" /></label>
+      <label className="ws-field">{t("If money is given back, how?")}<select value={method} onChange={(e) => setMethod(e.target.value)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK">Bank transfer</option><option value="OTHER">Other</option></select></label>
+      {credit > 0 && <p className="ws-return-sum">{t("Bill goes down by about")} <b>LKR {lkr(credit)}</b></p>}
+      {err && <p role="alert" className="stock-error">{err}</p>}
+      <div className="ws-actions"><button type="button" className="button secondary" disabled={busy} onClick={onClose}>{t("Cancel")}</button><button className="button primary" disabled={busy || !picked.length}>{t("Return to stock")}</button></div>
+    </form>
+  );
+}
+
 export function InvoicePage({ id }: { id: string }) {
   const { go, owner, business } = useWs();
   const { data: inv, error: loadError, reload } = useLoad<Invoice>("/api/workshop/invoices/" + id);
   const [amount, setAmount] = useState(""), [method, setMethod] = useState("CASH"), [note, setNote] = useState("");
+  const [returning, setReturning] = useState(false);
   const [refunding, setRefunding] = useState(false), [rAmount, setRAmount] = useState(""), [rReason, setRReason] = useState("");
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const command = useCommand();
@@ -88,9 +123,10 @@ export function InvoicePage({ id }: { id: string }) {
     // Phones with a share sheet send the PDF itself; otherwise open WhatsApp with the message.
     if (!(await shareInvoicePdf(inv, shop, msg))) window.open(waLink(inv.phone || "", msg), "_blank", "noopener");
   });
+  const late = lateDays(inv.created_at, shop.payment_terms_days);
   return (
     <div>
-      <section className={"ws-sum " + (inv.status === "PAID" ? "paid" : inv.status === "VOID" ? "void" : "owes")}>
+      <section className={"ws-sum " + (inv.status === "PAID" ? "paid" : inv.status === "VOID" || inv.status === "REFUNDED" ? "void" : "owes")}>
         <span className="ws-sum-top"><span className="ws-c-label">{t("Invoice")}</span><Pill s={inv.status} /></span>
         <strong className="ws-sum-num">{inv.invoice_number}</strong>
         <span className="ws-sum-who"><b className="ws-plate">{inv.registration}</b> {inv.customer}</span>
@@ -103,10 +139,18 @@ export function InvoicePage({ id }: { id: string }) {
         <button className="button secondary small" onClick={() => go({ name: "job", id: inv.job_id })}>{t("View job")}</button>
         <button className="button secondary small" onClick={() => go({ name: "vehicle", id: inv.registration.replace(/[^A-Za-z0-9]/g, "").toUpperCase() })}>{t("Vehicle file")}</button>
         <button className="button secondary small" disabled={busy} onClick={shareBill}>{t("Share bill")}</button>
+        {(inv.status === "UNPAID" || inv.status === "PARTIAL") && <button data-tour="remind" className="button secondary small" disabled={!inv.phone} title={inv.phone ? "" : t("No phone number on this bill")} onClick={() => window.open(waLink(inv.phone || "", "Hello " + inv.customer + ", this is a reminder from " + shop.name + ": invoice " + inv.invoice_number + " (" + inv.registration + ") has a balance of LKR " + lkr(balance) + (late > 0 ? ", " + late + " days past the due date" : "") + ". Thank you."), "_blank", "noopener")}>{late > 0 ? t("Remind") + " · " + t("Overdue") : t("Remind")}</button>}
+        {owner && inv.status !== "VOID" && inv.parts.some((p) => num(p.quantity) > num((p as { returned?: number }).returned)) && <button data-tour="return-parts-btn" className="button secondary small" disabled={busy} onClick={() => { setReturning(!returning); setRefunding(false); }}>{t("Parts came back")}</button>}
         {owner && inv.status !== "VOID" && num(inv.paid) > 0 && <button data-tour="refund" className="button secondary small" disabled={busy} onClick={() => { setRAmount(""); setRefunding(!refunding); }}>{t("Refund")}</button>}
         {owner && inv.status !== "VOID" && num(inv.paid) === 0 && <button className="button secondary small" disabled={busy} onClick={voidIt}>{t("Void invoice")}</button>}
       </div>
       {error && <p role="alert" className="stock-error">{error}</p>}
+      {returning && owner && <ReturnParts inv={inv} onClose={() => setReturning(false)} onDone={async () => { setReturning(false); await reload(); }} />}
+      {!!inv.credits?.length && (
+        <section className="ws-card ws-credits"><h3>{t("Returned parts")}</h3>
+          {inv.credits.map((c) => <div key={c.id} className="ws-credit"><span>{dateOnly(c.at)} · {c.lines.map((l) => l.quantity + " x " + l.name).join(", ")} · {c.reason}</span><b>-{lkr(c.amount)}</b></div>)}
+        </section>
+      )}
       {refunding && owner && (
         <form className="ws-card ws-pay" onSubmit={refund}>
           <h3>{t("Give money back")} <small>{t("Paid so far")} LKR {lkr(inv.paid)}</small></h3>
@@ -132,7 +176,7 @@ export function InvoicePage({ id }: { id: string }) {
       )}
       <div className="ws-print">
         <Bill d={{ business: shop, number: inv.invoice_number, date: dateOnly(inv.created_at), status: inv.status, customer: inv.customer, address: inv.address, phone: inv.phone, registration: inv.registration, vehicle: inv.vehicle,
-          odometer: inv.odometer, mechanic: inv.mechanic, summary: inv.summary, parts: inv.parts, labour: inv.labour, discount: inv.discount, tax_name: inv.tax_name, tax_rate: inv.tax_rate,
+          odometer: inv.odometer, mechanic: inv.mechanic, summary: inv.summary, parts: inv.parts, labour: inv.labour, discount: inv.discount, tax_name: inv.tax_name, tax_rate: inv.tax_rate, credit_total: inv.credit_total,
           payments: inv.payments, paid: inv.paid, next_service_date: inv.next_service_date, next_service_km: inv.next_service_km,
           brought_by: inv.brought_by, brought_phone: inv.brought_phone, warranty_until: inv.warranty_until, warranty_km: inv.warranty_km, warranty_job: inv.warranty_job }} />
       </div>

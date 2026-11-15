@@ -34,6 +34,7 @@ import {
   auth,
   config,
   headers,
+  openPdf,
   userEmail,
   shrink,
   signOut,
@@ -48,7 +49,7 @@ import "./stock.css";
 import "./glass.css";
 import "./theme.css";
 import "./tokens.css";
-import { ToastHost, ConfirmHost, askConfirm, applyTheme, getTheme } from "./ui";
+import { ToastHost, ConfirmHost, askConfirm, applyTheme, getTheme, toast } from "./ui";
 import { getDefaultReorder, setBusinessName, setDefaultReorder, useBusinessName } from "./businessName";
 import { t, useLang, setLang } from "./i18n";
 import { Walkthrough } from "./Walkthrough";
@@ -342,6 +343,15 @@ function App() {
     [query, setQuery] = useState(""),
     [lowOnly, setLowOnly] = useState(false);
   const [countId, setCountId] = useState("");
+  const [costEdit, setCostEdit] = useState<{ id: string; value: string; busy?: boolean } | null>(null);
+  const saveCost = async (id: string, value: string) => {
+    setCostEdit({ id, value, busy: true });
+    try {
+      await api("/api/inventory/movements/" + id + "/cost", { method: "POST", body: JSON.stringify({ unitCost: value.trim() }) }, crypto.randomUUID());
+      setCostEdit(null); toast(t("Cost price saved"));
+      void refresh();
+    } catch (e) { setCostEdit({ id, value }); toast((e as Error).message, { bad: true }); }
+  };
   const photoTarget = useRef("");
   const file = useRef<HTMLInputElement>(null),
     sequence = useRef(0),
@@ -408,6 +418,7 @@ function App() {
       setItems(p);
       setMoves(m);
       setSession(s);
+      try { const dl = sessionStorage.getItem("lifta.deeplink"); if (dl) { sessionStorage.removeItem("lifta.deeplink"); openWorkshop({ name: "job", id: dl }); } } catch { /* ignore */ }
       setStatus(v);
       api<{ name: string; default_reorder_level?: number }>("/api/workshop/settings").then((b) => { setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); }).catch(() => undefined);
       const key = "stocklane.tasks.v2." + s.name;
@@ -2013,6 +2024,23 @@ function App() {
                                 ? "Returned from job"
                                 : m.kind}
                         </span>
+                        {m.doc_no && (
+                          <button type="button" className="doc-link" title={t("Print this note")} onClick={() => void openPdf("/api/inventory/movements/" + m.id + "/note.pdf", m.doc_no + ".pdf").catch((e) => toast((e as Error).message, { bad: true }))}>{m.doc_no}</button>
+                        )}
+                        {m.kind === "RECEIPT" && (m.supplier || m.reference) && <small>{[m.supplier, m.reference].filter(Boolean).join(" · ")}</small>}
+                        {owner && m.kind === "RECEIPT" && !(m.note || "").startsWith("Undo") && (costEdit?.id === m.id ? (
+                          <small className="cost-edit">
+                            <input aria-label={t("Cost price per unit (LKR)")} inputMode="decimal" maxLength={12} autoFocus value={costEdit.value} disabled={costEdit.busy} onChange={(e) => setCostEdit({ id: m.id, value: e.target.value.replace(/[^0-9.]/g, "") })} />
+                            <button type="button" className="doc-link" disabled={costEdit.busy || !costEdit.value.trim()} onClick={() => void saveCost(m.id, costEdit.value)}>{t("Save")}</button>
+                            <button type="button" className="doc-link" disabled={costEdit.busy} onClick={() => setCostEdit(null)}>{t("Cancel")}</button>
+                          </small>
+                        ) : (
+                          <small>
+                            <button type="button" className="doc-link" onClick={() => setCostEdit({ id: m.id, value: m.unit_cost != null ? String(m.unit_cost) : "" })}>{m.unit_cost != null ? t("Cost") + " LKR " + Number(m.unit_cost).toLocaleString("en", { minimumFractionDigits: 2 }) + " " + t("per unit") : t("Add cost price")}</button>
+                            {m.unit_cost != null && m.doc_no && <button type="button" className="doc-link" onClick={() => void openPdf("/api/inventory/movements/" + m.id + "/note.pdf?cost=1", m.doc_no + "-cost.pdf").catch((e) => toast((e as Error).message, { bad: true }))}>{t("GRN with cost")}</button>}
+                          </small>
+                        ))}
+                        {m.kind === "STOCK_OUT" && m.receiver_name && <small>{m.receiver_name}</small>}
                       </td>
                       <td>{number(m.quantity)}</td>
                       <td>
@@ -2210,6 +2238,7 @@ function ProductEditor({
     [spec, setSpec] = useState(item?.grade || pre("grade")),
     [size, setSize] = useState(item?.capacity || pre("capacity")),
     [location, setLocation] = useState(item?.location || ""),
+    [supplierName, setSupplierName] = useState(item?.supplier || ""),
     [quantity, setQuantity] = useState(0),
     [unit, setUnit] = useState(item?.unit || "UNIT"),
     [reorder, setReorder] = useState(item ? Number(item.reorder_level) : getDefaultReorder()),
@@ -2310,6 +2339,7 @@ function ProductEditor({
         capacity: size,
         partNumber: part,
         location,
+        supplier: supplierName.trim(),
         reorderLevel: reorder,
       };
       let result: Item;
@@ -2442,6 +2472,14 @@ function ProductEditor({
             <datalist id="category-options">
               {[...new Set(products.filter((p) => !p.archived).map((p) => (p.category || "").trim()).filter(Boolean))].sort().map((c) => <option key={c} value={c} />)}
             </datalist>
+            <label className="stock-field">
+              {t("Usual supplier")} <small>({t("optional")})</small>
+              <span className="input-wrap"><input value={supplierName} maxLength={100} list="supplier-options" autoComplete="off" placeholder="Lanka Spares" onChange={(e) => setSupplierName(e.target.value)} /></span>
+              <small className="stock-help">{t("Part came in fills this in for you.")}</small>
+            </label>
+            <datalist id="supplier-options">
+              {[...new Set(products.map((p) => (p.supplier || "").trim()).filter(Boolean))].sort().map((s) => <option key={s} value={s} />)}
+            </datalist>
             <datalist id="brand-options">
               {[...new Set(products.filter((p) => !p.archived).map((p) => (p.brand || "").trim()).filter(Boolean))].sort().map((b) => <option key={b} value={b} />)}
             </datalist>
@@ -2544,4 +2582,6 @@ function ProductEditor({
 }
 
 applyTheme(getTheme());
+// A job card QR opens /?job=<id>. Keep the id before sign-in can redirect away, then open that job once the session is ready.
+try { const jobId = new URLSearchParams(location.search).get("job"); if (jobId && /^[0-9a-f-]{36}$/i.test(jobId)) { sessionStorage.setItem("lifta.deeplink", jobId); history.replaceState(null, "", location.pathname); } } catch { /* ignore */ }
 createRoot(document.getElementById("root")!).render(<><App /><ToastHost /><ConfirmHost /></>);

@@ -1,7 +1,8 @@
 import { t } from "../i18n";
+import { askConfirm } from "../ui";
 import { useEffect, useRef, useState } from "react";
 import { JobItem } from "./Dashboard";
-import { PastRepairs } from "./Vehicles";
+import { OwingNotice, PastRepairs } from "./Vehicles";
 import { PhotoSlot, PhotoStrip } from "./Photos";
 import { Rows, groupByVehicle } from "./Rows";
 import { DateChips, SummaryBar, cap, ALL, inRange, useSaved, type Range } from "./DateRange";
@@ -13,7 +14,7 @@ export function Jobs() {
   const [filter, setFilter] = useSaved("jobs.status", "OPEN"), [q, setQ] = useState(""), [range, setRange] = useSaved<Range>("jobs.range", ALL);
   if (!data) return <Loading error={error} />;
   const needle = q.trim().toLowerCase();
-  const shown = data.filter((j) => (filter === "ALL" || j.status === filter) && inRange(j.created_at, range) && (!needle || (j.registration + " " + j.customer + " " + j.phone + " " + j.summary).toLowerCase().includes(needle)));
+  const shown = data.filter((j) => (filter === "ALL" || j.status === filter) && inRange(j.created_at, range) && (!needle || ((j.job_no || "") + " " + j.registration + " " + j.customer + " " + j.phone + " " + j.summary).toLowerCase().includes(needle)));
   const count = (s: string) => data.filter((j) => j.status === s).length;
   // one row per vehicle: all its jobs side by side, newest job first. The vehicle with the newest job is the top row.
   const newest = [...data].sort((a, b) => (b.created_at < a.created_at ? -1 : 1))[0];
@@ -29,11 +30,11 @@ export function Jobs() {
             <button key={k} className={"ws-chip" + (filter === k ? " chosen" : "")} onClick={() => setFilter(k)}><b>{n}</b> {label}</button>
           ))}
         </div>
-        <input aria-label="Search jobs" placeholder={t("Search number, customer, phone or work")} value={q} onChange={(e) => setQ(e.target.value)} />
+        <input aria-label="Search jobs" placeholder={t("Search job no., vehicle, customer, phone or work")} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <DateChips value={range} onChange={setRange} />
       <SummaryBar text={cap(t("jobs")) + ": " + shown.length + " · LKR " + lkr(shown.reduce((s, j) => s + (j.total || 0), 0))} file="jobs"
-        rows={shown.map((j) => ({ Date: dateOnly(j.created_at), "Vehicle no.": j.registration, Customer: j.customer, Phone: j.phone, Work: j.summary, Status: j.status, Invoice: j.invoice_number || "", "Total (LKR)": j.total }))} />
+        rows={shown.map((j) => ({ "Job no.": j.job_no || "", Date: dateOnly(j.created_at), "Vehicle no.": j.registration, Customer: j.customer, Phone: j.phone, Work: j.summary, Status: j.status, Invoice: j.invoice_number || "", "Total (LKR)": j.total }))} />
       <Rows groups={groups} idOf={(j) => j.id} latest={newest?.id} noun={t("vehicles")} render={(j) => <JobItem inRow j={j} onOpen={() => go({ name: "job", id: j.id })} />} />
       {!shown.length && <div className="ws-cards"><Empty>{data.length ? "No jobs match." : "No jobs yet. Start the first one when a vehicle comes in."}</Empty></div>}
     </>
@@ -42,7 +43,7 @@ export function Jobs() {
 
 export function NewJob({ reg: start }: { reg?: string }) {
   const { go, business } = useWs();
-  const [f, setF] = useState({ registration: start || "", customer: "", address: "", phone: "", vehicle: "", odometer: "", summary: "", mechanic: "", brought_by: "", brought_phone: "" });
+  const [f, setF] = useState({ registration: start || "", customer: "", address: "", phone: "", vehicle: "", odometer: "", summary: "", mechanic: "", brought_by: "", brought_phone: "", chassis: "", invoice_type: "CASH" });
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [plate, setPlate] = useState(""), [front, setFront] = useState(""), [before, setBefore] = useState<string[]>([]);
   const command = useCommand();
@@ -55,7 +56,7 @@ export function NewJob({ reg: start }: { reg?: string }) {
   const v = key.length >= 2 ? known.data : null;
   // Fill the empty fields from the vehicle file as soon as it is found.
   useEffect(() => {
-    if (v) setF((x) => ({ ...x, customer: x.customer || v.owner || "", phone: x.phone || v.phone || "", vehicle: x.vehicle || v.make || "" }));
+    if (v) setF((x) => ({ ...x, customer: x.customer || v.owner || "", phone: x.phone || v.phone || "", vehicle: x.vehicle || v.make || "", chassis: x.chassis || v.chassis || "" }));
   }, [v?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const lower = v?.last_km != null && f.odometer !== "" && Number(f.odometer) < v.last_km;
   const same = (x?: string, y?: string) => (x || "").toLowerCase().split(/\s+/).filter(Boolean).join(" ") === (y || "").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
@@ -68,11 +69,17 @@ export function NewJob({ reg: start }: { reg?: string }) {
     try {
       if (newOwner) await command("/api/workshop/vehicles/" + key + "/owner", { owner: f.customer, phone: f.phone });
       const job = await command<Job>("/api/workshop/jobs", { ...f, customer, ...extra, odometer: f.odometer === "" ? null : Number(f.odometer), plate_photo: plate || undefined, front_photo: front || undefined, before_photos: before });
-      go({ name: "job", id: job.id }, "Job created. Add the parts and labour.");
+      try { sessionStorage.setItem("ws.justmade", job.id); } catch { /* ignore */ }
+      go({ name: "job", id: job.id }, (job.job_no ? job.job_no + " created. " : "Job created. ") + "Print the job card, then add the parts and labour.");
     }
     catch (err) { setError((err as Error).message); setBusy(false); }
   };
-  const submit = (e: React.FormEvent) => { e.preventDefault(); if (differs) { setAsk(true); return; } create(f.customer, false); };
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (openJobs.length > 0 && !(await askConfirm(t("This vehicle already has an open job ({no}). Start another one anyway?", { no: openJobs[0]!.job_no || openJobs[0]!.summary || "" }), { confirm: t("Yes, start another") }))) return;
+    if (differs) { setAsk(true); return; }
+    create(f.customer, false);
+  };
   return (
     <div>
       <form ref={formRef} className="ws-card ws-form ws-stepped" data-step-now={step} onSubmit={submit}>
@@ -81,6 +88,7 @@ export function NewJob({ reg: start }: { reg?: string }) {
         <div className="ws-step" data-step="0">
         <label className="ws-field">{t("Vehicle number")} *<input required autoFocus autoCapitalize="characters" value={f.registration} onChange={(e) => set("registration", e.target.value)} placeholder="CAB-1234" /></label>
         {v && <p className="ws-known">Known vehicle: {v.make || "model not set"}, {v.visits} earlier visit{v.visits === 1 ? "" : "s"}, last seen at {kmText(v.last_km)}. Details filled in below.</p>}
+        <OwingNotice reg={f.registration} phone={f.phone} />
         {openJobs.length > 0 && <p className="ws-warn" role="status">{t("This vehicle already has an open job. Check it before you start another.")} <button type="button" className="button secondary small" onClick={() => go({ name: "job", id: openJobs[0].id })}>{t("Open it")}</button></p>}
         <div className="ws-grid2">
           <label className="ws-field">{t("Customer name")} *<input required value={f.customer} onChange={(e) => set("customer", e.target.value)} /></label>
@@ -88,6 +96,10 @@ export function NewJob({ reg: start }: { reg?: string }) {
           <label className="ws-field">{t("Customer address")} <small>({t("optional")})</small><textarea rows={2} value={f.address} onChange={(e) => set("address", e.target.value)} /></label>
           <label className="ws-field">{t("Make and model")}<input value={f.vehicle} onChange={(e) => set("vehicle", e.target.value)} placeholder="Toyota Prius" /></label>
           <label className="ws-field">{t("Odometer (km)")}<input inputMode="numeric" value={f.odometer} onChange={(e) => set("odometer", e.target.value.replace(/\D/g, ""))} /></label>
+          <label className="ws-field">{t("Chassis no.")} <small>({t("optional")})</small><input autoCapitalize="characters" maxLength={30} value={f.chassis} onChange={(e) => set("chassis", e.target.value.toUpperCase())} /></label>
+        </div>
+        <div className="ws-field" role="group" aria-label={t("Invoice type")}>{t("Invoice type")}
+          <div className="ws-seg">{([["CASH", t("Cash")], ["CREDIT", t("Credit")], ["INSURANCE", t("Insurance")], ["WARRANTY", t("Warranty")]] as [string, string][]).map(([k, label]) => <button type="button" key={k} className={f.invoice_type === k ? "on" : ""} aria-pressed={f.invoice_type === k} onClick={() => set("invoice_type", k)}>{label}</button>)}</div>
         </div>
         </div>
         <div className="ws-step" data-step="2">

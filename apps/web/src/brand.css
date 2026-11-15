@@ -415,3 +415,14 @@ html[data-theme="dark"] .ws-actionbar { background: var(--surface, #1c1e21) !imp
 /* quick look: tap the picture in a parts list to see it large, without picking the row */
 .photo-peek { display: contents; cursor: zoom-in; }
 .photo-viewer-cap { position: absolute; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: 86vw; margin: 0; padding: 8px 14px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; font-weight: 600; text-align: center; }
+.report-move { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; border: 1px solid var(--ws-line, #e5e5ea); border-radius: 16px; padding: 12px 14px; margin: 0 0 14px; }
+.report-move > div { flex: 1 1 260px; }
+.report-move p { margin: 2px 0 0; }
+.report-move label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.doc-link { background: transparent; border: 0; padding: 0 0 0 6px; font: inherit; font-size: 12px; font-weight: 600; color: inherit; text-decoration: underline; cursor: pointer; }
+.counter-grn .ws-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.counter-grn .ws-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.counter-grn input { width: 100%; min-height: 44px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--ws-line, #d8d8de); font: inherit; font-size: 15px; background: var(--surface, #fff); color: inherit; box-sizing: border-box; }
+.ws-newq-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.cost-edit { display: flex; gap: 6px; align-items: center; }
+.cost-edit input { width: 96px; padding: 4px 6px; font: inherit; font-size: 12px; border: 1px solid #c9c5bb; border-radius: 6px; }

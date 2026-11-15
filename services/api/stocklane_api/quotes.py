@@ -1,19 +1,19 @@
-"""Quotations for insurance and other estimates. Kept apart from jobs and invoices on purpose:
-a quotation never touches stock, never locks anything and never creates a bill.
+"""Estimates (insurance repairs, price can still change) and quotations (a fixed price offer), one record type with a kind. Kept apart from jobs and invoices on purpose:
+an estimate never touches stock, never locks anything and never creates a bill.
 
-  WQUO/<id>   quotation: insurer, claim, vehicle, issue details, photos, part lines, labour lines in sections, revisions
+  WQUO/<id>   estimate: insurer, claim, vehicle, issue details, photos, part lines, labour lines in sections, revisions
 
-A quotation is revised (v1, v2, ...) instead of copied: Revise freezes the current lines as an earlier version and
+An estimate is revised (v1, v2, ...) instead of copied: Revise freezes the current lines as an earlier version and
 the working lines carry on as the next one. Convert to job copies the approved lines into a new job in one transaction.
 """
 import uuid
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
-from . import photos
+from . import photos, workshop
 from .core import COLOMBO, bad, command, conflict, delete, get, missing, now, num, public, put, query
 from .workshop import (CHANGED, MONEY, ZERO, clean, history_put, lines_text, money, phone, quantity, regkey, rows, text,
-                       vehicle_fields, vehicle_put, FROM_JOBS)
+                       vehicle_fields, vehicle_put, FROM_JOBS, km)
 
 STATUSES = ('DRAFT', 'SENT', 'APPROVED', 'REJECTED', 'CONVERTED')
 SECTIONS = ('Rem/Refit', 'Repaint', 'Other')
@@ -50,8 +50,13 @@ def totals(q):
             'parts_unpriced': sum(1 for p in q.get('parts', []) if p['unit_price'] == 0)}
 
 
+def label(q):
+    return 'quotation' if q.get('kind') == 'QUOTATION' else 'estimate'
+
+
 def view(q):
     out = {**public(q), **totals(q)}
+    out['kind'] = 'QUOTATION' if q.get('kind') == 'QUOTATION' else 'ESTIMATE'
     out['history'] = [{**h, 'total': h['total']} for h in q.get('history', [])]
     return out
 
@@ -59,7 +64,7 @@ def view(q):
 def one(quote_id):
     item = get('WQUO', quote_id)
     if not item:
-        raise missing('Quotation not found')
+        raise missing('Estimate not found')
     return item
 
 
@@ -92,6 +97,10 @@ def _details(q, b):
         q['registration'], q['vehicle_key'] = reg, regkey(reg)
     if 'phone' in b:
         q['phone'] = phone(b['phone'])
+    if 'odometer' in b:
+        q['odometer'] = km(b['odometer'], 'Mileage')
+    if 'chassis' in b:
+        q['chassis'] = workshop.chassis_no(b['chassis']) if b['chassis'] else ''
     if 'issue' in b:
         q['issue'] = lines_text(b['issue'], 'Issue details', 1500)
     if 'valid_until' in b:
@@ -117,8 +126,9 @@ def create(key, who, body):
         if not str(b.get('registration') or '').strip():
             raise bad('Enter the vehicle number')
         qid, created = str(uuid.uuid4()), now()
-        number = 'QT-' + datetime.now(COLOMBO).strftime('%Y%m%d') + '-' + qid[:4].upper()
-        q = {'pk': 'WQUO', 'sk': qid, 'id': qid, 'number': number, 'status': 'DRAFT', 'revision': 0, 'rev_no': 1, 'history': [],
+        kind = 'QUOTATION' if b.get('kind') == 'QUOTATION' else 'ESTIMATE'
+        number = ('QUO-' if kind == 'QUOTATION' else 'EST-') + datetime.now(COLOMBO).strftime('%Y%m%d') + '-' + qid[:4].upper()
+        q = {'pk': 'WQUO', 'sk': qid, 'id': qid, 'kind': kind, 'number': number, 'status': 'DRAFT', 'revision': 0, 'rev_no': 1, 'history': [],
              'parts': [], 'labour': [], 'photos': [], 'created_by': who, 'created_at': created, 'updated_at': created}
         q = clean(_details(q, b))
         return [put(q)], [None], view(q)
@@ -129,7 +139,7 @@ def save(quote_id, key, who, body):
     def build():
         current, b = one(quote_id), body or {}
         if current['status'] == 'CONVERTED':
-            raise conflict('This quotation was already made into a job')
+            raise conflict('This %s was already made into a job' % label(current))
         if num(b.get('revision'), 'Revision') != current['revision']:
             raise conflict(CHANGED)
         q = clean(_details(dict(current), b))
@@ -147,12 +157,12 @@ def revise(quote_id, key, who, body):
     def build():
         current, b = one(quote_id), body or {}
         if current['status'] == 'CONVERTED':
-            raise conflict('This quotation was already made into a job')
+            raise conflict('This %s was already made into a job' % label(current))
         if num(b.get('revision'), 'Revision') != current['revision']:
             raise conflict(CHANGED)
         history = list(current.get('history', []))
         if len(history) >= MAX_HISTORY:
-            raise bad('A quotation can be revised %d times' % MAX_HISTORY)
+            raise bad('A %s can be revised %d times' % (label(current), MAX_HISTORY))
         t = totals(current)
         history.append(clean({'rev_no': int(current.get('rev_no', 1)), 'at': now(), 'by': who, 'status': current['status'], 'total': t['total'],
                               'parts': current.get('parts', []), 'labour': current.get('labour', []),
@@ -171,11 +181,13 @@ def set_status(quote_id, key, who, body):
         if status not in ('DRAFT', 'SENT', 'APPROVED', 'REJECTED'):
             raise bad('Status must be one of DRAFT, SENT, APPROVED, REJECTED')
         if current['status'] == 'CONVERTED':
-            raise conflict('This quotation was already made into a job')
+            raise conflict('This %s was already made into a job' % label(current))
         if num(b.get('revision'), 'Revision') != current['revision']:
             raise conflict(CHANGED)
         if status in ('SENT', 'APPROVED') and not current.get('parts') and not current.get('labour'):
             raise bad('Add at least one part or work line first')
+        if status in ('SENT', 'APPROVED') and current.get('kind') == 'QUOTATION' and any(p['unit_price'] == 0 for p in current.get('parts', [])):
+            raise bad('A quotation is a fixed price. Price every part before you send it')
         q = dict(current, status=status, revision=int(current['revision']) + 1, updated_at=now(), status_by=who)
         op = put(clean(q), ConditionExpression='revision = :r and #s <> :done', ExpressionAttributeNames={'#s': 'status'},
                  ExpressionAttributeValues={':r': current['revision'], ':done': 'CONVERTED'})
@@ -187,19 +199,19 @@ def remove(quote_id, key, who, body):
     def build():
         current = one(quote_id)
         if current['status'] == 'CONVERTED':
-            raise conflict('This quotation was already made into a job, so it stays on record')
+            raise conflict('This %s was already made into a job, so it stays on record' % label(current))
         return [delete('WQUO', quote_id)], [None], {'deleted': quote_id}
     return command(key, 'delete-quote:' + quote_id, who, body, build)
 
 
 def convert(quote_id, key, who, body):
-    """One new OPEN job with the quotation's lines and photos, and the quotation marked CONVERTED, in one transaction."""
+    """One new OPEN job with the estimate's lines and photos, and the estimate marked CONVERTED, in one transaction."""
     def build():
         current, b = one(quote_id), body or {}
         if current['status'] == 'CONVERTED':
-            raise conflict('This quotation was already made into a job')
+            raise conflict('This %s was already made into a job' % label(current))
         if current['status'] != 'APPROVED':
-            raise bad('Mark the quotation as approved first')
+            raise bad('Mark the %s as approved first' % label(current))
         if num(b.get('revision'), 'Revision') != current['revision']:
             raise conflict(CHANGED)
         customer = text(current.get('customer'), 'Customer name', 100)
@@ -210,12 +222,15 @@ def convert(quote_id, key, who, body):
                   for l in current.get('labour', [])]
         summary = ' '.join(filter(None, ['Insurance ' + current['insurer'] if current.get('insurer') else '',
                                          'claim ' + current['claim_no'] if current.get('claim_no') else '', (current.get('issue') or '').replace('\n', ' ')]))[:1000]
-        j = clean({'pk': 'WJOB', 'sk': job_id, 'id': job_id, 'registration': current['registration'], 'vehicle_key': current['vehicle_key'],
-                   'customer': customer, 'phone': current.get('phone', ''), 'address': '', 'vehicle': current.get('vehicle', ''),
+        job_no, counter = workshop.next_job_no()
+        j = clean({'pk': 'WJOB', 'sk': job_id, 'id': job_id, 'job_no': job_no, 'chassis': current.get('chassis', ''),
+                   'invoice_type': 'INSURANCE' if current.get('insurer') else 'CASH',
+                   'registration': current['registration'], 'vehicle_key': current['vehicle_key'],
+                   'customer': customer, 'phone': current.get('phone', ''), 'address': '', 'vehicle': current.get('vehicle', ''), 'odometer': current.get('odometer'),
                    'summary': summary, 'mechanic': '', 'notes': '', 'status': 'OPEN', 'revision': 0, 'stage': 'WAITING', 'brought_by': '', 'brought_phone': '',
                    'parts': [dict(p) for p in current.get('parts', [])], 'labour': labour, 'discount': ZERO, 'quote_id': quote_id, 'quote_number': current['number'],
                    'created_by': who, 'created_at': created, 'updated_at': created})
-        ops = [put(j), vehicle_put(j['vehicle_key'], vehicle_fields(j), fill_only=FROM_JOBS), history_put(j)]
+        ops = [put(j), vehicle_put(j['vehicle_key'], vehicle_fields(j), fill_only=FROM_JOBS), history_put(j), counter]
         if current.get('photos'):
             ops.append(put({'pk': 'WJPH', 'sk': job_id, 'before': list(current['photos'])[:6], 'n': 1, 'updated_at': created}))
         done = clean(dict(current, status='CONVERTED', job_id=job_id, revision=int(current['revision']) + 1, updated_at=created))

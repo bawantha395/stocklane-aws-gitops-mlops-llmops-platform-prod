@@ -763,3 +763,24 @@ button.ws-kpi:hover { transform: translateY(-4px); box-shadow: 0 22px 40px -20px
 }
 .ws-kpi.on { border-color: var(--brand, #1f6feb); box-shadow: 0 0 0 2px rgba(31,111,235,.18); }
 button.ws-kpi { text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.ws-owing { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.ws-owing-row { text-align: left; background: transparent; border: 0; border-top: 1px solid var(--ws-line); padding: 6px 0 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline; }
+.ws-visit-owe { display: flex; gap: 6px; align-items: center; justify-content: flex-end; font-size: 12px; margin-top: 2px; }
+.ws-return-line { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+.ws-return-line input { width: 90px; flex: none; }
+.ws-credit { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 4px 0; }
+.ws-return-sum { margin: 0; }
+
+/* job number, invoice type chooser, "just made" banner */
+.ws-jobno { display: inline-block; font-weight: 700; font-size: 11px; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; background: var(--ws-chip, #e7efe9); color: #2f5d47; margin-right: 6px; }
+.ws-c-body > .ws-jobno { align-self: flex-start; margin: 4px 0 2px; }
+.ws-seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+.ws-seg button { min-height: 44px; border-radius: 10px; border: 1px solid #cfd8d2; background: #fff; font-weight: 600; font-size: 13px; }
+.ws-seg button.on { background: #2f5d47; border-color: #2f5d47; color: #fff; }
+.ws-made { border-left: 4px solid #2f5d47; }
+@media (max-width: 380px) { .ws-seg { grid-template-columns: repeat(2, 1fr); } }
+
+/* overdue bills */
+.ws-late { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: #b4452c; color: #fff; margin-right: 4px; }
+.ws-owing.late { border-color: #b4452c; background: #fdeeea; }
+.ws-owing.late > strong { color: #8f2f1c; }

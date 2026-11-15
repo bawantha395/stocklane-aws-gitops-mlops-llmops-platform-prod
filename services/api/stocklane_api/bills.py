@@ -97,7 +97,7 @@ def invoice(i):
     letterhead(d, b, 'VOID' if status == 'VOID' else 'INVOICE' if not b.get('tax_rate') else 'TAX INVOICE',
         [(i['invoice_number'], True), ('Date: ' + i['date'], False)]
         + ([('Due: ' + i['due_date'] + ' (' + str(i['terms']) + ' days)', False)] if i.get('due_date') else [])
-        + [('Status: ' + {'UNPAID': 'Unpaid', 'PARTIAL': 'Part paid', 'PAID': 'Paid', 'VOID': 'Void'}[status], False)])
+        + [('Status: ' + {'UNPAID': 'Unpaid', 'PARTIAL': 'Part paid', 'PAID': 'Paid', 'REFUNDED': 'Refunded', 'VOID': 'Void'}[status], False)])
     left = block(d, MARGIN, 230, 'BILL TO', [(i['customer'], 11, True), (i.get('address'), 9.5, False), (i.get('phone'), 9.5, False),
                                          (('Brought in by: ' + i['brought_by'] + ((' ' + i['brought_phone']) if i.get('brought_phone') else '')) if i.get('brought_by') else '', 9, False)])
     odo = kms(i['odometer']) if i.get('odometer') is not None else ''
@@ -149,6 +149,8 @@ def invoice(i):
         lines.append(('Discount', '-' + m(i['discount'])))
     if i['tax']:
         lines.append((i['tax_name'] + ' (' + q(i['tax_rate']) + '%)', m(i['tax'])))
+    if i.get('credit_total'):
+        lines.append(('Returned parts credit', '-' + m(i['credit_total'])))
     d.room(30 + 16 * len(lines) + 70)
     for label, value in lines:
         d.text(430, d.y + 10, label, 9.5, color=MUTED, align='r')
@@ -244,14 +246,37 @@ def history(v, visits, business):
         d.text(R, y + 10, value, 9.5, True, 'r')
         y += 15
     d.y = max(left, y) + 8
+    changes = v.get('owner_log') or []
+    names = {j.get('customer') for j in visits if j.get('customer')}
+    many = bool(changes) or len(names) > 1
+    if changes:
+        d.room(16 + 12 * len(changes))
+        d.text(MARGIN, d.y + 9, 'OWNERSHIP CHANGES', 8, True, color=MUTED)
+        d.y += 14
+        for c in changes:
+            d.text(MARGIN + 8, d.y + 9, (c.get('at') or '')[:10] + '   ' + fit(c.get('from_owner') or '-', 150, 9) + '  ->  ' + fit(c.get('to_owner') or '-', 150, 9), 9)
+            d.y += 12
+        d.y += 8
     for j in visits:
-        need = 60 + 13 * (len(j['lines']) + 1)
-        d.room(min(need, 200))
+        need = 84 + 13 * (len(j['lines']) + 1)
+        d.room(min(need, 220))
         d.rect(MARGIN, d.y, R - MARGIN, 22, GREY)
         bits = [j['date']] + ([kms(j['odometer'])] if j.get('odometer') is not None else []) + ([j['invoice_number']] if j.get('invoice_number') else [])
         d.text(MARGIN + 8, d.y + 15, '  |  '.join(bits), 9.5, True)
         d.text(R - 8, d.y + 15, ('CANCELLED' if j['status'] == 'CANCELLED' else 'Open' if j['status'] == 'OPEN' else m(j['total'])), 9.5, True, 'r')
         d.y += 28
+        if j.get('pay_status') and j['status'] == 'INVOICED':
+            if j['pay_status'] == 'PAID':
+                note = 'PAID'
+            elif j['pay_status'] == 'REFUNDED':
+                note = 'REFUNDED  |  Money returned to the customer'
+            else:
+                note = ('PART PAID' if j['pay_status'] == 'PARTIAL' else 'NOT PAID') + '  |  Paid ' + m(j['paid']) + '  |  Balance ' + m(j['balance'])
+            d.text(R - 8, d.y + 1, note, 8.5, True, 'r', color=MUTED if j['pay_status'] in ('PAID', 'REFUNDED') else INK)
+            d.y += 11
+        if many and j.get('customer'):
+            d.text(MARGIN + 8, d.y + 9, 'Owner: ' + fit(j['customer'], 300, 9), 9, color=MUTED)
+            d.y += 12
         if j.get('summary'):
             d.paragraph(MARGIN + 8, j['summary'], R - MARGIN - 16, 9.5, bold=False)
         for kind, label, amount in j['lines']:
@@ -325,4 +350,91 @@ def report(r, business):
     table('UNPAID BY AGE (ALL TIME)', ['AGE', 'AMOUNT'], [('0 - 7 days', m(ag['d0_7'])), ('8 - 30 days', m(ag['d8_30'])), ('31 - 60 days', m(ag['d31_60'])), ('Over 60 days', m(ag['d60_plus']))], ['l', 'r'], [MARGIN + 6, R - 6])
     table('UNPAID INVOICES', ['INVOICE', 'VEHICLE', 'DAYS', 'BALANCE'], [(x['invoice_number'], x['registration'] + ' ' + x['customer'], str(x['days']), m(x['balance'])) for x in r['unpaid_list']],
           ['l', 'l', 'r', 'r'], [MARGIN + 6, 190, 440, R - 6])
+    return d.render()
+
+
+def stock_report(r, business):
+    """Stock movement per item between two dates: opening, came in, went out, returned, count corrections, closing."""
+    d = Doc(footer=(business.get('name') or 'Workshop') + ' | stock movement report')
+    letterhead(d, business, 'STOCK MOVEMENT', [(r['from'] + '  to  ' + r['until'], True), ('Printed: ' + r['printed'], False)])
+    rows = r['rows']
+    tot = lambda k: sum((Decimal(str(x[k])) for x in rows), Decimal(0))
+    cards = [('Items that moved', str(len(rows))), ('Came in', q(tot('came_in_quantity'))), ('Went out', q(tot('taken_quantity'))), ('Returned', q(tot('returned_quantity')))]
+    cw = (R - MARGIN - 3 * 8) / 4
+    for k, (label, value) in enumerate(cards):
+        x = MARGIN + k * (cw + 8)
+        d.rect(x, d.y, cw, 44, WASH)
+        d.text(x + 8, d.y + 15, label, 8, color=MUTED)
+        d.text(x + 8, d.y + 34, value, 13, True)
+    d.y += 56
+    note = 'Came in = bought / received stock and opening stock. Went out = used on jobs and handed over at the counter. Returned = parts taken back into stock. Count = corrections after a shelf count.'
+    d.paragraph(MARGIN, note, R - MARGIN, 8, bold=False)
+    d.y += 6
+    xs = [R - 6 - 54 * k for k in range(5, -1, -1)]
+    heads = ['OPENING', 'CAME IN', 'WENT OUT', 'RETURNED', 'COUNT', 'CLOSING']
+
+    def head():
+        d.rect(MARGIN, d.y, R - MARGIN, 17, GREY)
+        d.text(MARGIN + 6, d.y + 12, 'ITEM', 8, True)
+        for h, x in zip(heads, xs):
+            d.text(x, d.y + 12, h, 8, True, 'r')
+        d.y += 17
+
+    def cell(v):
+        v = Decimal(str(v))
+        return '-' if v == 0 else q(v)
+    head()
+    for x in rows:
+        if d.room(30):
+            head()
+        d.text(MARGIN + 6, d.y + 11, fit(x['name'], 190, 9), 9)
+        d.text(MARGIN + 6, d.y + 21, fit((x['sku'] or '') + (' | ' + x['location'] if x.get('location') else ''), 190, 7.5), 7.5, color=MUTED)
+        vals = [x['opening_quantity'], x['came_in_quantity'], x['taken_quantity'], x['returned_quantity'], x['adjusted_quantity'], x['closing_quantity']]
+        for v, px in zip(vals, xs):
+            d.text(px, d.y + 15, cell(v), 9, px == xs[-1], 'r')
+        d.y += 26
+        d.line(MARGIN, d.y, R, d.y)
+    if not rows:
+        d.text(MARGIN, d.y + 14, 'No stock moved in this period.', 10, color=MUTED)
+    return d.render()
+
+
+def stock_note(n, business):
+    """One goods received note (GRN) or goods issue note (GIN): what, how many, from whom or to whom, and who signs."""
+    grn = n['kind'] == 'RECEIPT'
+    title = 'GOODS RECEIVED NOTE' if grn else 'GOODS ISSUE NOTE'
+    d = Doc(footer=(business.get('name') or 'Workshop') + ' | ' + n.get('doc_no', title))
+    letterhead(d, business, title, [(n.get('doc_no', ''), True), ('Date: ' + n['date'], False)])
+    facts = [('Note no.', n.get('doc_no', '-')), ('Date', n['date'])]
+    if grn:
+        facts += [('Supplier', n.get('supplier') or '-'), ('Supplier invoice / delivery no.', n.get('reference') or '-'), ('Received into stock by', n.get('actor', '-'))]
+        if n.get('unit_cost') is not None:
+            cost = Decimal(str(n['unit_cost']))
+            facts += [('Cost price (per unit)', 'LKR ' + m(cost)), ('Cost of this delivery', 'LKR ' + m(cost * Decimal(str(n['quantity']))))]
+    else:
+        facts += [('Handed to', n.get('receiver_name') or '-'), ('For job / vehicle', n.get('job_registration') or '-'), ('Issued by', n.get('actor', '-'))]
+    y = d.y + 4
+    for label, value in facts:
+        d.text(MARGIN, y + 10, label, 9, color=MUTED)
+        d.text(260, y + 10, fit(value, 280, 10), 10, True)
+        y += 17
+    d.y = y + 12
+    d.rect(MARGIN, d.y, R - MARGIN, 18, GREY)
+    d.text(MARGIN + 6, d.y + 12, 'ITEM', 8, True)
+    d.text(R - 120, d.y + 12, 'QUANTITY', 8, True, 'r')
+    d.text(R - 6, d.y + 12, 'UNIT', 8, True, 'r')
+    d.y += 18
+    d.text(MARGIN + 6, d.y + 14, fit(n['name'], 330, 10.5), 10.5, True)
+    d.text(MARGIN + 6, d.y + 26, fit(' | '.join(x for x in (n.get('sku'), n.get('part_number') and 'Part no. ' + n['part_number'], n.get('location')) if x), 330, 8), 8, color=MUTED)
+    d.text(R - 120, d.y + 17, q(n['quantity']), 11, True, 'r')
+    d.text(R - 6, d.y + 17, 'litres' if n.get('unit') == 'LITRE' else 'pcs', 9.5, align='r')
+    d.y += 36
+    d.line(MARGIN, d.y, R, d.y)
+    if n.get('note'):
+        d.paragraph(MARGIN, 'Note: ' + n['note'], R - MARGIN, 9, bold=False)
+    d.y += 70
+    d.room(60)
+    for x0, label in ((MARGIN, 'Issued by (signature)' if not grn else 'Received by (signature)'), (320, 'Received by (signature)' if not grn else 'Supplier / driver (signature)')):
+        d.line(x0, d.y, x0 + 210, d.y)
+        d.text(x0, d.y + 12, label, 8.5, color=MUTED)
     return d.render()

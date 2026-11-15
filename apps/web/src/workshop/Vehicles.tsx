@@ -7,7 +7,7 @@ import { useState } from "react";
 import { download } from "../api";
 import { Rows, groupByPeriod } from "./Rows";
 import { DateChips, SummaryBar, cap, ALL, inRange, useSaved, type Range } from "./DateRange";
-import { Empty, Loading, Pill, addDays, dateOnly, kmText, lkr, today, useCommand, useDebounced, useLoad, useWs, waLink, type Vehicle, type Visit } from "./common";
+import { Empty, Loading, Pill, addDays, dateOnly, kmText, lateDays, lkr, today, useCommand, useDebounced, useLoad, useWs, waLink, type Owing, type Vehicle, type Visit } from "./common";
 
 const total = (v: Visit) => lkr(v.total);
 
@@ -20,7 +20,7 @@ export function VisitCard({ v, open = false, onOpenJob, showCustomer = false }: 
       <button className="ws-visit-head" onClick={() => setShow(!show)} aria-expanded={show}>
         <span><b>{dateOnly(v.created_at)}</b>{v.odometer != null && <small>{kmText(v.odometer)}</small>}{showCustomer && v.customer && <small className="ws-visit-who">{v.customer}</small>}</span>
         <span className="ws-visit-work">{v.summary || "No complaint noted"}</span>
-        <span className="ws-visit-total">{v.status === "CANCELLED" ? <Pill s="CANCELLED" /> : v.status === "OPEN" ? <Pill s="OPEN" /> : <b>{total(v)}</b>}</span>
+        <span className="ws-visit-total">{v.status === "CANCELLED" ? <Pill s="CANCELLED" /> : v.status === "OPEN" ? <Pill s="OPEN" /> : <><b>{total(v)}</b>{v.pay_status && v.pay_status !== "PAID" && v.pay_status !== "REFUNDED" && <small className="ws-visit-owe"><Pill s={v.pay_status} /> {t("Balance")} {lkr(v.balance)}</small>}{v.pay_status === "REFUNDED" && <small className="ws-visit-owe"><Pill s="REFUNDED" /></small>}{v.pay_status === "PAID" && <small className="ws-visit-owe"><Pill s="PAID" /></small>}</>}</span>
       </button>
       {show && (
         <div className="ws-visit-body">
@@ -35,6 +35,22 @@ export function VisitCard({ v, open = false, onOpenJob, showCustomer = false }: 
         </div>
       )}
     </div>
+  );
+}
+
+/** A returning customer who still owes: unpaid and part-paid bills for this vehicle or phone number. */
+export function OwingNotice({ reg, phone }: { reg: string; phone?: string }) {
+  const { go, business } = useWs();
+  const r = useDebounced((reg || "").replace(/[^A-Za-z0-9]/g, "")), p = useDebounced((phone || "").replace(/\D/g, ""));
+  const { data } = useLoad<Owing[]>(r.length >= 2 || p.length >= 7 ? "/api/workshop/owing?reg=" + encodeURIComponent(r) + "&phone=" + encodeURIComponent(p) : null);
+  if (!data || !data.length) return null;
+  const sum = data.reduce((s, i) => s + i.balance, 0);
+  const late = data.filter((i) => lateDays(i.created_at, business.payment_terms_days) > 0);
+  return (
+    <section className={"ws-warn ws-owing" + (late.length ? " late" : "")} role="status" data-tour="owing-notice">
+      <strong>{t("This customer still owes")} LKR {lkr(sum)}{late.length ? " · " + t("overdue") + " " + (Math.max(...late.map((i) => i.age_days)) ) + " " + t("days") : ""}</strong>
+      {data.slice(0, 4).map((i) => <button type="button" key={i.id} className="ws-owing-row" onClick={() => go({ name: "invoice", id: i.id })}>{i.invoice_number} · {i.registration} · {dateOnly(i.created_at)} · {i.age_days} {t("days")} · {i.status === "PARTIAL" ? t("Part paid") : t("Not paid")} · LKR {lkr(i.balance)}{lateDays(i.created_at, business.payment_terms_days) > 0 ? " · " + t("OVERDUE") : ""}</button>)}
+    </section>
   );
 }
 
@@ -103,6 +119,7 @@ export function VehiclePage({ id }: { id: string }) {
   const due = v.next_service_date && v.next_service_date <= addDays(today(), 14);
   return (
     <div>
+      <OwingNotice reg={v.registration} phone={v.phone} />
       <div className="ws-bar">
         <button className="button primary small" onClick={() => go({ name: "new", reg: v.registration })}>+ New job</button>
         <button className="button secondary small" onClick={() => void download("/api/workshop/vehicles/" + id + "/history.pdf", "history-" + id + ".pdf").catch((e) => setMsg(e.message))}>History PDF</button>

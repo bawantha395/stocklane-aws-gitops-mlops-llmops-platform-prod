@@ -1,4 +1,4 @@
-"""Quotations: sections and totals, TBC parts, revisions, owner-only status, convert to job, and that nothing else is touched."""
+"""Estimates: sections and totals, TBC parts, revisions, owner-only status, convert to job, and that nothing else is touched."""
 from test_money_flow import ok
 
 BASE = {'registration': 'cab-1000', 'insurer': 'Allianz Motor Insurance Lanka Limited', 'insurer_branch': 'Anuradhapura', 'claim_no': 'CL-77',
@@ -14,7 +14,7 @@ def make(api, role='MECHANIC', **extra):
 
 def test_sections_totals_and_unpriced_parts(api):
     q = make(api)
-    assert q['number'].startswith('QT-') and q['status'] == 'DRAFT' and q['rev_no'] == 1
+    assert q['number'].startswith('EST-') and q['status'] == 'DRAFT' and q['rev_no'] == 1
     assert q['sections'] == {'Rem/Refit': 2600, 'Repaint': 23500, 'Other': 0}
     assert q['labour_total'] == 26100 and q['parts_total'] == 0 and q['total'] == 26100 and q['parts_unpriced'] == 2
     q = ok(api('PATCH', '/api/workshop/quotes/' + q['id'], {'revision': q['revision'], 'parts': [
@@ -68,7 +68,23 @@ def test_convert_needs_a_customer_and_delete_and_list(api):
     assert api('GET', '/api/workshop/quotes/' + q['id'])[0] == 404
 
 
-def test_empty_quotation_cannot_be_sent_and_jobs_untouched(api):
+def test_empty_estimate_cannot_be_sent_and_jobs_untouched(api):
     q = ok(api('POST', '/api/workshop/quotes', {'registration': 'CAB-2000'}))
     assert api('POST', '/api/workshop/quotes/%s/status' % q['id'], {'revision': q['revision'], 'status': 'SENT'})[0] == 400
     assert ok(api('GET', '/api/workshop/jobs')) == [] and ok(api('GET', '/api/workshop/invoices')) == []
+
+
+def test_quotation_is_a_fixed_price_estimate_can_have_unpriced_parts(api):
+    body = {'registration': 'CAB-3000', 'customer': 'Nimal', 'parts': [{'name': 'Bumper', 'quantity': 1, 'unit_price': 0}], 'labour': [{'description': 'Fit', 'amount': 1000, 'section': 'Other'}]}
+    est = ok(api('POST', '/api/workshop/quotes', body))
+    assert est['kind'] == 'ESTIMATE' and est['number'].startswith('EST-')
+    ok(api('POST', '/api/workshop/quotes/%s/status' % est['id'], {'revision': est['revision'], 'status': 'SENT'}))  # price TBC is fine on an estimate
+    quo = ok(api('POST', '/api/workshop/quotes', dict(body, kind='QUOTATION')))
+    assert quo['kind'] == 'QUOTATION' and quo['number'].startswith('QUO-')
+    status, res = api('POST', '/api/workshop/quotes/%s/status' % quo['id'], {'revision': quo['revision'], 'status': 'SENT'})
+    assert status == 400 and 'fixed price' in str(res)
+    quo = ok(api('PATCH', '/api/workshop/quotes/' + quo['id'], {'revision': quo['revision'], 'parts': [{'name': 'Bumper', 'quantity': 1, 'unit_price': 9000}]}))
+    sent = ok(api('POST', '/api/workshop/quotes/%s/status' % quo['id'], {'revision': quo['revision'], 'status': 'SENT'}))
+    assert sent['status'] == 'SENT' and sent['total'] == 10000
+    kinds = sorted(x['kind'] for x in ok(api('GET', '/api/workshop/quotes', role='MECHANIC')))
+    assert kinds == ['ESTIMATE', 'QUOTATION']

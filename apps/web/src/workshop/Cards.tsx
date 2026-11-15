@@ -3,7 +3,7 @@ import { useContext, useRef, useState, type ReactNode } from "react";
 import { Photo } from "./Photos";
 import { RailCtx } from "./Rows";
 import { BizLogo } from "../BizLogo";
-import { Pill, STAGE_LABEL, dateOnly, kmText, lkr, useWs, type Invoice, type Job, type Vehicle } from "./common";
+import { Pill, STAGE_LABEL, dateOnly, kmText, lateDays, lkr, useWs, type Invoice, type Job, type Vehicle } from "./common";
 
 /** Swipe a card left to reveal Call and Open. Vertical scrolling still works; a tap still opens the card. */
 function Swipe({ phone, onOpen, children }: { phone?: string; onOpen: () => void; children: ReactNode }) {
@@ -79,6 +79,7 @@ export function JobCard({ j, onOpen, inRow }: { j: Job; onOpen: () => void; inRo
         {!inRow && <><span className="ws-c-label">{t("Vehicle no.")}</span>
         <strong className="ws-plate">{j.registration}</strong></>}
         {j.vehicle && <span className="ws-c-make">{j.vehicle}</span>}
+        {j.job_no && <span className="ws-jobno">{j.job_no}</span>}
         <dl className="ws-c-rows">
           <Row label={t("Customer")}>{j.customer}</Row>
           <Row label={t("Phone")}>{j.phone}</Row>
@@ -98,10 +99,12 @@ type InvoiceRow = Omit<Invoice, "payments" | "parts" | "labour">;
 /** An invoice: number plate, customer, status, total and what is still owed. */
 export function InvoiceCard({ i, onOpen, age }: { i: InvoiceRow; onOpen: () => void; age: number }) {
   const owes = i.status === "UNPAID" || i.status === "PARTIAL";
+  const { business } = useWs();
+  const late = owes && lateDays(i.created_at, business.payment_terms_days) > 0;
   return (
     <button className="ws-tile ws-invc" onClick={onOpen}>
       <span className="ws-c-body">
-        <span className="ws-c-top"><span className="ws-c-label">{t("Invoice")}</span><Pill s={i.status} /></span>
+        <span className="ws-c-top"><span className="ws-c-label">{t("Invoice")}</span><span>{late && <b className="ws-late">{t("Overdue")}</b>} <Pill s={i.status} /></span></span>
         <strong className="ws-c-num">{i.invoice_number}</strong>
         <span className="ws-c-label">{t("Vehicle no.")}</span>
         <strong className="ws-plate">{i.registration}</strong>
@@ -112,7 +115,7 @@ export function InvoiceCard({ i, onOpen, age }: { i: InvoiceRow; onOpen: () => v
       </span>
       <span className="ws-c-stats">
         <span><b>LKR {lkr(i.total)}</b><small>{t("Total")}</small></span>
-        <span className={owes ? "owes" : ""}><b>{owes ? "LKR " + lkr(i.total - i.paid) : t("Settled")}</b><small>{owes ? t("Owes") + (age > 7 ? ", " + age + " " + t("days") : "") : t("Nothing owed")}</small></span>
+        <span className={owes ? "owes" : ""}><b>{owes ? "LKR " + lkr(i.total - i.paid) : i.status === "REFUNDED" ? t("Refunded") : t("Settled")}</b><small>{owes ? t("Owes") + (age > 7 ? ", " + age + " " + t("days") : "") : i.status === "REFUNDED" ? t("Money given back") : t("Nothing owed")}</small></span>
       </span>
     </button>
   );

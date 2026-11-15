@@ -135,7 +135,7 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   for (const part of [b.address, [b.phone, b.email].filter(Boolean).join(" | "), b.reg_no]) if (part) for (const row of wrap(part, 300, 9)) { d.text(MARGIN, y + 8, row, 9, false, "l", MUTED); y += 12; }
   d.text(R, top + 20, status === "VOID" ? "VOID" : taxRate ? "TAX INVOICE" : "INVOICE", 20, true, "r");
   let ry = top + 36;
-  const label = { UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", VOID: "Void" }[status] || status;
+  const label = { UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", REFUNDED: "Refunded", VOID: "Void" }[status] || status;
   const terms = num(b.payment_terms_days ?? 0);
   const meta: [string, boolean][] = [[inv.invoice_number, true], ["Date: " + dateOnly(inv.created_at), false]];
   if (terms) meta.push(["Due: " + addDays(dateOnly(inv.created_at), terms) + " (" + terms + " days)", false]);
@@ -174,6 +174,7 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   const totals: [string, string][] = [["Parts", money(inv.parts_total)], ["Labour", money(inv.labour_total)]];
   if (num(inv.discount)) totals.push(["Discount", "-" + money(inv.discount)]);
   if (num(inv.tax)) totals.push([(inv.tax_name || "VAT") + " (" + qty(taxRate) + "%)", money(inv.tax)]);
+  if (num((inv as { credit_total?: number }).credit_total)) totals.push(["Returned parts credit", "-" + money((inv as { credit_total?: number }).credit_total as number)]);
   d.room(30 + 16 * totals.length + 70);
   for (const [l, v] of totals) { d.text(430, d.y + 10, l, 9.5, false, "r", MUTED); d.text(R - 6, d.y + 10, v, 9.5, false, "r"); d.y += 16; }
   d.rect(300, d.y + 2, R - 300, 26, ACCENT);

@@ -81,8 +81,9 @@ def announce(product):
 
 
 # ---------- reads ----------
-def products():
-    return sorted(active_products(), key=lambda p: (p['created_at'], p['sku']), reverse=True)
+def products(owner=True):
+    rows = sorted(active_products(), key=lambda p: (p['created_at'], p['sku']), reverse=True)
+    return rows if owner else hide_cost(rows)
 
 
 def archived_products():
@@ -92,15 +93,16 @@ def archived_products():
 def catalogue():
     if time.monotonic() > _cache['until']:
         keys = ('id', 'sku', 'name', 'category', 'brand', 'grade', 'capacity', 'barcode', 'unit', 'selling_price',
-                'reorder_level', 'image_id', 'part_number', 'location', 'archived')
+                'reorder_level', 'image_id', 'part_number', 'location', 'archived', 'supplier')
         rows = sorted(({k: p.get(k) for k in keys} for p in active_products()), key=lambda p: p['sku'])
         _cache.update(value=rows, until=time.monotonic() + 30)
     return _cache['value']
 
 
-def movements():
+def movements(owner=True):
     who = emails()
-    return [dict(public(m), actor_email=who.get(m.get('actor'))) for m in query('MOVE', forward=False, limit=200)]
+    rows = [dict(public(m), actor_email=who.get(m.get('actor'))) for m in query('MOVE', forward=False, limit=200)]
+    return rows if owner else hide_cost(rows)
 
 
 def job_movements(job_id):
@@ -189,6 +191,8 @@ def create_product(key, who, body):
                 'brand': brand, 'grade': grade, 'capacity': capacity, 'unit': unit, 'quantity': opening,
                 'selling_price': price, 'reorder_level': reorder, 'created_at': created, 'archived': False,
                 'manufacturer_key': brand.upper(), 'part_number': part_key(part), 'location': location}
+        if text(p.get('supplier'), 'Supplier', 100, False):
+            item['supplier'] = text(p.get('supplier'), 'Supplier', 100, False)
         if barcode:
             item['barcode'] = barcode
         if p.get('imageId'):
@@ -222,6 +226,8 @@ def edit_product(key, product_id, who, body):
         updated = dict(item, name=name, category=category, brand=brand, manufacturer_key=brand.upper(),
                        grade=text(p.get('grade'), 'Grade', 80, False), capacity=text(p.get('capacity'), 'Capacity', 60, False),
                        part_number=part_key(part), location=text(p.get('location'), 'Location', 180, False), reorder_level=reorder)
+        if 'supplier' in p:
+            updated['supplier'] = text(p.get('supplier'), 'Supplier', 100, False)
         ops = [put(updated, ConditionExpression='quantity = :q', ExpressionAttributeValues={':q': item['quantity']}),
                archive_audit(product_id, who, 'EDIT', p)]
         labels = [None, None]
@@ -251,7 +257,10 @@ def archive_product(key, product_id, who, body):
 
 
 # ---------- movements ----------
-def movement_items(product, kind, quantity, price, job_id, issue_id, who, note, receiver, receiver_name, created):
+DOCS = {'RECEIPT': 'GRN', 'STOCK_OUT': 'GIN', 'ISSUE': 'GIN'}  # goods received note, goods issue note
+
+
+def movement_items(product, kind, quantity, price, job_id, issue_id, who, note, receiver, receiver_name, created, extra=None):
     """Ledger rows for one movement. The product quantity row is written by the caller."""
     movement_id = str(uuid.uuid4())
     row = {'id': movement_id, 'product_id': product['id'], 'kind': kind, 'quantity': quantity, 'unit_price': price,
@@ -260,6 +269,9 @@ def movement_items(product, kind, quantity, price, job_id, issue_id, who, note, 
     for name, value in (('job_id', job_id), ('issue_id', issue_id), ('receiver_id', receiver), ('receiver_name', receiver_name)):
         if value:
             row[name] = value
+    if kind in DOCS and not (note or '').startswith('Undo'):
+        row['doc_no'] = DOCS[kind] + '-' + day_of(created).replace('-', '') + '-' + movement_id[:4].upper()
+    row.update({k: v for k, v in (extra or {}).items() if v})
     marker = created + '#' + movement_id
     items = [put(dict(row, pk='MOVE', sk=marker)), put(dict(row, pk='MV#' + movement_id, sk='M', returned=ZERO))]
     if job_id:
@@ -277,6 +289,52 @@ def movement_items(product, kind, quantity, price, job_id, issue_id, who, note, 
     return items, movement_id
 
 
+def cost_of(value):
+    """What the supplier charged for one unit. Optional: blank means not told. Two decimals at most."""
+    if value is None or str(value).strip() == '':
+        return None
+    cost = num(value, 'Cost price')
+    if cost < 0 or cost > Decimal('100000000') or cost.as_tuple().exponent < -2:
+        raise bad('Cost price must be zero or more, with at most 2 decimals')
+    return cost
+
+
+# what only the owner may see: what the shop paid for its parts
+COST_FIELDS = ('unit_cost', 'last_cost', 'last_cost_at', 'prev_cost')
+
+
+def hide_cost(rows):
+    """The mechanic types the supplier price but never reads it back."""
+    one = isinstance(rows, dict)
+    cleaned = [{k: v for k, v in r.items() if k not in COST_FIELDS} for r in ([rows] if one else rows)]
+    return cleaned[0] if one else cleaned
+
+
+def set_cost(key, movement_id, who, body):
+    """Owner: add or correct the supplier price on a goods received movement."""
+    def build():
+        mv = get('MV#' + str(movement_id), 'M')
+        if not mv or mv['kind'] != 'RECEIPT':
+            raise missing('Goods received entry not found')
+        cost = cost_of((body or {}).get('unitCost'))
+        if cost is None:
+            raise bad('Enter the cost price')
+        marker = mv['created_at'] + '#' + mv['id']
+        ops = [update('MV#' + mv['id'], 'M', 'SET unit_cost = :c', {':c': cost}),
+               update('MOVE', marker, 'SET unit_cost = :c', {':c': cost}),
+               archive_audit(mv['product_id'], who, 'COST', {'movement': mv['id'], 'unit_cost': str(cost)})]
+        labels = [None, None, None]
+        product = get('PRODUCT', mv['product_id'])
+        if product and (product.get('last_cost_at') or '') <= mv['created_at']:
+            # the newest receipt decides the item's last cost
+            ops.append(update('PRODUCT', product['id'], 'SET last_cost = :c, last_cost_at = :at', {':c': cost, ':at': mv['created_at']}))
+            labels.append(None)
+        return ops, labels, {'id': mv['id'], 'unit_cost': cost}
+    result = command(key, 'movement-cost:' + movement_id, who, body, build)
+    _cache['until'] = 0
+    return result
+
+
 def record_movement(key, who, body):
     def build():
         m = body or {}
@@ -290,6 +348,12 @@ def record_movement(key, who, body):
         if quantity < 0 or (quantity == 0 and not counting) or quantity.as_tuple().exponent < -3:
             raise bad('Quantity must be positive, with at most 3 decimals' if not counting else 'The counted quantity must be zero or more, with at most 3 decimals')
         note = text(m.get('note'), 'Note', 500, False)
+        extra = {}
+        if kind == 'RECEIPT':
+            extra = {'supplier': text(m.get('supplier'), 'Supplier', 100, False), 'reference': text(m.get('reference'), 'Supplier invoice or delivery no.', 60, False)}
+            cost = cost_of(m.get('unitCost'))
+            if cost is not None:
+                extra['unit_cost'] = cost
         if counting and (m.get('jobId') or m.get('issueId') or m.get('receiverId')):
             raise bad('A count correction does not use a job or a receiver')
         job_id, issue_id, receiver_id = m.get('jobId'), m.get('issueId'), m.get('receiverId')
@@ -351,19 +415,28 @@ def record_movement(key, who, body):
             balance = product['quantity'] + (-quantity if kind in OUT_KINDS else quantity)
         if balance < 0:
             raise conflict('Insufficient stock for this issue')
-        ops.append(update('PRODUCT', product['id'], 'SET quantity = :new',
-                          {':new': balance, ':old': product['quantity'], ':nf': False},
-                          condition='quantity = :old and archived = :nf'))
-        labels.append(None)
         created = now()
+        expr, values = 'SET quantity = :new', {':new': balance, ':old': product['quantity'], ':nf': False}
+        if kind == 'RECEIPT' and extra.get('supplier') and not product.get('supplier'):
+            expr += ', supplier = :sup'  # the first supplier named on a delivery becomes the item's usual supplier
+            values[':sup'] = extra['supplier']
+        if extra.get('unit_cost') is not None:
+            # the last price paid, and the one before it so a rise or a drop can be shown to the owner
+            expr += ', last_cost = :lc, last_cost_at = :lat'
+            values.update({':lc': extra['unit_cost'], ':lat': created})
+            if product.get('last_cost') is not None:
+                expr += ', prev_cost = :pc'
+                values[':pc'] = product['last_cost']
+        ops.append(update('PRODUCT', product['id'], expr, values, condition='quantity = :old and archived = :nf'))
+        labels.append(None)
         rows, mid = movement_items(product, kind, quantity, price, job_id if on_job else None, issue_id, who, note,
-                              receiver_id if (kind == 'STOCK_OUT' or counter_return) else None, receiver_name, created)
+                              receiver_id if (kind == 'STOCK_OUT' or counter_return) else None, receiver_name, created, extra)
         ops += rows
         labels += [None] * len(rows)
         result = {'id': mid, 'product_id': product['id'], 'kind': kind, 'quantity': quantity, 'unit_price': price,
                   'job_id': job_id if on_job else None, 'issue_id': issue_id, 'actor': who, 'note': note, 'created_at': created,
                   'receiver_id': receiver_id, 'sku': product['sku'], 'name': product['name'], 'unit': product['unit'],
-                  'balance': balance}
+                  'balance': balance, **{k: v for k, v in rows[0]['Put']['Item'].items() if k in ('doc_no', 'supplier', 'reference', 'unit_cost')}}
         return ops, labels, result
     result = command(key, 'movement', who, body, build)
     _cache['until'] = 0
@@ -434,11 +507,10 @@ def _bounds(start, end):
     return first.astimezone(COLOMBO).date().isoformat(), last.astimezone(COLOMBO).date().isoformat(), first, last
 
 
-def analysis(start, end, search='', category='', archived=True, page=0):
-    """Opening, added, taken and closing quantities per item. Days are Asia/Colombo days."""
+def analysis_rows(start, end, search='', category='', archived=True):
+    """Every item with what happened to it between two moments. `added` in the ledger holds parts that came in AND parts that came
+    back, so they are split here: came_in (receipts and opening stock), returned, taken (went out), adjusted (count corrections)."""
     first, last, a, b = _bounds(start, end)
-    if page < 0 or page > 100000:
-        raise bad('Invalid page')
     word, category = (search or '').strip().lower(), (category or '').strip().lower()
     chosen = []
     for p in sorted(query('PRODUCT'), key=lambda x: x['sku']):
@@ -447,7 +519,7 @@ def analysis(start, end, search='', category='', archived=True, page=0):
             chosen.append(p)
     totals = {}
     for d in query('DAY', lt=last):
-        t = totals.setdefault(d['product_id'], [ZERO, ZERO, ZERO, ZERO])
+        t = totals.setdefault(d['product_id'], [ZERO, ZERO, ZERO, ZERO, ZERO])
         net = d['added'] - d['taken'] + d.get('adjusted', ZERO)
         if d['sk'][:10] < first:
             t[0] += net
@@ -455,14 +527,26 @@ def analysis(start, end, search='', category='', archived=True, page=0):
             t[1] += d['added']
             t[2] += d['taken']
             t[3] += d.get('adjusted', ZERO)
+            t[4] += d.get('returned', ZERO)
     rows = []
-    for p in chosen[page * 100:page * 100 + 100]:
-        opening, added, taken, adjusted = totals.get(p['id'], [ZERO, ZERO, ZERO, ZERO])
+    for p in chosen:
+        opening, added, taken, adjusted, returned = totals.get(p['id'], [ZERO] * 5)
         rows.append({'id': p['id'], 'sku': p['sku'], 'name': p['name'], 'brand': p['brand'], 'part_number': p.get('part_number'),
-                     'category': p['category'], 'location': p.get('location', ''), 'unit': p['unit'], 'archived': bool(p.get('archived')),
+                     'category': p['category'], 'location': p.get('location', ''), 'supplier': p.get('supplier', ''), 'unit': p['unit'], 'archived': bool(p.get('archived')),
                      'available_now': p['quantity'], 'opening_quantity': opening, 'added_quantity': added,
-                     'taken_quantity': taken, 'adjusted_quantity': adjusted, 'closing_quantity': opening + added - taken + adjusted})
-    return {'rows': rows, 'total': len(chosen), 'page': page, 'pageSize': 100, 'from': a.isoformat(), 'until': b.isoformat(), 'asOf': now()}
+                     'came_in_quantity': added - returned, 'returned_quantity': returned,
+                     'taken_quantity': taken, 'adjusted_quantity': adjusted, 'closing_quantity': opening + added - taken + adjusted,
+                     'selling_price': p['selling_price'], 'last_cost': p.get('last_cost'), 'prev_cost': p.get('prev_cost'),
+                     'margin': p['selling_price'] - p['last_cost'] if p.get('last_cost') is not None else None})
+    return rows, a, b
+
+
+def analysis(start, end, search='', category='', archived=True, page=0):
+    """Opening, added, taken and closing quantities per item. Days are Asia/Colombo days."""
+    if page < 0 or page > 100000:
+        raise bad('Invalid page')
+    rows, a, b = analysis_rows(start, end, search, category, archived)
+    return {'rows': rows[page * 100:page * 100 + 100], 'total': len(rows), 'page': page, 'pageSize': 100, 'from': a.isoformat(), 'until': b.isoformat(), 'asOf': now()}
 
 
 def daily(start, end):

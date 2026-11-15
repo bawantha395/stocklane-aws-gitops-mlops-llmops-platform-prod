@@ -285,7 +285,29 @@ def save_business(key, who, body):
 
 
 # ---------- vehicles ----------
-FROM_JOBS = ('owner', 'phone', 'make')
+FROM_JOBS = ('owner', 'phone', 'make', 'chassis')
+INVOICE_TYPES = ('CASH', 'CREDIT', 'INSURANCE', 'WARRANTY')
+
+
+def invoice_type(value, default='CASH'):
+    v = str(value or default).strip().upper()
+    if v not in INVOICE_TYPES:
+        raise bad('Choose the invoice type: cash, credit, insurance or warranty')
+    return v
+
+
+def chassis_no(value):
+    return text(value, 'Chassis number', 30).upper().replace(' ', '')
+
+
+def next_job_no():
+    """The next paper job card number (JOB-0001...). The counter row changes in the same transaction as the job, and only if nobody
+    took that number first, so two people saving at once never get the same number (the loser is retried by command())."""
+    seq = get('WSET', 'jobseq')
+    n = int(seq['n']) + 1 if seq else 1
+    row = {'pk': 'WSET', 'sk': 'jobseq', 'n': n, 'updated_at': now()}
+    op = put(row, ConditionExpression='n = :o', ExpressionAttributeValues={':o': seq['n']}) if seq else put(row, ConditionExpression='attribute_not_exists(pk)')
+    return 'JOB-%04d' % n, op
 
 
 def vehicle_put(key, fields, always=(), fill_only=()):
@@ -310,20 +332,20 @@ def job_fill_only(current):
     """A job edit may correct the owner, number or make the vehicle file still holds from this very job (a typo fixed on the job page).
     Where the vehicle file holds something else (the vehicle changed hands), the job keeps its own value and the file is left alone."""
     v = get('VEHICLE', current['vehicle_key']) or {}
-    return tuple(name for name, job_field in (('owner', 'customer'), ('phone', 'phone'), ('make', 'vehicle'))
+    return tuple(name for name, job_field in (('owner', 'customer'), ('phone', 'phone'), ('make', 'vehicle'), ('chassis', 'chassis'))
                  if v.get(name) and v.get(name) != current.get(job_field))
 
 
 def history_put(j, rate=ZERO):
     t = totals(j, rate)
     return put(clean({'pk': 'VJOB#' + j['vehicle_key'], 'sk': j['created_at'] + '#' + j['id'], 'id': j['id'],
-                      'created_at': j['created_at'], 'summary': j['summary'], 'status': j['status'], 'odometer': j.get('odometer'), 'customer': j.get('customer'), 'warranty_job': j.get('warranty_job') or None,
+                      'created_at': j['created_at'], 'summary': j['summary'], 'status': j['status'], 'job_no': j.get('job_no'), 'invoice_type': j.get('invoice_type'), 'odometer': j.get('odometer'), 'customer': j.get('customer'), 'warranty_job': j.get('warranty_job') or None,
                       'total': t['total'], 'invoice_number': j.get('invoice_number'), 'invoice_id': j.get('invoice_id')}))
 
 
 def vehicle_fields(j):
     return {'registration': j['registration'], 'owner': j['customer'], 'phone': j['phone'], 'make': j['vehicle'],
-            'last_km': j.get('odometer')}
+            'last_km': j.get('odometer'), 'chassis': j.get('chassis')}
 
 
 def vehicles(search=''):
@@ -349,10 +371,16 @@ def vehicle(key):
         raise missing('Vehicle not found')
     history = sorted((h for h in query('VJOB#' + key) if h['status'] != 'ARCHIVED'), key=lambda h: h['sk'], reverse=True)
     stored = {j['id']: j for j in batch_get([('WJOB', h['id']) for h in history[:40]])}
+    bills = {i['id']: i for i in batch_get([('WINV', h['invoice_id']) for h in history[:40] if h.get('invoice_id')])}
     visits, spent, dates = [], ZERO, []
     for h in history:
         row = public(h)
         j = stored.get(h['id'])
+        inv = bills.get(h.get('invoice_id'))
+        if inv and inv['status'] != 'VOID':
+            # what the customer actually owes now: a returned part lowers the bill, a part payment shows as PARTIAL
+            row.update(total=inv['total'], paid=inv['paid'], balance=ZERO if inv['status'] == 'REFUNDED' else inv['total'] - inv['paid'], pay_status=inv['status'])
+            h = dict(h, total=inv['total'])
         if j:
             row['parts'] = [{'name': p['name'], 'quantity': p['quantity'], 'unit_price': p['unit_price']} for p in j['parts']]
             row['labour'] = [{'description': l['description'], 'amount': l['amount']} for l in j['labour']]
@@ -380,6 +408,8 @@ def edit_vehicle(key, idem, who, body):
                 fields[name] = text(b[name], label, size, name == 'owner')
         if 'phone' in b:
             fields['phone'] = phone(b['phone'])
+        if b.get('chassis'):
+            fields['chassis'] = chassis_no(b['chassis'])
         if not fields:
             raise bad('Nothing to change')
         ops, events = open_jobs_follow(key, fields, [vehicle_put(key, fields)], [CHANGED])
@@ -421,6 +451,24 @@ def new_owner(key, idem, who, body):
         ops, events = open_jobs_follow(key, fields, [vehicle_put(key, fields, always=('phone',))], [CHANGED])
         return ops, events, {'saved': True}
     return command(idem, 'vehicle-new-owner:' + key, who, body, build)
+
+
+def owing(reg='', phone_number=''):
+    """Unpaid and part-paid bills for this vehicle or this phone number, so a returning customer who still owes is noticed
+    before a new job is opened. Matching the phone catches the same person bringing another vehicle."""
+    key = re.sub(r'[^A-Z0-9]', '', str(reg or '').upper())
+    key = key if 2 <= len(key) <= 12 else ''
+    digits = ''.join(c for c in (phone_number or '') if c.isdigit())[-9:]
+    out = []
+    for i in query('WINV'):
+        if i['status'] not in ('UNPAID', 'PARTIAL'):
+            continue
+        same_phone = len(digits) >= 7 and ''.join(c for c in (i.get('phone') or '') if c.isdigit())[-9:] == digits
+        if (key and i.get('vehicle_key') == key) or same_phone:
+            out.append({'id': i['id'], 'invoice_number': i['invoice_number'], 'registration': i['registration'], 'customer': i.get('customer', ''),
+                        'total': i['total'], 'paid': i['paid'], 'balance': i['total'] - i['paid'], 'status': i['status'],
+                        'created_at': i['created_at'], 'age_days': age_days(i['created_at'])})
+    return sorted(out, key=lambda r: r['created_at'])[:20]
 
 
 def service_due():
@@ -490,7 +538,9 @@ def create_job(key, who, body):
         b = body or {}
         reg = text(b.get('registration'), 'Vehicle number', 20, True).upper()
         created, job_id = now(), str(uuid.uuid4())
-        j = clean({'pk': 'WJOB', 'sk': job_id, 'id': job_id, 'registration': reg, 'vehicle_key': regkey(reg),
+        job_no, counter = next_job_no()
+        j = clean({'pk': 'WJOB', 'sk': job_id, 'id': job_id, 'job_no': job_no, 'registration': reg, 'vehicle_key': regkey(reg),
+                   'chassis': chassis_no(b.get('chassis')) if b.get('chassis') else '', 'invoice_type': invoice_type(b.get('invoice_type')),
                    'customer': text(b.get('customer'), 'Customer name', 100, True), 'phone': phone(b.get('phone')),
                    'address': lines_text(b.get('address'), 'Customer address', 200),
                    'vehicle': text(b.get('vehicle'), 'Vehicle make and model', 100),
@@ -500,7 +550,7 @@ def create_job(key, who, body):
                    'parts': [], 'labour': [], 'discount': ZERO, 'created_by': who, 'created_at': created, 'updated_at': created})
         face = {'front_photo': photos.one(b.get('front_photo'), 'Front photo'), 'plate_photo': photos.one(b.get('plate_photo'), 'Plate photo')}
         before = photos.many(b.get('before_photos'), 'Condition photos')
-        ops = [put(j), vehicle_put(j['vehicle_key'], {**vehicle_fields(j), **face}, fill_only=FROM_JOBS), history_put(j)]
+        ops = [put(j), vehicle_put(j['vehicle_key'], {**vehicle_fields(j), **face}, fill_only=FROM_JOBS), history_put(j), counter]
         if before:
             ops.append(put({'pk': 'WJPH', 'sk': job_id, 'before': before, 'n': 1, 'updated_at': created}))
         return ops, [None] * len(ops), view(j)
@@ -555,6 +605,10 @@ def save_job(job_id, key, who, body, owner=True):
             j['phone'] = phone(b['phone'])
         if 'odometer' in b:
             j['odometer'] = km(b['odometer'], 'Odometer')
+        if 'chassis' in b:
+            j['chassis'] = chassis_no(b['chassis']) if b['chassis'] else ''
+        if 'invoice_type' in b:
+            j['invoice_type'] = invoice_type(b['invoice_type'])
         if 'parts' in b:
             j['parts'] = parts_in(b['parts'])
             if stock_quantities(j['parts']) != stock_quantities(current.get('parts', [])):
@@ -792,8 +846,19 @@ def archive():
 
 
 # ---------- invoices ----------
-def invoice_status(total, paid):
-    return 'PAID' if paid >= total else 'PARTIAL' if paid > 0 else 'UNPAID'
+def invoice_status(total, paid, payments=()):
+    """PAID, PARTIAL or UNPAID. A bill whose money all went back to the customer is REFUNDED, not 'unpaid': nothing is chased for it
+    (void it to correct the job, or take a new payment and it becomes part paid or paid again)."""
+    if paid >= total:
+        return 'PAID'
+    if paid > 0:
+        return 'PARTIAL'
+    return 'REFUNDED' if any(p.get('refund') for p in payments) else 'UNPAID'
+
+
+def terms_days(shop=None):
+    """Days a customer has to pay: the Setup payment terms, or 7 days when none is set."""
+    return int((shop or business()).get('payment_terms_days') or 0) or 7
 
 
 def finalise(job_id, key, who, body):
@@ -812,13 +877,14 @@ def finalise(job_id, key, who, body):
         t, created, invoice_id = totals(stamped), now(), str(uuid.uuid4())
         number = shop['invoice_prefix'] + '-' + datetime.now(COLOMBO).strftime('%Y%m%d') + '-' + invoice_id[:6].upper()
         keep = ('registration', 'vehicle_key', 'customer', 'address', 'phone', 'vehicle', 'odometer', 'summary', 'mechanic', 'parts', 'labour',
-                'next_service_date', 'next_service_km', 'brought_by', 'brought_phone', 'warranty_until', 'warranty_km', 'warranty_job')
+                'next_service_date', 'next_service_km', 'brought_by', 'brought_phone', 'warranty_until', 'warranty_km', 'warranty_job',
+                'job_no', 'chassis', 'invoice_type')
         invoice = clean({'pk': 'WINV', 'sk': invoice_id, 'id': invoice_id, 'invoice_number': number, 'job_id': job_id,
                          **{k: current.get(k) for k in keep}, **t, 'tax_name': shop['tax_name'], 'tax_rate': rate, 'currency': 'LKR',
                          'paid': ZERO, 'payments': [], 'status': invoice_status(t['total'], ZERO), 'revision': 0, 'approved_by': who,
                          'created_at': created, 'business': {k: v for k, v in shop.items() if k in DEFAULT_BUSINESS and k not in ('mechanic_discount_pct', 'labour_items', 'mechanics', 'default_reorder_level')}})
         j = clean(dict(stamped, status='INVOICED', invoice_id=invoice_id, invoice_number=number,
-                       revision=int(current['revision']) + 1, updated_at=created))
+                       revision=int(current['revision']) + 1, updated_at=created, out_at=created))
         op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
                  ExpressionAttributeValues={':r': current['revision'], ':open': 'OPEN'})
         fields = {**vehicle_fields(j), 'next_service_date': j.get('next_service_date'), 'next_service_km': j.get('next_service_km')}
@@ -866,7 +932,7 @@ def pay(invoice_id, key, who, body):
                  'at': now(), 'by': who}
         paid = current['paid'] + amount
         new = dict(current, payments=list(current['payments']) + [entry], paid=paid,
-                   status=invoice_status(current['total'], paid), revision=int(current['revision']) + 1)
+                   status=invoice_status(current['total'], paid, current['payments']), revision=int(current['revision']) + 1)
         op = put(new, ConditionExpression='revision = :r', ExpressionAttributeValues={':r': current['revision']})
         return [op], [CHANGED], public(new)
     return command(key, 'pay:' + invoice_id, who, body, build)
@@ -890,7 +956,7 @@ def refund(invoice_id, key, who, body):
         entry = {'id': str(uuid.uuid4())[:8], 'amount': -amount, 'method': method, 'note': 'Refund: ' + reason, 'refund': True, 'at': now(), 'by': who}
         paid = current['paid'] - amount
         new = dict(current, payments=list(current['payments']) + [entry], paid=paid,
-                   status=invoice_status(current['total'], paid), revision=int(current['revision']) + 1)
+                   status=invoice_status(current['total'], paid, list(current['payments']) + [entry]), revision=int(current['revision']) + 1)
         op = put(new, ConditionExpression='revision = :r', ExpressionAttributeValues={':r': current['revision']})
         j = job(current['job_id'])
         return [op, audit('INVOICE_REFUND', j, who, current['invoice_number'] + ' LKR ' + format(amount, ',.2f') + ': ' + reason)], [CHANGED, None], public(new)
@@ -915,6 +981,76 @@ def void_invoice(invoice_id, key, who, body):
                audit('INVOICE_VOIDED', reopened, who, current['invoice_number'])]
         return ops, [CHANGED, CHANGED, None, None], public(new)
     return command(key, 'void:' + invoice_id, who, body, build)
+
+
+def return_parts(invoice_id, key, who, body):
+    """Owner only. The customer brings parts back after the invoice was issued. The parts go back into stock (one RETURN in the
+    stock history per part, naming the invoice), the bill is reduced by their value plus tax, and if that leaves the customer
+    overpaid the money given back is recorded as a refund. The invoice stays, with the credit written on it."""
+    def build():
+        current, b = invoice(invoice_id), body or {}
+        if current['status'] == 'VOID':
+            raise conflict('This invoice was voided')
+        asked = b.get('lines')
+        if not isinstance(asked, list) or not asked:
+            raise bad('Pick the parts that came back')
+        reason = text(b.get('reason'), 'Reason', 180, True)
+        parts = [dict(p) for p in current['parts']]
+        credit, per_product, credited = ZERO, {}, []
+        seen = set()
+        for row in asked:
+            if not isinstance(row, dict):
+                raise bad('Pick the parts that came back')
+            try:
+                index = int(row.get('index'))
+            except (TypeError, ValueError):
+                raise bad('Pick the parts that came back') from None
+            if index in seen or not 0 <= index < len(parts):
+                raise bad('Pick each part once')
+            seen.add(index)
+            part, qty = parts[index], quantity(row.get('quantity'))
+            left = part['quantity'] - part.get('returned', ZERO)
+            if qty > left:
+                raise conflict('Only %s of %s can still be returned' % (left.normalize(), part['name']))
+            amount = line_total(dict(part, quantity=qty))
+            credit += amount
+            part['returned'] = part.get('returned', ZERO) + qty
+            credited.append({'name': part['name'], 'quantity': qty, 'amount': amount})
+            if part.get('product_id'):
+                e = per_product.setdefault(part['product_id'], [ZERO, part['unit_price']])
+                e[0] += qty
+        tax = (credit * current.get('tax_rate', ZERO) / HUNDRED).quantize(MONEY, ROUND_HALF_UP) if credit > 0 else ZERO
+        credit += tax
+        total = current['total'] - credit
+        if total < 0:
+            raise conflict('That credit is more than the invoice')
+        over = max(current['paid'] - total, ZERO)
+        payments, paid = list(current['payments']), current['paid']
+        if over > 0:
+            method = str(b.get('refundMethod') or '').upper()
+            if method not in METHODS:
+                raise bad('The customer has paid more than the new total. Choose how the money was given back')
+            if len(payments) >= 100:
+                raise conflict('Too many payments on this invoice')
+            payments.append({'id': str(uuid.uuid4())[:8], 'amount': -over, 'method': method, 'note': 'Refund: returned parts, ' + reason,
+                             'refund': True, 'at': now(), 'by': who})
+            paid -= over
+        entry = {'id': str(uuid.uuid4())[:8], 'at': now(), 'by': who, 'reason': reason, 'amount': credit, 'lines': credited}
+        new = dict(current, parts=parts, payments=payments, paid=paid, total=total,
+                   original_total=current.get('original_total', current['total']),
+                   credit_total=current.get('credit_total', ZERO) + credit, credits=list(current.get('credits') or []) + [entry],
+                   status=invoice_status(total, paid, payments), revision=int(current['revision']) + 1)
+        ops = [put(new, ConditionExpression='revision = :r', ExpressionAttributeValues={':r': current['revision']})]
+        j = job(current['job_id'])
+        for pid, (qty, price) in per_product.items():
+            stock_ops, _ = inventory.job_stock_ops(inventory.load_product(pid), 'RETURN', qty, current['job_id'], who,
+                                                   'Returned after invoice ' + current['invoice_number'] + ': ' + reason, price)
+            ops += stock_ops
+        ops.append(audit('INVOICE_RETURN', j, who, current['invoice_number'] + ' LKR ' + format(credit, ',.2f') + ': ' + reason))
+        return ops, [CHANGED] + [None] * (len(ops) - 1), public(new)
+    result = command(key, 'return-parts:' + invoice_id, who, body, build)
+    inventory._cache['until'] = 0
+    return result
 
 
 # ---------- suggestions: parts and labour the workshop already uses ----------
@@ -969,6 +1105,7 @@ def dashboard():
     ready = [j for j in open_jobs if j.get('stage') == 'READY']
     return {**out, 'open_jobs': open_jobs[:12], 'open_count': len(open_jobs), 'ready_jobs': ready[:12], 'ready_count': len(ready), 'unpaid_count': len(unpaid),
             'unpaid_total': sum((i['total'] - i['paid'] for i in unpaid), ZERO),
+            'overdue_count': sum(1 for i in unpaid if age_days(i['created_at']) > terms_days()), 'terms_days': terms_days(),
             'oldest_unpaid_days': max((age_days(i['created_at']) for i in unpaid), default=0), 'due_count': len(service_due()),
             'delete_requests': sorted((public(r) for r in query('WREQ') if r['status'] == 'PENDING'), key=lambda r: r['requested_at'])}
 
@@ -979,7 +1116,7 @@ def export_all():
     return {'exported_at': now(), 'format': 'lifta-export-1',
             'settings': {k: v for k, v in business().items() if k != 'logo'},
             'jobs': [public(j) for j in query('WJOB')],
-            'quotations': [public(q) for q in sorted(query('WQUO'), key=lambda q: q['created_at'])],
+            'estimates': [public(q) for q in sorted(query('WQUO'), key=lambda q: q['created_at'])],
             'invoices': [public(i) for i in sorted(query('WINV'), key=lambda i: i['created_at'])],
             'vehicles': [public(v) for v in query('VEHICLE')],
             'workshop_log': [public(a) for a in query('WAUDIT')],
@@ -1004,7 +1141,7 @@ def report(start='', end=''):
         if i['status'] == 'VOID':
             continue
         balance = i['total'] - i['paid']
-        if balance > 0:
+        if balance > 0 and i['status'] != 'REFUNDED':
             days = age_days(i['created_at'])
             ageing['d0_7' if days <= 7 else 'd8_30' if days <= 30 else 'd31_60' if days <= 60 else 'd60_plus'] += balance
             unpaid_list.append({'invoice_number': i['invoice_number'], 'registration': i['registration'], 'customer': i['customer'], 'days': days, 'balance': balance, 'id': i['id']})
@@ -1065,6 +1202,31 @@ def vehicle_pdf(key):
         visits.append({**h, 'date': local_date(h['created_at']).isoformat(), 'lines': lines})
     v = {**v, 'printed': today().isoformat(), 'currency': 'LKR'}
     return bills.history(v, visits, business()), v['id']
+
+
+def stock_note_pdf(movement_id, with_cost=False):
+    """A goods received note (GRN) or goods issue note (GIN) for one stock movement."""
+    n = get('MV#' + str(movement_id), 'M')
+    if not n or n['kind'] not in ('RECEIPT', 'STOCK_OUT', 'ISSUE'):
+        raise missing('Stock note not found')
+    n = public(n)
+    n['date'] = local_date(n['created_at']).isoformat()
+    product = get('PRODUCT', n['product_id']) or {}
+    n.update(part_number=product.get('part_number'), location=product.get('location'))
+    if not with_cost:
+        n.pop('unit_cost', None)  # a printed note carries the price only when the owner asks for it
+    if n.get('job_id'):
+        j = get('WJOB', n['job_id'])
+        n['job_registration'] = (j or {}).get('registration')
+    return bills.stock_note(n, business()), (n.get('doc_no') or 'stock-note')
+
+
+def stock_report_pdf(start, end, search='', category=''):
+    """Owner: what happened to every item between two dates (came in, went out, returned) as a PDF."""
+    rows, a, b = inventory.analysis_rows(start, end, search, category, True)
+    moved = [r for r in rows if r['came_in_quantity'] or r['taken_quantity'] or r['returned_quantity'] or r['adjusted_quantity']]
+    data = {'rows': moved, 'from': a.isoformat(), 'until': b.isoformat(), 'printed': today().isoformat()}
+    return bills.stock_report(data, business()), 'stock-' + data['from'] + '_' + data['until']
 
 
 def amount_label(p):

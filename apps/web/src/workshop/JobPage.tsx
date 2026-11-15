@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { billTotals, partAmount } from "./Bill";
 import { PastRepairs } from "./Vehicles";
 import { StockPicker } from "./StockPicker";
+import { printJobCard } from "./jobCardPdf";
 import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job, STAGE_LABEL, type Stage, waLink } from "./common";
 
 type PartRow = { name: string; quantity: string; unit_price: string; product_id?: string; discount_pct?: string };
@@ -22,12 +23,13 @@ export function JobPage({ id }: { id: string }) {
   const [picking, setPicking] = useState(false), [dialog, setDialog] = useState<"" | "delete" | "request" | "reject" | "approve">(""), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState("");
   useEffect(() => { if (saved) toast(saved); }, [saved]);
   const command = useCommand();
+  const [madeNow, setMadeNow] = useState(() => { try { return sessionStorage.getItem("ws.justmade") === id; } catch { return false; } });
   const [editing, setEditing] = useState(false), [more, setMore] = useState(false), [needLines, setNeedLines] = useState(false);
   const partsRef = useRef<HTMLElement>(null);
 
   const adopt = (j: Job) => {
     setJob(j); setDirty(false);
-    setF({ customer: j.customer, address: j.address || "", brought_by: j.brought_by || "", brought_phone: j.brought_phone || "", warranty_until: j.warranty_until || "", warranty_km: j.warranty_km == null ? "" : String(j.warranty_km), warranty_job: j.warranty_job ? "1" : "", phone: j.phone, vehicle: j.vehicle, odometer: j.odometer == null ? "" : String(j.odometer), summary: j.summary, mechanic: j.mechanic, notes: j.notes,
+    setF({ customer: j.customer, address: j.address || "", brought_by: j.brought_by || "", brought_phone: j.brought_phone || "", warranty_until: j.warranty_until || "", warranty_km: j.warranty_km == null ? "" : String(j.warranty_km), warranty_job: j.warranty_job ? "1" : "", phone: j.phone, vehicle: j.vehicle, chassis: j.chassis || "", invoice_type: j.invoice_type || "CASH", odometer: j.odometer == null ? "" : String(j.odometer), summary: j.summary, mechanic: j.mechanic, notes: j.notes,
       discount: j.discount ? String(j.discount) : "", next_service_date: j.next_service_date || "", next_service_km: j.next_service_km == null ? "" : String(j.next_service_km) });
     setParts(j.parts.map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: String(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(p.discount_pct ? { discount_pct: String(p.discount_pct) } : {}) })));
     setLabour(j.labour.map((l) => ({ description: l.description, amount: String(l.amount) })));
@@ -46,6 +48,12 @@ export function JobPage({ id }: { id: string }) {
     labour: labour.filter((l) => l.description.trim()).map((l) => ({ description: l.description.trim(), amount: num(l.amount) })),
   }), [parts, labour]);
   const totals = billTotals({ ...lines, discount: num(f.discount), tax_rate: rate });
+  /** What the customer asks while the vehicle is still in: a WhatsApp message with what has been done so far and the running total. */
+  const costSoFar = () => {
+    const rows = [...lines.parts.map((p) => num(p.quantity) + " x " + p.name + ": LKR " + lkr(partAmount(p))), ...lines.labour.map((l) => l.description + ": LKR " + lkr(num(l.amount)))];
+    const msg = "Hello " + f.customer + ", update on " + job!.registration + " at " + business.name + ".\n" + (rows.length ? rows.join("\n") + "\n" : "Nothing is charged yet.\n") + "Total so far: LKR " + lkr(totals.total) + (num(f.discount) ? " (after discount)" : "") + ". This is not the final bill, more work may be added. Thank you.";
+    window.open(waLink(f.phone || "", msg), "_blank", "noopener");
+  };
   const grossParts = round2(lines.parts.reduce((a, p) => a + p.quantity * p.unit_price, 0)), lineOff = round2(grossParts - totals.parts);
   useEffect(() => { if (lines.parts.length || lines.labour.length) setNeedLines(false); }, [lines]);
   if (!job) return <Loading error={loadError} />;
@@ -53,7 +61,7 @@ export function JobPage({ id }: { id: string }) {
 
   const set = (k: string, v: string) => { setF((x) => ({ ...x, [k]: v })); setDirty(true); };
   const body = () => ({
-    revision: job.revision, customer: f.customer, address: f.address || "", brought_by: f.brought_by || "", brought_phone: f.brought_phone || "", warranty_until: f.warranty_until || "", warranty_km: f.warranty_km ? Number(f.warranty_km) : null, warranty_job: f.warranty_job === "1", phone: f.phone, vehicle: f.vehicle, odometer: f.odometer === "" ? null : Number(f.odometer), summary: f.summary, mechanic: f.mechanic, notes: f.notes,
+    revision: job.revision, customer: f.customer, address: f.address || "", brought_by: f.brought_by || "", brought_phone: f.brought_phone || "", warranty_until: f.warranty_until || "", warranty_km: f.warranty_km ? Number(f.warranty_km) : null, warranty_job: f.warranty_job === "1", phone: f.phone, vehicle: f.vehicle, chassis: f.chassis || "", invoice_type: f.invoice_type || "CASH", odometer: f.odometer === "" ? null : Number(f.odometer), summary: f.summary, mechanic: f.mechanic, notes: f.notes,
     parts: lines.parts, labour: lines.labour, discount: num(f.discount), next_service_date: f.next_service_date, next_service_km: f.next_service_km === "" ? null : Number(f.next_service_km),
   });
   const save = async () => { const j = await command<Job>("/api/workshop/jobs/" + id, body(), "PATCH"); adopt(j); return j; };
@@ -116,13 +124,21 @@ export function JobPage({ id }: { id: string }) {
   return (
     <div className="ws-job">
       <div className="ws-job-head">
-        <div><h2>{job.registration}</h2><p>{dateOnly(job.created_at)} <Pill s={job.status} /></p></div>
+        <div><h2>{job.registration}</h2><p>{job.job_no && <b className="ws-jobno">{job.job_no}</b>} {dateOnly(job.created_at)} <Pill s={job.status} /></p></div>
         <div className="ws-bar">
+          {!locked && f.phone && <button className="button secondary small" data-tour="cost-so-far" onClick={() => costSoFar()}>{t("Cost so far")}</button>}
+          {!madeNow && <button className="button secondary small" data-tour="print-jobcard" onClick={() => printJobCard(dirty ? { ...job, customer: f.customer, address: f.address, phone: f.phone, vehicle: f.vehicle, chassis: f.chassis, invoice_type: f.invoice_type as Job["invoice_type"], odometer: f.odometer === "" ? undefined : Number(f.odometer), summary: f.summary, mechanic: f.mechanic } : job, business)}>{t("Print job card")}</button>}
           <button className="button secondary small" onClick={() => go({ name: "vehicle", id: job.vehicle_key })}>{t("Vehicle file")}</button>
           {job.invoice_id && <button className="button primary small" onClick={() => go({ name: "invoice", id: job.invoice_id! })}>Invoice {job.invoice_number}</button>}
         </div>
       </div>
 
+      {madeNow && (
+        <div className="ws-note ws-made" role="status">
+          <b>{job.job_no}</b> {t("is ready. Print the job card and send it with the vehicle.")}
+          <span className="ws-note-actions"><button className="button primary small" onClick={() => { printJobCard(job, business); setMadeNow(false); try { sessionStorage.removeItem("ws.justmade"); } catch { /* ignore */ } }}>{t("Print job card")}</button><button className="button secondary small" onClick={() => { setMadeNow(false); try { sessionStorage.removeItem("ws.justmade"); } catch { /* ignore */ } }}>{t("Later")}</button></span>
+        </div>
+      )}
       {waiting && (
         <div className="ws-note" role="status">
           <b>{t("Delete requested")}</b> by {req!.requested_by}: {req!.reason}. {owner ? "Approve it to move this job to the Archive." : "Waiting for the owner."}
@@ -156,6 +172,8 @@ export function JobPage({ id }: { id: string }) {
           <label className="ws-field">{t("Someone else brought it in?")} <small>({t("optional")})</small><input disabled={locked} value={f.brought_by || ""} onChange={(e) => set("brought_by", e.target.value)} placeholder={t("Name, e.g. the driver")} /></label>
           <label className="ws-field">{t("Their number")} <small>({t("optional")})</small><input disabled={locked} inputMode="tel" value={f.brought_phone || ""} onChange={(e) => set("brought_phone", e.target.value)} /></label>
           <label className="ws-field">{t("Make and model")}<input disabled={locked} value={f.vehicle || ""} onChange={(e) => set("vehicle", e.target.value)} /></label>
+          <label className="ws-field">{t("Chassis no.")}<input disabled={locked} autoCapitalize="characters" maxLength={30} value={f.chassis || ""} onChange={(e) => set("chassis", e.target.value.toUpperCase())} /></label>
+          <label className="ws-field">{t("Invoice type")}<select disabled={locked} value={f.invoice_type || "CASH"} onChange={(e) => set("invoice_type", e.target.value)}>{([["CASH", t("Cash")], ["CREDIT", t("Credit")], ["INSURANCE", t("Insurance")], ["WARRANTY", t("Warranty")]] as [string, string][]).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
           <label className="ws-field">{t("Odometer (km)")}<input disabled={locked} inputMode="numeric" value={f.odometer || ""} onChange={(e) => set("odometer", e.target.value.replace(/\D/g, ""))} /></label>
           <label className="ws-field">{t("Mechanic")}{mechanicList.length ? (
             <select disabled={locked} value={f.mechanic || ""} onChange={(e) => set("mechanic", e.target.value)}>
@@ -167,7 +185,7 @@ export function JobPage({ id }: { id: string }) {
         </div>
         ) : (
         <dl className="ws-c-rows ws-cust-sum">
-          {([[t("Customer"), f.customer], [t("Phone"), f.phone], [t("Customer address"), f.address], [t("Brought in by"), [f.brought_by, f.brought_phone].filter(Boolean).join(" · ")], [t("Make and model"), f.vehicle], [t("Odometer (km)"), f.odometer], [t("Mechanic"), f.mechanic], [t("Complaint / work"), f.summary]] as [string, string | undefined][]).filter(([, v]) => v).map(([k, v]) => <div className="ws-c-row" key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+          {([[t("Customer"), f.customer], [t("Phone"), f.phone], [t("Customer address"), f.address], [t("Brought in by"), [f.brought_by, f.brought_phone].filter(Boolean).join(" · ")], [t("Make and model"), f.vehicle], [t("Chassis no."), f.chassis], [t("Invoice type"), ({ CASH: t("Cash"), CREDIT: t("Credit"), INSURANCE: t("Insurance"), WARRANTY: t("Warranty") } as Record<string, string>)[f.invoice_type || "CASH"]], [t("Odometer (km)"), f.odometer], [t("Mechanic"), f.mechanic], [t("Complaint / work"), f.summary]] as [string, string | undefined][]).filter(([, v]) => v).map(([k, v]) => <div className="ws-c-row" key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
         </dl>
         )}
       </section>
