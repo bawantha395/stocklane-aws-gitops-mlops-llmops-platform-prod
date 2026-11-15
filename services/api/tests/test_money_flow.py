@@ -119,3 +119,97 @@ def test_bill_pdf_has_qr_and_tax_line_rule(api):
     inv2 = ok(api('POST', '/api/workshop/jobs/%s/invoice' % job2['id'], {'revision': 1}, role='MECHANIC'))
     pdf2 = base64.b64decode(ok(api('GET', '/api/workshop/invoices/%s/pdf' % inv2['id'], role='MECHANIC'))['pdf'])
     assert b'not a tax invoice' not in pdf2
+
+
+
+def test_vehicle_edit_and_new_owner(api):
+    ok(api('PUT', '/api/workshop/settings', BIZ))
+    billed = new_job(api)
+    ok(fill(api, billed['id']))
+    inv = ok(api('POST', '/api/workshop/jobs/%s/invoice' % billed['id'], {'revision': 1}, role='MECHANIC'))
+    open_job = new_job(api, summary='Brake check')
+    # a corrected phone number reaches the open job, never the issued bill
+    ok(api('PATCH', '/api/workshop/vehicles/CAB-1234', {'phone': '0710901846'}, role='MECHANIC'))
+    assert ok(api('GET', '/api/workshop/jobs/' + open_job['id'], role='MECHANIC'))['phone'] == '0710901846'
+    assert ok(api('GET', '/api/workshop/jobs/' + billed['id'], role='MECHANIC'))['phone'] == '0771234567'
+    assert ok(api('GET', '/api/workshop/invoices/' + inv['id'], role='MECHANIC'))['phone'] == '0771234567'
+    # saving the open job does not bring the old number back
+    ok(api('PATCH', '/api/workshop/jobs/' + open_job['id'], {'parts': [], 'labour': [], 'discount': 0, 'revision': 1}, role='MECHANIC'))
+    assert ok(api('GET', '/api/workshop/vehicles/CAB-1234', role='MECHANIC'))['phone'] == '0710901846'
+    # the vehicle is sold: the old owner stays in the log and on the old bill
+    ok(api('POST', '/api/workshop/vehicles/CAB-1234/owner', {'owner': 'Kasun Silva', 'phone': '0701112223'}, role='MECHANIC'))
+    v = ok(api('GET', '/api/workshop/vehicles/CAB-1234', role='MECHANIC'))
+    assert v['owner'] == 'Kasun Silva' and v['phone'] == '0701112223'
+    assert v['owner_log'][-1]['from_owner'] == 'Nimal Perera' and v['owner_log'][-1]['to_owner'] == 'Kasun Silva'
+    assert {h['id']: h['customer'] for h in v['history']}[billed['id']] == 'Nimal Perera'
+    assert ok(api('GET', '/api/workshop/invoices/' + inv['id'], role='MECHANIC'))['customer'] == 'Nimal Perera'
+    assert ok(api('GET', '/api/workshop/jobs/' + open_job['id'], role='MECHANIC'))['customer'] == 'Kasun Silva'
+    status, _ = api('POST', '/api/workshop/vehicles/CAB-1234/owner', {'owner': 'Kasun Silva', 'phone': '0701112223'}, role='MECHANIC')
+    assert status == 400
+    ok(api('GET', '/api/workshop/vehicles/CAB-1234/history.pdf', role='MECHANIC'))
+
+
+def test_job_does_not_change_vehicle_owner(api):
+    ok(api('PUT', '/api/workshop/settings', BIZ))
+    first = new_job(api)
+    # a different name on a second job for the same vehicle leaves the vehicle owner alone
+    second = ok(api('POST', '/api/workshop/jobs', {'registration': 'CAB-1234', 'customer': 'Driver Sam', 'phone': '0712223334', 'summary': 'Tyres'}, role='MECHANIC'))
+    v = ok(api('GET', '/api/workshop/vehicles/CAB-1234', role='MECHANIC'))
+    assert v['owner'] == 'Nimal Perera' and v['phone'] == '0771234567'
+    # a typo fixed on the job that the file still holds from follows to the file
+    ok(api('PATCH', '/api/workshop/jobs/' + first['id'], {'customer': 'Nimal Perera Jr', 'revision': 0}, role='MECHANIC'))
+    assert ok(api('GET', '/api/workshop/vehicles/CAB-1234', role='MECHANIC'))['owner'] == 'Nimal Perera Jr'
+    # editing the second job's name does not
+    ok(api('PATCH', '/api/workshop/jobs/' + second['id'], {'customer': 'Driver Sam K', 'revision': 0}, role='MECHANIC'))
+    assert ok(api('GET', '/api/workshop/vehicles/CAB-1234', role='MECHANIC'))['owner'] == 'Nimal Perera Jr'
+
+
+def test_refund_then_void(api):
+    ok(api('PUT', '/api/workshop/settings', BIZ))
+    j = new_job(api)
+    ok(fill(api, j['id']))
+    inv = ok(api('POST', '/api/workshop/jobs/%s/invoice' % j['id'], {'revision': 1}, role='MECHANIC'))
+    ok(api('POST', '/api/workshop/invoices/%s/payments' % inv['id'], {'amount': inv['total'], 'method': 'CASH'}, role='MECHANIC'))
+    assert api('POST', '/api/workshop/invoices/%s/refund' % inv['id'], {'amount': 100, 'reason': 'x'}, role='MECHANIC')[0] == 403
+    assert api('POST', '/api/workshop/invoices/%s/refund' % inv['id'], {'amount': inv['total'] + 1, 'reason': 'x'})[0] == 409
+    assert api('POST', '/api/workshop/invoices/%s/refund' % inv['id'], {'amount': 100})[0] == 400
+    # void is refused while money is held
+    assert api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {})[0] == 409
+    back = ok(api('POST', '/api/workshop/invoices/%s/refund' % inv['id'], {'amount': 100, 'reason': 'Wrong filter'}))
+    assert back['status'] == 'PARTIAL' and back['paid'] == inv['total'] - 100 and back['payments'][-1]['amount'] == -100
+    full = ok(api('POST', '/api/workshop/invoices/%s/refund' % inv['id'], {'amount': back['paid'], 'reason': 'Customer cancelled'}))
+    assert full['paid'] == 0 and full['status'] == 'UNPAID'
+    ok(api('GET', '/api/workshop/invoices/%s/pdf' % inv['id']))
+    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {}))
+    ok(api('GET', '/api/workshop/invoices/' + inv['id']))
+
+
+def test_export_all(api):
+    ok(api('PUT', '/api/workshop/settings', BIZ))
+    j = new_job(api)
+    assert api('GET', '/api/workshop/export', role='MECHANIC')[0] == 403
+    data = ok(api('GET', '/api/workshop/export'))
+    assert data['format'] == 'lifta-export-1' and [x['id'] for x in data['jobs']] == [j['id']] and data['vehicles'][0]['id'] == 'CAB1234'
+    assert 'logo' not in data['settings'] and all('pk' not in x for x in data['jobs'])
+
+
+def test_stage_warranty_and_brought_in_by(api):
+    ok(api('PUT', '/api/workshop/settings', BIZ))
+    j = new_job(api, brought_by='Driver Sam', brought_phone='0712223334')
+    assert j['stage'] == 'WAITING' and j['brought_by'] == 'Driver Sam'
+    # a stage change does not touch the revision, so an open job page stays valid
+    s = ok(api('POST', '/api/workshop/jobs/%s/stage' % j['id'], {'stage': 'READY'}, role='MECHANIC'))
+    assert s['stage'] == 'READY' and s['revision'] == j['revision']
+    assert api('POST', '/api/workshop/jobs/%s/stage' % j['id'], {'stage': 'NOPE'}, role='MECHANIC')[0] == 400
+    got = ok(api('GET', '/api/workshop/jobs/' + j['id'], role='MECHANIC'))
+    assert got['stage'] == 'READY'
+    saved = ok(api('PATCH', '/api/workshop/jobs/' + j['id'], {'parts': [{'name': 'Oil filter', 'quantity': 1, 'unit_price': 1800}], 'labour': [], 'discount': 0,
+                                                              'warranty_until': '2027-08-14', 'warranty_km': 95000, 'warranty_job': True, 'revision': j['revision']}, role='MECHANIC'))
+    assert saved['warranty_until'] == '2027-08-14' and saved['stage'] == 'READY'
+    inv = ok(api('POST', '/api/workshop/jobs/%s/invoice' % j['id'], {'revision': saved['revision']}, role='MECHANIC'))
+    full = ok(api('GET', '/api/workshop/invoices/' + inv['id']))
+    assert full['brought_by'] == 'Driver Sam' and full['warranty_km'] == 95000 and full['customer'] == 'Nimal Perera'
+    ok(api('GET', '/api/workshop/invoices/%s/pdf' % inv['id']))
+    # an invoiced job has no stage to change; the driver never became the vehicle owner
+    assert api('POST', '/api/workshop/jobs/%s/stage' % j['id'], {'stage': 'WAITING'}, role='MECHANIC')[0] == 409
+    assert ok(api('GET', '/api/workshop/vehicles/CAB-1234', role='MECHANIC'))['owner'] == 'Nimal Perera'

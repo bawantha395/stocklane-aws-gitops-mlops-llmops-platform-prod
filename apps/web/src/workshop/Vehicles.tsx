@@ -9,13 +9,13 @@ import { Empty, Loading, Pill, addDays, dateOnly, kmText, lkr, today, useCommand
 const total = (v: Visit) => lkr(v.total);
 
 /** One earlier repair, expandable to its parts and labour. */
-export function VisitCard({ v, open = false, onOpenJob }: { v: Visit; open?: boolean; onOpenJob?: () => void }) {
+export function VisitCard({ v, open = false, onOpenJob, showCustomer = false }: { v: Visit; open?: boolean; onOpenJob?: () => void; showCustomer?: boolean }) {
   const [show, setShow] = useState(open);
   const lines = (v.parts?.length || 0) + (v.labour?.length || 0);
   return (
     <div className={"ws-visit " + v.status.toLowerCase()}>
       <button className="ws-visit-head" onClick={() => setShow(!show)} aria-expanded={show}>
-        <span><b>{dateOnly(v.created_at)}</b>{v.odometer != null && <small>{kmText(v.odometer)}</small>}</span>
+        <span><b>{dateOnly(v.created_at)}</b>{v.odometer != null && <small>{kmText(v.odometer)}</small>}{showCustomer && v.customer && <small className="ws-visit-who">{v.customer}</small>}</span>
         <span className="ws-visit-work">{v.summary || "No complaint noted"}</span>
         <span className="ws-visit-total">{v.status === "CANCELLED" ? <Pill s="CANCELLED" /> : v.status === "OPEN" ? <Pill s="OPEN" /> : <b>{total(v)}</b>}</span>
       </button>
@@ -27,7 +27,7 @@ export function VisitCard({ v, open = false, onOpenJob }: { v: Visit; open?: boo
           <div className="ws-visit-foot">
             {v.invoice_number && <small>{v.invoice_number}</small>}
             {v.mechanic && <small>Mechanic: {v.mechanic}</small>}
-            {onOpenJob && <button className="button secondary small" onClick={onOpenJob}>Open job</button>}
+            {onOpenJob && <button className="button secondary small" onClick={onOpenJob}>{t("Preview in Jobs")}</button>}
           </div>
         </div>
       )}
@@ -75,6 +75,7 @@ export function VehiclePage({ id }: { id: string }) {
   const { go, business } = useWs();
   const { data: v, error, reload } = useLoad<Vehicle>("/api/workshop/vehicles/" + id);
   const [edit, setEdit] = useState(false), [f, setF] = useState({ owner: "", phone: "", make: "", notes: "" }), [msg, setMsg] = useState("");
+  const [sold, setSold] = useState(false), [nw, setNw] = useState({ owner: "", phone: "" });
   const command = useCommand();
   if (!v) return <Loading error={error} />;
   const startEdit = () => { setF({ owner: v.owner || "", phone: v.phone || "", make: v.make || "", notes: v.notes || "" }); setEdit(true); setMsg(""); };
@@ -82,13 +83,22 @@ export function VehiclePage({ id }: { id: string }) {
     e.preventDefault();
     try { await command("/api/workshop/vehicles/" + id, f, "PATCH"); setEdit(false); await reload(); } catch (err) { setMsg((err as Error).message); }
   };
+  const saveOwner = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try { await command("/api/workshop/vehicles/" + id + "/owner", nw); setSold(false); setMsg(""); await reload(); } catch (err) { setMsg((err as Error).message); }
+  };
+  const log = v.owner_log || [];
+  const showWho = log.length > 0 || new Set((v.history || []).map((h) => h.customer).filter(Boolean)).size > 1;
+  // repair history and owner changes on one timeline, newest first
+  const timeline = [...(v.history || []).map((h, i) => ({ at: h.created_at, h, i, c: null as null | (typeof log)[number] })), ...log.map((c) => ({ at: c.at, h: null as null | Visit, i: -1, c }))].sort((a, b) => (a.at < b.at ? 1 : -1));
   const due = v.next_service_date && v.next_service_date <= addDays(today(), 14);
   return (
     <div>
       <div className="ws-bar">
         <button className="button primary small" onClick={() => go({ name: "new", reg: v.registration })}>+ New job</button>
         <button className="button secondary small" onClick={() => void download("/api/workshop/vehicles/" + id + "/history.pdf", "history-" + id + ".pdf").catch((e) => setMsg(e.message))}>History PDF</button>
-        <button className="button secondary small" onClick={startEdit}>Edit details</button>
+        <button className="button secondary small" onClick={startEdit}>{t("Edit details")}</button>
+        <button className="button secondary small" onClick={() => { setNw({ owner: "", phone: "" }); setSold(true); setEdit(false); setMsg(""); }}>{t("New owner")}</button>
       </div>
       <section className="ws-card">
         <div className="ws-card-head">
@@ -108,11 +118,20 @@ export function VehiclePage({ id }: { id: string }) {
           </>
         ) : (
           <form onSubmit={save} className="ws-form">
+            <p className="muted">{t("Fixing a typo or a new number? Save here. The open jobs of this vehicle follow; bills already issued keep what was printed. Vehicle sold? Use New owner.")}</p>
             <label className="ws-field">Owner<input value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })} /></label>
             <label className="ws-field">Contact number<input inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></label>
             <label className="ws-field">Make and model<input value={f.make} onChange={(e) => setF({ ...f, make: e.target.value })} /></label>
             <label className="ws-field">Notes about this vehicle<textarea rows={3} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></label>
             <div className="ws-actions"><button type="button" className="button secondary" onClick={() => setEdit(false)}>Cancel</button><button className="button primary">Save</button></div>
+          </form>
+        )}
+        {sold && (
+          <form onSubmit={saveOwner} className="ws-form ws-newowner">
+            <p className="muted">{t("Use this when the vehicle was sold. {name} stays on the old bills and jobs. Fixing a typo? Use Edit details instead.", { name: v.owner || t("The old owner") })}</p>
+            <label className="ws-field">{t("New owner")}<input autoFocus value={nw.owner} onChange={(e) => setNw({ ...nw, owner: e.target.value })} /></label>
+            <label className="ws-field">{t("Contact number")}<input inputMode="tel" value={nw.phone} onChange={(e) => setNw({ ...nw, phone: e.target.value })} /></label>
+            <div className="ws-actions"><button type="button" className="button secondary" onClick={() => setSold(false)}>{t("Cancel")}</button><button className="button primary">{t("Save new owner")}</button></div>
           </form>
         )}
         {msg && <p role="alert" className="stock-error">{msg}</p>}
@@ -126,7 +145,9 @@ export function VehiclePage({ id }: { id: string }) {
         </dl>
       </section>
       <div className="ws-section-head"><h3>Repair history</h3><small>{v.history?.length || 0} job{v.history?.length === 1 ? "" : "s"}</small></div>
-      {(v.history || []).map((h, i) => <VisitCard key={h.id} v={h} open={i === 0} onOpenJob={() => go({ name: "job", id: h.id })} />)}
+      {timeline.map((r) => r.h
+        ? <VisitCard key={r.h.id} v={r.h} open={r.i === 0} showCustomer={showWho} onOpenJob={() => go({ name: "job", id: r.h!.id })} />
+        : <div key={"o" + r.at} className="ws-ownerchange"><b>{t("Owner changed")}</b><span>{(r.c!.from_owner || "?") + " \u2192 " + r.c!.to_owner}</span><small>{dateOnly(r.at)}</small></div>)}
       {!v.history?.length && <Empty>No repairs yet.</Empty>}
     </div>
   );
@@ -145,7 +166,7 @@ export function Due() {
           <DueCard key={v.id} v={v} why={why[v.reason || ""]}>
             <span className="ws-contact">
                 {v.phone && <a className="button secondary small" href={"tel:" + v.phone}>{t("Call")}</a>}
-                {v.phone && <a className="button secondary small" target="_blank" rel="noreferrer" href={waLink(v.phone, "Hello " + (v.owner || "") + ", " + business.name + " here. Your " + v.registration + " is due for service" + (v.next_service_date ? " on " + v.next_service_date : "") + ". Would you like to book a time?")}>WhatsApp</a>}
+                {v.phone && <a className="button secondary small" target="_blank" rel="noreferrer" href={waLink(v.phone, "Hello " + (v.owner || "") + ", " + business.name + " here. Your " + v.registration + " is due for service" + (v.next_service_date ? " on " + v.next_service_date : "") + (v.next_service_km ? (v.next_service_date ? " or at " : " at ") + kmText(v.next_service_km) : "") + ". Would you like to book a time?")}>{t("Send reminder")}</a>}
                 <button className="button primary small" onClick={() => go({ name: "new", reg: v.registration })}>{t("New job")}</button>
               </span>
           </DueCard>

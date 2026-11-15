@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Bill, PrintButton, billTotals, partAmount, type BillData } from "./Bill";
 import { PastRepairs } from "./Vehicles";
 import { StockPicker } from "./StockPicker";
-import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job } from "./common";
+import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job, STAGES, STAGE_LABEL, type Stage, waLink } from "./common";
 
 type PartRow = { name: string; quantity: string; unit_price: string; product_id?: string; discount_pct?: string };
 type LabourRow = { description: string; amount: string };
@@ -24,7 +24,7 @@ export function JobPage({ id }: { id: string }) {
 
   const adopt = (j: Job) => {
     setJob(j); setDirty(false);
-    setF({ customer: j.customer, phone: j.phone, vehicle: j.vehicle, odometer: j.odometer == null ? "" : String(j.odometer), summary: j.summary, mechanic: j.mechanic, notes: j.notes,
+    setF({ customer: j.customer, address: j.address || "", brought_by: j.brought_by || "", brought_phone: j.brought_phone || "", warranty_until: j.warranty_until || "", warranty_km: j.warranty_km == null ? "" : String(j.warranty_km), warranty_job: j.warranty_job ? "1" : "", phone: j.phone, vehicle: j.vehicle, odometer: j.odometer == null ? "" : String(j.odometer), summary: j.summary, mechanic: j.mechanic, notes: j.notes,
       discount: j.discount ? String(j.discount) : "", next_service_date: j.next_service_date || "", next_service_km: j.next_service_km == null ? "" : String(j.next_service_km) });
     setParts(j.parts.map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: String(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(p.discount_pct ? { discount_pct: String(p.discount_pct) } : {}) })));
     setLabour(j.labour.map((l) => ({ description: l.description, amount: String(l.amount) })));
@@ -49,7 +49,7 @@ export function JobPage({ id }: { id: string }) {
 
   const set = (k: string, v: string) => { setF((x) => ({ ...x, [k]: v })); setDirty(true); };
   const body = () => ({
-    revision: job.revision, customer: f.customer, address: f.address || "", phone: f.phone, vehicle: f.vehicle, odometer: f.odometer === "" ? null : Number(f.odometer), summary: f.summary, mechanic: f.mechanic, notes: f.notes,
+    revision: job.revision, customer: f.customer, address: f.address || "", brought_by: f.brought_by || "", brought_phone: f.brought_phone || "", warranty_until: f.warranty_until || "", warranty_km: f.warranty_km ? Number(f.warranty_km) : null, warranty_job: f.warranty_job === "1", phone: f.phone, vehicle: f.vehicle, odometer: f.odometer === "" ? null : Number(f.odometer), summary: f.summary, mechanic: f.mechanic, notes: f.notes,
     parts: lines.parts, labour: lines.labour, discount: num(f.discount), next_service_date: f.next_service_date, next_service_km: f.next_service_km === "" ? null : Number(f.next_service_km),
   });
   const save = async () => { const j = await command<Job>("/api/workshop/jobs/" + id, body(), "PATCH"); adopt(j); return j; };
@@ -99,11 +99,15 @@ export function JobPage({ id }: { id: string }) {
     work(i, { description, ...(hit && !labour[i].amount ? { amount: String(hit.amount) } : {}) });
   };
   const bill: BillData = {
-    business, number: job.invoice_number, date: today(), draft: !locked, status: locked ? "INVOICED" : undefined, customer: f.customer, address: f.address, phone: f.phone, registration: job.registration,
+    business, number: job.invoice_number, date: today(), draft: !locked, status: locked ? "INVOICED" : undefined, customer: f.customer, address: f.address, phone: f.phone, brought_by: f.brought_by, brought_phone: f.brought_phone, warranty_until: f.warranty_until, warranty_km: f.warranty_km ? Number(f.warranty_km) : null, warranty_job: f.warranty_job === "1", registration: job.registration,
     vehicle: f.vehicle, odometer: f.odometer === "" ? null : Number(f.odometer), mechanic: f.mechanic, summary: f.summary, ...lines, discount: num(f.discount),
     tax_name: business.tax_name, tax_rate: rate, next_service_date: f.next_service_date, next_service_km: f.next_service_km === "" ? null : Number(f.next_service_km),
   };
   const odo = f.odometer === "" ? 0 : Number(f.odometer);
+  const stage: Stage = job.stage || "WAITING";
+  const setStage = (next: Stage) => void run(async () => { const j = await command<Job>("/api/workshop/jobs/" + id + "/stage", { stage: next }); setJob((x) => (x ? { ...x, stage: j.stage } : x)); });
+  const readyTo = f.brought_phone || f.phone;
+  const readyMsg = "Hello " + (f.brought_by || f.customer) + ", your vehicle " + job.registration + " is ready for pickup. Thank you. " + (business.name || "");
 
   return (
     <div className="ws-job">
@@ -123,12 +127,26 @@ export function JobPage({ id }: { id: string }) {
       )}
       {req?.status === "REJECTED" && <div className="ws-note" role="status">The owner did not approve the earlier delete request{req.note ? ": " + req.note : ""}.</div>}
 
+      {!locked && (
+        <section className="ws-card ws-stage" aria-label={t("Where is this job?")}>
+          <h3>{t("Where is this job?")}</h3>
+          <div className="ws-stage-chips" role="group">
+            {STAGES.map((s2) => <button key={s2} type="button" className={"ws-quick" + (stage === s2 ? " on" : "")} aria-pressed={stage === s2} disabled={busy} onClick={() => stage !== s2 && setStage(s2)}>{t(STAGE_LABEL[s2])}</button>)}
+          </div>
+          {stage === "READY" && (readyTo
+            ? <a className="button primary small" href={waLink(readyTo, readyMsg)} target="_blank" rel="noopener noreferrer">{t("Tell the customer it is ready")}</a>
+            : <small className="muted">{t("Add a contact number to send the ready message.")}</small>)}
+        </section>
+      )}
+
       <section className="ws-card">
         <h3>{t("Customer and vehicle")}</h3>
         <div className="ws-grid2">
           <label className="ws-field">{t("Customer name")}<input disabled={locked} value={f.customer || ""} onChange={(e) => set("customer", e.target.value)} /></label>
           <label className="ws-field">{t("Contact number")}<input disabled={locked} inputMode="tel" value={f.phone || ""} onChange={(e) => set("phone", e.target.value)} /></label>
           <label className="ws-field">{t("Customer address")}<textarea disabled={locked} rows={2} value={f.address || ""} onChange={(e) => set("address", e.target.value)} /></label>
+          <label className="ws-field">{t("Someone else brought it in?")} <small>({t("optional")})</small><input disabled={locked} value={f.brought_by || ""} onChange={(e) => set("brought_by", e.target.value)} placeholder={t("Name, e.g. the driver")} /></label>
+          <label className="ws-field">{t("Their number")} <small>({t("optional")})</small><input disabled={locked} inputMode="tel" value={f.brought_phone || ""} onChange={(e) => set("brought_phone", e.target.value)} /></label>
           <label className="ws-field">{t("Make and model")}<input disabled={locked} value={f.vehicle || ""} onChange={(e) => set("vehicle", e.target.value)} /></label>
           <label className="ws-field">{t("Odometer (km)")}<input disabled={locked} inputMode="numeric" value={f.odometer || ""} onChange={(e) => set("odometer", e.target.value.replace(/\D/g, ""))} /></label>
           <label className="ws-field">{t("Mechanic")}{mechanicList.length ? (
@@ -136,7 +154,7 @@ export function JobPage({ id }: { id: string }) {
               <option value="">{t("Not chosen")}</option>
               {(f.mechanic && !mechanicList.includes(f.mechanic) ? [f.mechanic] : []).concat(mechanicList).map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
-          ) : <input disabled={locked} value={f.mechanic || ""} onChange={(e) => set("mechanic", e.target.value)} />}</label>
+          ) : <><input disabled={locked} value={f.mechanic || ""} onChange={(e) => set("mechanic", e.target.value)} /><small className="muted">{t("Mechanics added in Setup can be picked from a list, so every name is spelled the same.")}</small></>}</label>
           <label className="ws-field">{t("Complaint / work")}<textarea disabled={locked} rows={2} value={f.summary || ""} onChange={(e) => set("summary", e.target.value)} /></label>
         </div>
       </section>
@@ -202,6 +220,16 @@ export function JobPage({ id }: { id: string }) {
           {totals.tax > 0 && <div><dt>{business.tax_name} ({rate}%)</dt><dd>{lkr(totals.tax)}</dd></div>}
           <div className="grand"><dt>{t("Total (LKR)")}</dt><dd>{lkr(totals.total)}</dd></div>
         </dl>
+      </section>
+
+      <section className="ws-card">
+        <h3>{t("Warranty on this work (optional)")}</h3>
+        <div className="ws-grid2">
+          <label className="ws-field">{t("Covered until")}<input disabled={locked} type="date" value={f.warranty_until || ""} onChange={(e) => set("warranty_until", e.target.value)} /></label>
+          <label className="ws-field">{t("Or until odometer (km)")}<input disabled={locked} inputMode="numeric" value={f.warranty_km || ""} onChange={(e) => set("warranty_km", e.target.value.replace(/\D/g, ""))} /></label>
+        </div>
+        <label className="ws-check"><input disabled={locked} type="checkbox" checked={f.warranty_job === "1"} onChange={(e) => set("warranty_job", e.target.checked ? "1" : "")} /> {t("This is a warranty / redo job")}</label>
+        <small className="ws-hint">{t("Shows on the bill under the work.")}</small>
       </section>
 
       <section className="ws-card">

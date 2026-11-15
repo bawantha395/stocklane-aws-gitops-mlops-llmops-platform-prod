@@ -27,7 +27,7 @@ export const mark = (name: string) => { if (!events.has(name)) { events.add(name
 export const probe = { view: "home" as string };
 
 type Row = Record<string, any>;
-const db = { logo: null as null | { data: string; w: number; h: number }, settings: {} as Row, edits: {} as Record<string, Row>, archived: [] as Row[], log: [] as Row[], requests: [] as Row[], photos: {} as Record<string, { image: string; thumb: string }>, products: [] as Row[], movements: [] as Row[], jobs: [] as Row[], invoices: [] as Row[], seq: 0, created: 0, moved: 0, jobsMade: 0, paid: 0 };
+const db = { logo: null as null | { data: string; w: number; h: number }, settings: {} as Row, edits: {} as Record<string, Row>, owners: {} as Record<string, Row[]>, archived: [] as Row[], log: [] as Row[], requests: [] as Row[], photos: {} as Record<string, { image: string; thumb: string }>, products: [] as Row[], movements: [] as Row[], jobs: [] as Row[], invoices: [] as Row[], seq: 0, created: 0, moved: 0, jobsMade: 0, paid: 0 };
 export const progress = () => ({ created: db.created, moved: db.moved, jobs: db.jobsMade, paid: db.paid });
 const now = () => new Date().toISOString();
 const next = (p: string) => p + String(++db.seq);
@@ -35,7 +35,7 @@ const regKey = (s: string) => String(s || "").replace(/[^A-Za-z0-9]/g, "").toUpp
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 function reset() {
-  db.settings = {}; db.logo = null; db.edits = {}; db.archived = []; db.log = []; db.requests = []; db.photos = {}; db.seq = 0; db.created = 0; db.moved = 0; db.jobsMade = 0; db.paid = 0; db.jobs = []; db.invoices = []; db.movements = [];
+  db.settings = {}; db.logo = null; db.edits = {}; db.owners = {}; db.archived = []; db.log = []; db.requests = []; db.photos = {}; db.seq = 0; db.created = 0; db.moved = 0; db.jobsMade = 0; db.paid = 0; db.jobs = []; db.invoices = []; db.movements = [];
   const p = (name: string, brand: string, category: string, qty: number, location: string, part: string, extra: Row = {}) => ({
     id: next("p"), sku: "DEMO-" + String(db.seq).padStart(3, "0"), name, category, brand, grade: "", capacity: "", barcode: null, unit: "UNIT", quantity: qty,
     selling_price: 0, reorder_level: 5, image_id: null, part_number: part, location, archived: false, ...extra,
@@ -131,11 +131,13 @@ const vehicleView = (key: string) => {
   const mine = db.jobs.filter((x) => x.vehicle_key === key);
   if (!mine.length && !db.edits[key]) return null;
   const j = mine[0] || {};
+  // like the real vehicle file: owner, phone and model come from the first job that had them; a later job never replaces them
+  const first = (f: string) => [...mine].reverse().map((x) => x[f]).find(Boolean);
   const invoiced = mine.filter((x) => x.status === "INVOICED");
-  return { id: key, registration: j.registration, owner: j.customer, phone: j.phone, make: j.vehicle, updated_at: now(), visits: invoiced.length, spent: invoiced.reduce((t, x) => t + x.total, 0),
+  return { id: key, registration: j.registration, owner: first("customer"), phone: first("phone"), make: first("vehicle"), updated_at: now(), visits: invoiced.length, spent: invoiced.reduce((t, x) => t + x.total, 0),
     first_visit: invoiced.length ? invoiced[invoiced.length - 1].created_at.slice(0, 10) : null, average_gap_days: null, front_photo: mine.find((x) => x.front_photo)?.front_photo, plate_photo: mine.find((x) => x.plate_photo)?.plate_photo,
     history: mine.map((x) => ({ id: x.id, created_at: x.created_at, summary: x.summary, status: x.status, odometer: x.odometer, total: x.total, invoice_number: x.invoice_number, invoice_id: x.invoice_id,
-      parts: x.parts.map((q: Row) => ({ name: q.name, quantity: q.quantity, unit_price: q.unit_price })), labour: x.labour.map((q: Row) => ({ description: q.description, amount: q.amount })), mechanic: x.mechanic })), ...db.edits[key] };
+      parts: x.parts.map((q: Row) => ({ name: q.name, quantity: q.quantity, unit_price: q.unit_price })), labour: x.labour.map((q: Row) => ({ description: q.description, amount: q.amount })), mechanic: x.mechanic, customer: x.customer })), owner_log: db.owners[key] || [], ...db.edits[key] };
 };
 function reportFor(from: string, until: string) {
   const inRange = db.invoices.filter((i) => i.status !== "VOID" && i.created_at.slice(0, 10) >= from && i.created_at.slice(0, 10) <= until);
@@ -259,7 +261,18 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
     if (a === "vehicles") {
       if (b) {
         const v = vehicleView(b); if (!v) throw new ApiError("Vehicle not found", 404);
-        if (method === "PATCH") { db.edits[b] = { ...db.edits[b], ...(body.owner !== undefined ? { owner: body.owner } : {}), ...(body.make !== undefined ? { make: body.make } : {}), ...(body.phone !== undefined ? { phone: body.phone } : {}), ...(body.notes !== undefined ? { notes: body.notes } : {}) }; return { saved: true }; }
+        if (method === "PATCH") { db.edits[b] = { ...db.edits[b], ...(body.owner !== undefined ? { owner: body.owner } : {}), ...(body.make !== undefined ? { make: body.make } : {}), ...(body.phone !== undefined ? { phone: body.phone } : {}), ...(body.notes !== undefined ? { notes: body.notes } : {}) };
+          for (const oj of db.jobs.filter((x) => x.vehicle_key === b && x.status === "OPEN")) Object.assign(oj, body.owner !== undefined ? { customer: body.owner } : {}, body.phone !== undefined ? { phone: body.phone } : {}, body.make !== undefined ? { vehicle: body.make } : {});
+          return { saved: true }; }
+        if (method === "POST" && seg[4] === "owner") {
+          const owner = String(body.owner || "").trim(), ph = String(body.phone || "").trim();
+          if (!owner) throw new ApiError("New owner is required", 400);
+          if (owner === v.owner && ph === (v.phone || "")) throw new ApiError("That is already the owner on file. Use Edit details to correct a name or number.", 400);
+          (db.owners[b] = db.owners[b] || []).push({ at: now(), from_owner: v.owner, from_phone: v.phone, to_owner: owner, to_phone: ph });
+          db.edits[b] = { ...db.edits[b], owner, phone: ph };
+          for (const oj of db.jobs.filter((x) => x.vehicle_key === b && x.status === "OPEN")) Object.assign(oj, { customer: owner, phone: ph });
+          return { saved: true };
+        }
         return clone(v);
       }
       const term = (url.searchParams.get("search") || "").toLowerCase();
@@ -294,7 +307,7 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       if (!b) {
         if (method === "GET") return clone(rows(db.jobs));
         const j = priced({ id: next("j"), registration: String(body.registration || "").toUpperCase(), vehicle_key: regKey(body.registration), customer: body.customer || "", address: body.address || "", phone: body.phone || "", vehicle: body.vehicle || "",
-          odometer: body.odometer ?? undefined, summary: body.summary || "", mechanic: body.mechanic || "", notes: "", status: "OPEN", revision: 1, parts: [], labour: [], discount: 0, tax_rate: 0, created_at: now(), age_days: 0 });
+          odometer: body.odometer ?? undefined, summary: body.summary || "", mechanic: body.mechanic || "", notes: "", status: "OPEN", stage: "WAITING", brought_by: body.brought_by || undefined, brought_phone: body.brought_phone || undefined, revision: 1, parts: [], labour: [], discount: 0, tax_rate: 0, created_at: now(), age_days: 0 });
         Object.assign(j, { front_photo: body.front_photo || undefined, plate_photo: body.plate_photo || undefined, before_photos: body.before_photos || [], photo_count: (body.before_photos || []).length || undefined });
         db.jobs.unshift(j); db.jobsMade++; return clone(j);
       }
@@ -304,6 +317,7 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       }
       const j = db.jobs.find((x) => x.id === b); if (!j) throw new ApiError("Not found", 404);
       const c = seg[4];
+      if (c === "stage" && method === "POST") { if (j.status !== "OPEN") throw new ApiError("Only an open job has a stage", 409); j.stage = body.stage; return clone(j); }
       if (c === "cancel" && method === "POST") { release(j); j.status = "CANCELLED"; j.revision++; logIt("CANCELLED", j); return clone(j); }
       if (c === "undo" && method === "POST") { release(j); db.jobs = db.jobs.filter((x) => x.id !== j.id); logIt("UNDONE", j); return { undone: true }; }
       if (c === "archive" && method === "POST") { release(j); db.jobs = db.jobs.filter((x) => x.id !== j.id); db.archived.unshift({ ...j, status: "ARCHIVED", archive_reason: body.reason || "", archived_by: "Practice", archived_at: now() }); db.requests = db.requests.filter((r) => r.job_id !== j.id); logIt("ARCHIVED", j, body.reason || ""); return { archived: true }; }
@@ -319,6 +333,7 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       }
       if (c === "invoice") {
         const inv = { id: next("i"), invoice_number: String(db.settings.invoice_prefix || "INV") + "-" + String(db.invoices.length + 1).padStart(4, "0"), job_id: j.id, registration: j.registration, customer: j.customer, address: j.address, phone: j.phone, vehicle: j.vehicle, odometer: j.odometer, summary: j.summary,
+          brought_by: j.brought_by, brought_phone: j.brought_phone, warranty_until: j.warranty_until, warranty_km: j.warranty_km, warranty_job: j.warranty_job,
           mechanic: j.mechanic, parts: j.parts, labour: j.labour, parts_total: j.parts_total, labour_total: j.labour_total, discount: j.discount, subtotal: j.subtotal, tax: j.tax, tax_name: "VAT", tax_rate: 0, total: j.total,
           paid: 0, status: "UNPAID", created_at: now(), payments: [] as Row[], currency: "LKR", business: business() };
         db.invoices.unshift(inv); j.status = "INVOICED"; j.invoice_id = inv.id; j.invoice_number = inv.invoice_number; j.revision++;
@@ -326,7 +341,8 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       }
       if (method === "PATCH") {
         const before = clone(j.parts);
-        Object.assign(j, { customer: body.customer, address: body.address, phone: body.phone, vehicle: body.vehicle, odometer: body.odometer ?? undefined, summary: body.summary, mechanic: body.mechanic, notes: body.notes,
+        Object.assign(j, { customer: body.customer, address: body.address, phone: body.phone, vehicle: body.vehicle, odometer: body.odometer ?? undefined, summary: body.summary, mechanic: body.mechanic, notes: body.notes, brought_by: body.brought_by || undefined, brought_phone: body.brought_phone || undefined,
+          warranty_until: body.warranty_until || undefined, warranty_km: body.warranty_km ?? undefined, warranty_job: !!body.warranty_job,
           parts: body.parts || [], labour: body.labour || [], discount: Number(body.discount || 0) });
         const was = new Map(((before as Row[]) || []).filter((l) => l.product_id).map((l) => [l.product_id, Number(l.quantity)] as const));
         const now_ = new Map((j.parts as Row[]).filter((l) => l.product_id).map((l) => [l.product_id, Number(l.quantity)] as const));
@@ -343,6 +359,14 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
         if (j) { j.status = "OPEN"; delete j.invoice_id; delete j.invoice_number; j.revision++; logIt("INVOICE_VOIDED", j); }
         return clone(inv);
       }
+      if (seg[4] === "refund" && method === "POST") {
+        const amount = Number(body.amount);
+        if (!(amount > 0) || !String(body.reason || "").trim()) throw new ApiError("Enter the amount and a reason", 400);
+        if (amount > inv.paid) throw new ApiError("That is more than was paid: LKR " + inv.paid.toFixed(2), 409);
+        inv.payments.push({ id: next("pay"), amount: -amount, method: body.method || "CASH", note: "Refund: " + body.reason, refund: true, at: now() });
+        inv.paid = round2(inv.paid - amount); inv.status = inv.paid >= inv.total ? "PAID" : inv.paid > 0 ? "PARTIAL" : "UNPAID";
+        return clone(inv);
+      }
       if (seg[4] === "payments" && method === "POST") {
         const amount = Number(body.amount);
         inv.payments.push({ id: next("pay"), amount, method: body.method || "CASH", note: body.note || "", at: now() });
@@ -351,6 +375,7 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       return clone(inv);
     }
   }
+  if (path.includes("/api/workshop/export")) return { exported_at: now(), format: "lifta-export-1", note: "Practice sample. Nothing here is real.", jobs: clone(db.jobs), invoices: clone(db.invoices) };
   // Anything unlisted still must not error or reach the server: answer as an empty, harmless success.
   return method === "GET" ? [] : { ok: true };
 }

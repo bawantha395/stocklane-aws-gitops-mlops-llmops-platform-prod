@@ -2,7 +2,7 @@ import { t } from "../i18n";
 import { useRef, useState, type ReactNode } from "react";
 import { Car } from "lucide-react";
 import { Photo } from "./Photos";
-import { Pill, dateOnly, kmText, lkr, type Invoice, type Job, type Vehicle } from "./common";
+import { Pill, STAGE_LABEL, dateOnly, kmText, lkr, type Invoice, type Job, type Vehicle } from "./common";
 
 /** Swipe a card left to reveal Call and Open. Vertical scrolling still works; a tap still opens the card. */
 function Swipe({ phone, onOpen, children }: { phone?: string; onOpen: () => void; children: ReactNode }) {
@@ -26,9 +26,11 @@ export const hue = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++
 
 /** Top picture of a card: the front photo, or a tinted plate with a car. Children sit on top of it (status, counts). */
 function Hero({ photo, reg, children }: { photo?: string; reg: string; children?: ReactNode }) {
+  // No photo: a slim plain row (icon on the left, status on the right) - no absolutely placed layers that some phones paint as an empty block.
+  if (!photo) return <span className="ws-slim" style={{ ["--h" as string]: hue(reg || "x") }}><Car size={22} strokeWidth={1.7} aria-hidden="true" />{children}</span>;
   return (
     <span className="ws-hero" style={{ ["--h" as string]: hue(reg || "x") }}>
-      {photo ? <Photo id={photo} className="ws-hero-img" /> : <span className="ws-hero-none"><Car size={34} strokeWidth={1.6} /></span>}
+      <Photo id={photo} className="ws-hero-img" />
       {children}
     </span>
   );
@@ -64,7 +66,7 @@ export function JobCard({ j, onOpen }: { j: Job; onOpen: () => void }) {
   return (
     <Swipe phone={j.phone} onOpen={onOpen}><button className="ws-tile ws-jobc" onClick={onOpen}>
       <Hero photo={j.front_photo} reg={j.registration}>
-        <span className="ws-hero-top"><Pill s={j.status} /></span>
+        <span className="ws-hero-top"><Pill s={j.status} />{j.status === "OPEN" && <span className={"ws-stage-pill st-" + (j.stage || "WAITING").toLowerCase()}>{t(STAGE_LABEL[j.stage || "WAITING"])}</span>}</span>
         {j.photo_count ? <span className="ws-hero-count">{"\u{1F4F7} " + j.photo_count}</span> : null}
       </Hero>
       <span className="ws-c-body">

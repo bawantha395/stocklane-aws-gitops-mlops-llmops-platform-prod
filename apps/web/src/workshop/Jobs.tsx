@@ -37,7 +37,7 @@ export function Jobs() {
 
 export function NewJob({ reg: start }: { reg?: string }) {
   const { go, business } = useWs();
-  const [f, setF] = useState({ registration: start || "", customer: "", address: "", phone: "", vehicle: "", odometer: "", summary: "", mechanic: "" });
+  const [f, setF] = useState({ registration: start || "", customer: "", address: "", phone: "", vehicle: "", odometer: "", summary: "", mechanic: "", brought_by: "", brought_phone: "" });
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [plate, setPlate] = useState(""), [front, setFront] = useState(""), [before, setBefore] = useState<string[]>([]);
   const command = useCommand();
@@ -53,11 +53,21 @@ export function NewJob({ reg: start }: { reg?: string }) {
     if (v) setF((x) => ({ ...x, customer: x.customer || v.owner || "", phone: x.phone || v.phone || "", vehicle: x.vehicle || v.make || "" }));
   }, [v?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const lower = v?.last_km != null && f.odometer !== "" && Number(f.odometer) < v.last_km;
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setBusy(true); setError("");
-    try { const job = await command<Job>("/api/workshop/jobs", { ...f, odometer: f.odometer === "" ? null : Number(f.odometer), plate_photo: plate || undefined, front_photo: front || undefined, before_photos: before }); go({ name: "job", id: job.id }, "Job created. Add the parts and labour."); }
+  const same = (x?: string, y?: string) => (x || "").toLowerCase().split(/\s+/).filter(Boolean).join(" ") === (y || "").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
+  const [ask, setAsk] = useState(false), askRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (ask) askRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }); }, [ask]);
+  const differs = !!v && !!v.owner && !!f.customer.trim() && !same(f.customer, v.owner);
+  const openJobs = (v?.history || []).filter((h) => h.status === "OPEN");
+  const create = async (customer: string, newOwner: boolean, extra: Record<string, string> = {}) => {
+    setBusy(true); setError(""); setAsk(false);
+    try {
+      if (newOwner) await command("/api/workshop/vehicles/" + key + "/owner", { owner: f.customer, phone: f.phone });
+      const job = await command<Job>("/api/workshop/jobs", { ...f, customer, ...extra, odometer: f.odometer === "" ? null : Number(f.odometer), plate_photo: plate || undefined, front_photo: front || undefined, before_photos: before });
+      go({ name: "job", id: job.id }, "Job created. Add the parts and labour.");
+    }
     catch (err) { setError((err as Error).message); setBusy(false); }
   };
+  const submit = (e: React.FormEvent) => { e.preventDefault(); if (differs) { setAsk(true); return; } create(f.customer, false); };
   return (
     <div>
       <form ref={formRef} className="ws-card ws-form ws-stepped" data-step-now={step} onSubmit={submit}>
@@ -66,6 +76,7 @@ export function NewJob({ reg: start }: { reg?: string }) {
         <div className="ws-step" data-step="0">
         <label className="ws-field">{t("Vehicle number")} *<input required autoFocus autoCapitalize="characters" value={f.registration} onChange={(e) => set("registration", e.target.value)} placeholder="CAB-1234" /></label>
         {v && <p className="ws-known">Known vehicle: {v.make || "model not set"}, {v.visits} earlier visit{v.visits === 1 ? "" : "s"}, last seen at {kmText(v.last_km)}. Details filled in below.</p>}
+        {openJobs.length > 0 && <p className="ws-warn" role="status">{t("This vehicle already has an open job. Check it before you start another.")} <button type="button" className="button secondary small" onClick={() => go({ name: "job", id: openJobs[0].id })}>{t("Open it")}</button></p>}
         <div className="ws-grid2">
           <label className="ws-field">{t("Customer name")} *<input required value={f.customer} onChange={(e) => set("customer", e.target.value)} /></label>
           <label className="ws-field">{t("Contact number")}<input inputMode="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} placeholder="07X XXX XXXX" /></label>
@@ -77,7 +88,7 @@ export function NewJob({ reg: start }: { reg?: string }) {
         <div className="ws-step" data-step="2">
         {lower && <p className="ws-warn">That is lower than the last recorded {kmText(v?.last_km)}. Check the reading.</p>}
         <label className="ws-field">{t("Complaint / work to do")}<textarea rows={2} value={f.summary} onChange={(e) => set("summary", e.target.value)} placeholder="Engine oil change, brake noise" /></label>
-        <label className="ws-field">{t("Mechanic")}{(business.mechanics || []).length ? <select value={f.mechanic} onChange={(e) => set("mechanic", e.target.value)}><option value="">{t("Not chosen")}</option>{(business.mechanics || []).map((m) => <option key={m} value={m}>{m}</option>)}</select> : <input value={f.mechanic} onChange={(e) => set("mechanic", e.target.value)} />}</label>
+        <label className="ws-field">{t("Mechanic")}{(business.mechanics || []).length ? <select value={f.mechanic} onChange={(e) => set("mechanic", e.target.value)}><option value="">{t("Not chosen")}</option>{(business.mechanics || []).map((m) => <option key={m} value={m}>{m}</option>)}</select> : <><input value={f.mechanic} onChange={(e) => set("mechanic", e.target.value)} /><small className="muted">{t("Mechanics added in Setup can be picked from a list, so every name is spelled the same.")}</small></>}</label>
         </div>
         <div className="ws-step" data-step="1">
         <div className="ws-photos" data-tour="job-photos">
@@ -90,6 +101,17 @@ export function NewJob({ reg: start }: { reg?: string }) {
           <PhotoStrip ids={before} onAdd={(id) => setBefore((x) => [...x, id])} onRemove={(id) => setBefore((x) => x.filter((y) => y !== id))} />
         </div>
         </div>
+        {ask && v && (
+          <div ref={askRef} className="ws-askowner" role="alertdialog" aria-label={t("Is this a new owner?")}>
+            <strong>{t("Is this a new owner?")}</strong>
+            <p>{t("The vehicle file has {old}. You typed {name}.", { old: v.owner || "", name: f.customer })}</p>
+            <button type="button" className="button primary" onClick={() => create(f.customer, true)}><b>{t("Vehicle was sold: {name} is the new owner", { name: f.customer })}</b><small>{t("{old} stays on the old bills and jobs.", { old: v.owner || "" })}</small></button>
+            <button type="button" className="button secondary" onClick={() => create(v.owner || "", false, { brought_by: f.customer, brought_phone: f.phone, phone: v.phone || "" })}><b>{t("Same owner, {name} only brought it in", { name: f.customer })}</b><small>{t("The bill goes to {old}. {name} is printed as brought in by.", { old: v.owner || "", name: f.customer })}</small></button>
+            <button type="button" className="button secondary" onClick={() => create(f.customer, false)}><b>{t("Only this job: bill {name}", { name: f.customer })}</b><small>{t("The owner on the vehicle stays {old}.", { old: v.owner || "" })}</small></button>
+            <button type="button" className="button secondary" onClick={() => create(v.owner || "", false)}><b>{t("I typed the wrong name: use {old}", { old: v.owner || "" })}</b></button>
+            <button type="button" className="button secondary small" onClick={() => setAsk(false)}>{t("Cancel")}</button>
+          </div>
+        )}
         {error && <p role="alert" className="stock-error">{error}</p>}
         <div className="ws-step-nav">{step > 0 ? <button type="button" className="button secondary" onClick={() => setStep(step - 1)}>{t("Back")}</button> : <button type="button" className="button secondary" onClick={() => go({ name: "home" })}>{t("Cancel")}</button>}{step < 2 ? <button key="next" type="button" className="button primary large" onClick={next}>{t("Next")}</button> : <button key="create" type="submit" className="button primary large" disabled={busy}>{busy ? t("Saving…") : t("Create job")}</button>}</div>
         <div className="ws-actions"><button className="button secondary" type="button" onClick={() => go({ name: "home" })}>{t("Cancel")}</button><button className="button primary large" disabled={busy}>{busy ? t("Saving…") : t("Create job")}</button></div>

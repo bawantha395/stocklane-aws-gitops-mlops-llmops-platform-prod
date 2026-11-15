@@ -82,6 +82,14 @@ def columns(d, cols, labels):
     d.y += 18
 
 
+def work_warranty(i):
+    """The warranty given on this job's work, as one sentence (empty when there is none)."""
+    until, limit = i.get('warranty_until'), i.get('warranty_km')
+    parts = (['until ' + until] if until else []) + ([kms(limit)] if limit else [])
+    text = ('Covered ' + ' or '.join(parts) + (', whichever comes first.' if len(parts) == 2 else '.')) if parts else ''
+    return (text + (' ' if text else '') + 'This is a warranty / redo job.') if i.get('warranty_job') else text
+
+
 def invoice(i):
     b = i.get('business') or {}
     d = Doc(footer=(b.get('name') or 'Workshop') + ' | ' + i['invoice_number'])
@@ -90,7 +98,8 @@ def invoice(i):
         [(i['invoice_number'], True), ('Date: ' + i['date'], False)]
         + ([('Due: ' + i['due_date'] + ' (' + str(i['terms']) + ' days)', False)] if i.get('due_date') else [])
         + [('Status: ' + {'UNPAID': 'Unpaid', 'PARTIAL': 'Part paid', 'PAID': 'Paid', 'VOID': 'Void'}[status], False)])
-    left = block(d, MARGIN, 230, 'BILL TO', [(i['customer'], 11, True), (i.get('address'), 9.5, False), (i.get('phone'), 9.5, False)])
+    left = block(d, MARGIN, 230, 'BILL TO', [(i['customer'], 11, True), (i.get('address'), 9.5, False), (i.get('phone'), 9.5, False),
+                                         (('Brought in by: ' + i['brought_by'] + ((' ' + i['brought_phone']) if i.get('brought_phone') else '')) if i.get('brought_by') else '', 9, False)])
     odo = kms(i['odometer']) if i.get('odometer') is not None else ''
     right = block(d, 320, 235, 'VEHICLE', [(i['registration'], 13, True), (i.get('vehicle'), 9.5, False), (odo, 9.5, False),
                                           ('Mechanic: ' + i['mechanic'] if i.get('mechanic') else '', 9.5, False)])
@@ -160,7 +169,7 @@ def invoice(i):
         d.y += 22
     if i['payments']:
         d.room(40 + 14 * len(i['payments']))
-        d.text(MARGIN, d.y + 8, 'PAYMENTS RECEIVED', 8, True, color=MUTED)
+        d.text(MARGIN, d.y + 8, 'PAYMENTS AND REFUNDS' if any(p.get('refund') for p in i['payments']) else 'PAYMENTS RECEIVED', 8, True, color=MUTED)
         d.y += 14
         for p in i['payments']:
             d.text(MARGIN, d.y + 9, p.get('date', '') + '   ' + str(p.get('method') or '').title() + (('   ' + p['note']) if p.get('note') else ''), 9, color=INK)
@@ -193,6 +202,13 @@ def invoice(i):
             d.qr(R - 76, d.y + 8, 64, qr)
             d.text(R - 44, d.y + box - 2, 'Scan', 7, color=MUTED, align='c')
         d.y += box + 10
+    note = work_warranty(i)
+    if note:
+        d.room(30)
+        d.text(MARGIN, d.y + 9, 'WARRANTY ON THIS WORK', 8, True, color=MUTED)
+        d.y += 14
+        d.paragraph(MARGIN, note, R - MARGIN, 9)
+        d.y += 4
     if b.get('warranty'):
         d.room(30)
         d.text(MARGIN, d.y + 9, 'WARRANTY', 8, True, color=MUTED)

@@ -106,6 +106,12 @@ function block(d: Doc, x: number, w: number, label: string, rows: [string | unde
   return y;
 }
 
+/** The warranty given on this job's work as one sentence (same wording as the server PDF). */
+export function workWarranty(inv: { warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean }): string {
+  const parts = [...(inv.warranty_until ? ["until " + inv.warranty_until] : []), ...(inv.warranty_km ? [Math.round(num(inv.warranty_km)).toLocaleString("en") + " km"] : [])];
+  const text = parts.length ? "Covered " + parts.join(" or ") + (parts.length === 2 ? ", whichever comes first." : ".") : "";
+  return inv.warranty_job ? text + (text ? " " : "") + "This is a warranty / redo job." : text;
+}
 export function invoicePdf(inv: Invoice, shop: Business): Blob {
   const b = { ...shop, ...(inv.business || {}) };
   const d = new Doc((b.name || "Workshop") + " | " + inv.invoice_number);
@@ -137,7 +143,7 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   for (const [t, bold] of meta) { d.text(R, ry + 8, t, 9.5, bold, "r", bold ? INK : MUTED); ry += 13; }
   d.y = Math.max(y, ry) + 8; d.line(MARGIN, d.y, R, d.y, 1.2, ACCENT); d.y += 14;
   // parties
-  const left = block(d, MARGIN, 230, "BILL TO", [[inv.customer, 11, true], [inv.address, 9.5, false], [inv.phone, 9.5, false]]);
+  const left = block(d, MARGIN, 230, "BILL TO", [[inv.customer, 11, true], [inv.address, 9.5, false], [inv.phone, 9.5, false], [inv.brought_by ? "Brought in by: " + inv.brought_by + (inv.brought_phone ? " " + inv.brought_phone : "") : "", 9, false]]);
   const km = inv.odometer != null ? Math.round(num(inv.odometer)).toLocaleString("en") + " km" : "";
   const right = block(d, 320, 235, "VEHICLE", [[inv.registration, 13, true], [inv.vehicle, 9.5, false], [km, 9.5, false], [inv.mechanic ? "Mechanic: " + inv.mechanic : "", 9.5, false]]);
   d.y = Math.max(left, right) + 6;
@@ -179,7 +185,7 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   const pays = inv.payments || [];
   if (pays.length) {
     d.room(40 + 14 * pays.length);
-    d.text(MARGIN, d.y + 8, "PAYMENTS RECEIVED", 8, true, "l", MUTED); d.y += 14;
+    d.text(MARGIN, d.y + 8, pays.some((p: { refund?: boolean }) => p.refund) ? "PAYMENTS AND REFUNDS" : "PAYMENTS RECEIVED", 8, true, "l", MUTED); d.y += 14;
     for (const p of pays) {
       const m = String(p.method || ""); d.text(MARGIN, d.y + 9, dateOnly(p.at) + "   " + m.charAt(0) + m.slice(1).toLowerCase() + (p.note ? "   " + p.note : ""), 9);
       d.text(R - 6, d.y + 9, money(p.amount), 9, false, "r"); d.y += 14;
@@ -200,6 +206,7 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
     if (b.qr_url) { try { d.qr(R - 76, d.y + 8, 64, b.qr_url); d.text(R - 44, d.y + boxH - 1, "Scan", 7, false, "r", MUTED); } catch { /* link too long for a QR */ } }
     d.y += boxH + 10;
   }
+  const wnote = workWarranty(inv); if (wnote) { d.room(46); d.text(MARGIN, d.y + 8, "WARRANTY ON THIS WORK", 8, true, "l", MUTED); d.y += 14; d.paragraph(MARGIN, wnote, R - MARGIN, 9); d.y += 4; }
   if (b.warranty) { d.room(46); d.text(MARGIN, d.y + 8, "WARRANTY", 8, true, "l", MUTED); d.y += 14; d.paragraph(MARGIN, b.warranty, R - MARGIN, 9); d.y += 4; }
   if (b.footer) d.paragraph(MARGIN, b.footer, R - MARGIN, 9, MUTED);
   d.room(50);

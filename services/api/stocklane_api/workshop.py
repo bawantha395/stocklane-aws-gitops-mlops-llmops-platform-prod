@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from . import bills, inventory, photos
-from .core import COLOMBO, bad, batch_get, check, command, conflict, delete, get, missing, now, num, public, put, query
+from .core import COLOMBO, bad, batch_get, check, command, conflict, delete, get, missing, now, num, public, put, query, update
 
 LATIN = re.compile(r'[\x20-\x7e]*')
 MONEY, ZERO, HUNDRED = Decimal('0.01'), Decimal('0'), Decimal('100')
@@ -285,10 +285,16 @@ def save_business(key, who, body):
 
 
 # ---------- vehicles ----------
-def vehicle_put(key, fields, always=()):
-    """Create or update the vehicle file. Empty values keep what is stored, except those in `always`."""
+FROM_JOBS = ('owner', 'phone', 'make')
+
+
+def vehicle_put(key, fields, always=(), fill_only=()):
+    """Create or update the vehicle file. Empty values keep what is stored, except those in `always`.
+    Fields in `fill_only` are written only while the vehicle file has no value for them: a job never changes who owns the vehicle
+    (Edit details and New owner do), so a different name typed on a job cannot silently replace the owner."""
     current = get('VEHICLE', key)
     item = dict(current) if current else {'pk': 'VEHICLE', 'sk': key, 'id': key, 'created_at': now(), 'revision': 0}
+    fields = {k: v for k, v in fields.items() if not (k in fill_only and item.get(k))}
     item.update({k: v for k, v in fields.items() if v not in (None, '')})
     for k in always:
         if fields.get(k) in (None, ''):
@@ -300,10 +306,18 @@ def vehicle_put(key, fields, always=()):
     return put(item, ConditionExpression='attribute_not_exists(pk)')
 
 
+def job_fill_only(current):
+    """A job edit may correct the owner, number or make the vehicle file still holds from this very job (a typo fixed on the job page).
+    Where the vehicle file holds something else (the vehicle changed hands), the job keeps its own value and the file is left alone."""
+    v = get('VEHICLE', current['vehicle_key']) or {}
+    return tuple(name for name, job_field in (('owner', 'customer'), ('phone', 'phone'), ('make', 'vehicle'))
+                 if v.get(name) and v.get(name) != current.get(job_field))
+
+
 def history_put(j, rate=ZERO):
     t = totals(j, rate)
     return put(clean({'pk': 'VJOB#' + j['vehicle_key'], 'sk': j['created_at'] + '#' + j['id'], 'id': j['id'],
-                      'created_at': j['created_at'], 'summary': j['summary'], 'status': j['status'], 'odometer': j.get('odometer'),
+                      'created_at': j['created_at'], 'summary': j['summary'], 'status': j['status'], 'odometer': j.get('odometer'), 'customer': j.get('customer'), 'warranty_job': j.get('warranty_job') or None,
                       'total': t['total'], 'invoice_number': j.get('invoice_number'), 'invoice_id': j.get('invoice_id')}))
 
 
@@ -343,6 +357,7 @@ def vehicle(key):
             row['parts'] = [{'name': p['name'], 'quantity': p['quantity'], 'unit_price': p['unit_price']} for p in j['parts']]
             row['labour'] = [{'description': l['description'], 'amount': l['amount']} for l in j['labour']]
             row['mechanic'] = j.get('mechanic', '')
+            row['customer'] = j.get('customer', row.get('customer', ''))
         if h['status'] == 'INVOICED':
             spent += h['total']
             dates.append(local_date(h['created_at']))
@@ -367,8 +382,45 @@ def edit_vehicle(key, idem, who, body):
             fields['phone'] = phone(b['phone'])
         if not fields:
             raise bad('Nothing to change')
-        return [vehicle_put(key, fields)], [CHANGED], {'saved': True}
+        ops, events = open_jobs_follow(key, fields, [vehicle_put(key, fields)], [CHANGED])
+        return ops, events, {'saved': True}
     return command(idem, 'edit-vehicle:' + key, who, body, build)
+
+
+def open_jobs_follow(key, fields, ops, events):
+    """Jobs that are still open follow the vehicle file, so a corrected phone number is not undone by the next save of the job.
+    Billed jobs and issued invoices keep what was printed on them."""
+    mapping = (('owner', 'customer'), ('phone', 'phone'), ('make', 'vehicle'))
+    for j in [j for j in query('WJOB') if j.get('vehicle_key') == key and j['status'] == 'OPEN'][:10]:
+        changes = {job_field: fields.get(name, '') for name, job_field in mapping if name in fields}
+        if not changes:
+            break
+        new = dict(j, **changes, revision=int(j['revision']) + 1, updated_at=now())
+        ops.append(put(clean(new), ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
+                       ExpressionAttributeValues={':r': j['revision'], ':open': 'OPEN'}))
+        events.append(CHANGED)
+    return ops, events
+
+
+def new_owner(key, idem, who, body):
+    """The vehicle changed hands. The old owner is kept in the vehicle's owner log; old jobs and bills keep the old owner's name."""
+    key = regkey(key)
+
+    def build():
+        b = body or {}
+        current = get('VEHICLE', key)
+        if not current:
+            raise missing('Vehicle not found')
+        owner = text(b.get('owner'), 'New owner', 100, True)
+        new_phone = phone(b.get('phone')) if b.get('phone') else ''
+        if owner == current.get('owner') and new_phone == (current.get('phone') or ''):
+            raise bad('That is already the owner on file. Use Edit details to correct a name or number.')
+        log = list(current.get('owner_log') or [])[-19:] + [clean({'at': now(), 'from_owner': current.get('owner', ''), 'from_phone': current.get('phone', ''),
+                                                                    'to_owner': owner, 'to_phone': new_phone, 'by': who})]
+        fields = {'owner': owner, 'phone': new_phone, 'owner_log': log}
+        ops, events = open_jobs_follow(key, fields, [vehicle_put(key, fields, always=('phone',))], [CHANGED])
+        return ops, events, {'saved': True}
+    return command(idem, 'vehicle-new-owner:' + key, who, body, build)
 
 
 def service_due():
@@ -443,11 +495,12 @@ def create_job(key, who, body):
                    'address': lines_text(b.get('address'), 'Customer address', 200),
                    'vehicle': text(b.get('vehicle'), 'Vehicle make and model', 100),
                    'odometer': km(b.get('odometer'), 'Odometer'), 'summary': text(b.get('summary'), 'Complaint', 1000),
-                   'mechanic': text(b.get('mechanic'), 'Mechanic', 60), 'notes': '', 'status': 'OPEN', 'revision': 0,
+                   'mechanic': text(b.get('mechanic'), 'Mechanic', 60), 'notes': '', 'status': 'OPEN', 'revision': 0, 'stage': 'WAITING',
+                   'brought_by': text(b.get('brought_by'), 'Brought in by', 100), 'brought_phone': phone(b.get('brought_phone')),
                    'parts': [], 'labour': [], 'discount': ZERO, 'created_by': who, 'created_at': created, 'updated_at': created})
         face = {'front_photo': photos.one(b.get('front_photo'), 'Front photo'), 'plate_photo': photos.one(b.get('plate_photo'), 'Plate photo')}
         before = photos.many(b.get('before_photos'), 'Condition photos')
-        ops = [put(j), vehicle_put(j['vehicle_key'], {**vehicle_fields(j), **face}), history_put(j)]
+        ops = [put(j), vehicle_put(j['vehicle_key'], {**vehicle_fields(j), **face}, fill_only=FROM_JOBS), history_put(j)]
         if before:
             ops.append(put({'pk': 'WJPH', 'sk': job_id, 'before': before, 'n': 1, 'updated_at': created}))
         return ops, [None] * len(ops), view(j)
@@ -514,6 +567,17 @@ def save_job(job_id, key, who, body, owner=True):
             j['next_service_date'] = day(b['next_service_date'], 'Next service date')
         if 'next_service_km' in b:
             j['next_service_km'] = km(b['next_service_km'], 'Next service km')
+        for field, label in (('brought_by', 'Brought in by'),):
+            if field in b:
+                j[field] = text(b[field], label, 100)
+        if 'brought_phone' in b:
+            j['brought_phone'] = phone(b['brought_phone'])
+        if 'warranty_until' in b:
+            j['warranty_until'] = day(b['warranty_until'], 'Warranty until')
+        if 'warranty_km' in b:
+            j['warranty_km'] = km(b['warranty_km'], 'Warranty km')
+        if 'warranty_job' in b:
+            j['warranty_job'] = bool(b['warranty_job'])
         if totals(j)['subtotal'] < 0:
             raise bad('The discount is more than the bill')
         if not owner and discount_given(j) != discount_given(current):
@@ -526,8 +590,26 @@ def save_job(job_id, key, who, body, owner=True):
         rate = business()['tax_rate']
         op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
                  ExpressionAttributeValues={':r': current['revision'], ':open': 'OPEN'})
-        return [op, vehicle_put(j['vehicle_key'], vehicle_fields(j)), history_put(j, rate)], [CHANGED, None, None], view(j, rate)
+        return [op, vehicle_put(j['vehicle_key'], vehicle_fields(j), fill_only=job_fill_only(current)), history_put(j, rate)], [CHANGED, None, None], view(j, rate)
     return command(key, 'save-job:' + job_id, who, body, build)
+
+
+STAGES = ('WAITING', 'IN_PROGRESS', 'PARTS', 'READY')
+
+
+def set_stage(job_id, key, who, body):
+    """Where an open job is in the workshop. It changes one field only and not the revision, so ticking it never makes
+    someone else's open job page say 'changed'."""
+    def build():
+        current, stage = job(job_id), str((body or {}).get('stage') or '')
+        if current['status'] != 'OPEN':
+            raise conflict('Only an open job has a stage')
+        if stage not in STAGES:
+            raise bad('Choose where the job is')
+        op = update('WJOB', job_id, 'SET stage = :s, stage_at = :a, stage_by = :w',
+                    {':s': stage, ':a': now(), ':w': who, ':open': 'OPEN'}, names={'#st': 'status'}, condition='#st = :open')
+        return [op], [CHANGED], view(dict(current, stage=stage, stage_at=now()), business()['tax_rate'])
+    return command(key, 'job-stage:' + job_id, who, body, build)
 
 
 def line_name(product):
@@ -576,7 +658,7 @@ def use_stock(job_id, key, who, body):
         rate = business()['tax_rate']
         job_op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
                      ExpressionAttributeValues={':r': current['revision'], ':open': 'OPEN'})
-        ops = [job_op, vehicle_put(j['vehicle_key'], vehicle_fields(j)), history_put(j, rate)] + stock_ops
+        ops = [job_op, vehicle_put(j['vehicle_key'], vehicle_fields(j), fill_only=FROM_JOBS), history_put(j, rate)] + stock_ops
         # adding or returning a part never overwrites anyone's edit, so a concurrent save just makes this run again on the fresh job
         return ops, [None] * len(ops), {**view(j, rate), 'stock': {'product_id': product['id'], 'balance': balance}}
     return command(key, 'use-stock:' + job_id, who, body, build)
@@ -729,7 +811,7 @@ def finalise(job_id, key, who, body):
         t, created, invoice_id = totals(stamped), now(), str(uuid.uuid4())
         number = shop['invoice_prefix'] + '-' + datetime.now(COLOMBO).strftime('%Y%m%d') + '-' + invoice_id[:6].upper()
         keep = ('registration', 'vehicle_key', 'customer', 'address', 'phone', 'vehicle', 'odometer', 'summary', 'mechanic', 'parts', 'labour',
-                'next_service_date', 'next_service_km')
+                'next_service_date', 'next_service_km', 'brought_by', 'brought_phone', 'warranty_until', 'warranty_km', 'warranty_job')
         invoice = clean({'pk': 'WINV', 'sk': invoice_id, 'id': invoice_id, 'invoice_number': number, 'job_id': job_id,
                          **{k: current.get(k) for k in keep}, **t, 'tax_name': shop['tax_name'], 'tax_rate': rate, 'currency': 'LKR',
                          'paid': ZERO, 'payments': [], 'status': invoice_status(t['total'], ZERO), 'revision': 0, 'approved_by': who,
@@ -739,7 +821,7 @@ def finalise(job_id, key, who, body):
         op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
                  ExpressionAttributeValues={':r': current['revision'], ':open': 'OPEN'})
         fields = {**vehicle_fields(j), 'next_service_date': j.get('next_service_date'), 'next_service_km': j.get('next_service_km')}
-        ops = [op, put(invoice), vehicle_put(j['vehicle_key'], fields, always=('next_service_date', 'next_service_km')), history_put(j)]
+        ops = [op, put(invoice), vehicle_put(j['vehicle_key'], fields, always=('next_service_date', 'next_service_km'), fill_only=FROM_JOBS), history_put(j)]
         return ops, [CHANGED, None, None, None], public(invoice)
     return command(key, 'finalise:' + job_id, who, body, build)
 
@@ -787,6 +869,31 @@ def pay(invoice_id, key, who, body):
         op = put(new, ConditionExpression='revision = :r', ExpressionAttributeValues={':r': current['revision']})
         return [op], [CHANGED], public(new)
     return command(key, 'pay:' + invoice_id, who, body, build)
+
+
+def refund(invoice_id, key, who, body):
+    """Owner only. Money given back to the customer is a negative payment with the reason on it, so the bill, the reports and
+    the audit trail all show it. After a full refund the invoice can be voided and the job corrected."""
+    def build():
+        current, b = invoice(invoice_id), body or {}
+        if current['status'] == 'VOID':
+            raise conflict('This invoice was voided')
+        amount, method = money(b.get('amount'), 'Amount'), str(b.get('method') or 'CASH').upper()
+        if amount <= 0 or method not in METHODS:
+            raise bad('Enter the amount and how it was given back')
+        if amount > current['paid']:
+            raise conflict('That is more than was paid: LKR ' + format(current['paid'], ',.2f'))
+        if len(current['payments']) >= 100:
+            raise conflict('Too many payments on this invoice')
+        reason = text(b.get('reason'), 'Reason', 180, True)
+        entry = {'id': str(uuid.uuid4())[:8], 'amount': -amount, 'method': method, 'note': 'Refund: ' + reason, 'refund': True, 'at': now(), 'by': who}
+        paid = current['paid'] - amount
+        new = dict(current, payments=list(current['payments']) + [entry], paid=paid,
+                   status=invoice_status(current['total'], paid), revision=int(current['revision']) + 1)
+        op = put(new, ConditionExpression='revision = :r', ExpressionAttributeValues={':r': current['revision']})
+        j = job(current['job_id'])
+        return [op, audit('INVOICE_REFUND', j, who, current['invoice_number'] + ' LKR ' + format(amount, ',.2f') + ': ' + reason)], [CHANGED, None], public(new)
+    return command(key, 'refund:' + invoice_id, who, body, build)
 
 
 def void_invoice(invoice_id, key, who, body):
@@ -865,6 +972,18 @@ def dashboard():
 
 
 # ---------- reports (owner) ----------
+def export_all():
+    """Owner only: everything the workshop holds as one JSON file (photos and the logo are left out, they are large)."""
+    return {'exported_at': now(), 'format': 'lifta-export-1',
+            'settings': {k: v for k, v in business().items() if k != 'logo'},
+            'jobs': [public(j) for j in query('WJOB')],
+            'invoices': [public(i) for i in sorted(query('WINV'), key=lambda i: i['created_at'])],
+            'vehicles': [public(v) for v in query('VEHICLE')],
+            'workshop_log': [public(a) for a in query('WAUDIT')],
+            'stock_parts': [public(p) for p in query('PRODUCT')],
+            'stock_movements': [public(m) for m in query('MOVE')]}
+
+
 def report(start='', end=''):
     first = today().replace(day=1)
     start, end = day(start, 'From') or first.isoformat(), day(end, 'Until') or today().isoformat()
@@ -900,7 +1019,7 @@ def report(start='', end=''):
             sums[k] += i.get(k, ZERO)
         by_day[created] += i['total']
         name = i.get('mechanic') or 'Not set'
-        row = by_mechanic.setdefault(name, {'mechanic': name, 'jobs': 0, 'total': ZERO})
+        row = by_mechanic.setdefault(name.lower(), {'mechanic': name, 'jobs': 0, 'total': ZERO})
         row['jobs'] += 1
         row['total'] += i['total']
         for p in i['parts']:

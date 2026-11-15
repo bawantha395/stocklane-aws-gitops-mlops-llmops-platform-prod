@@ -1,11 +1,13 @@
 import { QrImg } from "./QrImg";
 import { useLogo } from "../BizLogo";
 import { addDays, dateOnly, kmText, lkr, num, round2, type Business, type Labour, type Part, type Payment } from "./common";
+import { workWarranty } from "./invoicePdf";
 
 export type BillData = {
   business: Business; number?: string; date: string; status?: string; draft?: boolean; customer: string; address?: string; phone?: string; registration: string;
   vehicle?: string; odometer?: number | null; mechanic?: string; summary?: string; parts: Part[]; labour: Labour[]; discount: number;
   tax_name?: string; tax_rate: number; payments?: Payment[]; paid?: number; next_service_date?: string; next_service_km?: number | null;
+  brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean;
 };
 
 /** A part line's amount: quantity times price, less the line's own discount percent. */
@@ -45,7 +47,7 @@ export function Bill({ d }: { d: BillData }) {
         </div>
       </header>
       <section className="ws-bill-parties">
-        <div><small>BILL TO</small><b>{d.customer}</b>{d.address && <span className="ws-pre">{d.address}</span>}<span>{d.phone}</span></div>
+        <div><small>BILL TO</small><b>{d.customer}</b>{d.address && <span className="ws-pre">{d.address}</span>}<span>{d.phone}</span>{d.brought_by && <span className="ws-bill-bring">Brought in by: {d.brought_by}{d.brought_phone ? " " + d.brought_phone : ""}</span>}</div>
         <div><small>VEHICLE</small><b className="ws-bill-reg">{d.registration}</b><span>{d.vehicle}</span><span>{d.odometer != null ? kmText(d.odometer) : ""}</span>{d.mechanic && <span>Mechanic: {d.mechanic}</span>}</div>
       </section>
       {d.summary && <section><small>WORK REQUESTED</small><p>{d.summary}</p></section>}
@@ -73,7 +75,7 @@ export function Bill({ d }: { d: BillData }) {
         {!d.draft && d.status !== "VOID" && <div className="due"><dt>Balance due</dt><dd>{lkr(t.total - paid)}</dd></div>}
       </dl>
       {!!d.payments?.length && (
-        <section><small>PAYMENTS RECEIVED</small>
+        <section><small>{d.payments.some((p) => p.refund) ? "PAYMENTS AND REFUNDS" : "PAYMENTS RECEIVED"}</small>
           {d.payments.map((p) => <div className="ws-bill-pay" key={p.id}><span>{dateOnly(p.at)}  {p.method.charAt(0) + p.method.slice(1).toLowerCase()}{p.note ? "  " + p.note : ""}</span><b>{lkr(p.amount)}</b></div>)}
         </section>
       )}
@@ -82,6 +84,7 @@ export function Bill({ d }: { d: BillData }) {
         <p className="ws-bill-next">Next service due {[d.next_service_date && "on " + d.next_service_date, d.next_service_km && "at " + kmText(d.next_service_km)].filter(Boolean).join(" and ")}</p>
       )}
       {(b.bank || b.qr_url) && <section className="ws-bill-pay-box"><div><small>HOW TO PAY</small><p className="ws-pre">{b.bank}</p></div>{b.qr_url && !d.draft && <QrImg text={b.qr_url} />}</section>}
+      {workWarranty(d) && <section><small>WARRANTY ON THIS WORK</small><p>{workWarranty(d)}</p></section>}
       {(b.warranty || b.footer) && <footer>{b.warranty && <><small>WARRANTY</small><p className="ws-pre">{b.warranty}</p></>}{b.footer && <p className="ws-pre muted">{b.footer}</p>}</footer>}
       {!d.draft && (d.status === "PAID" || d.status === "VOID") && <span className={"ws-bill-stamp " + d.status.toLowerCase()} aria-hidden="true">{d.status === "PAID" ? "PAID" : "VOID"}</span>}
       <div className="ws-bill-sign"><span>Authorised signature</span></div>

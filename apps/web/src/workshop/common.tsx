@@ -8,30 +8,36 @@ export type Page = { name: PageName; id?: string; reg?: string };
 export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string; qr_url?: string; invoice_prefix?: string; default_reorder_level?: number; labour_items?: Labour[]; mechanics?: string[]; logo?: { v: string; w: number; h: number; c: number } | null };
 export type Part = { name: string; quantity: number; unit_price: number; product_id?: string; discount_pct?: number };
 export type Labour = { description: string; amount: number };
+export type Stage = "WAITING" | "IN_PROGRESS" | "PARTS" | "READY";
+export const STAGES: Stage[] = ["WAITING", "IN_PROGRESS", "PARTS", "READY"];
+export const STAGE_LABEL: Record<Stage, string> = { WAITING: "Waiting", IN_PROGRESS: "In progress", PARTS: "Waiting for parts", READY: "Ready for pickup" };
 export type Job = {
   id: string; registration: string; vehicle_key: string; customer: string; address?: string; phone: string; vehicle: string; odometer?: number; summary: string;
   mechanic: string; notes: string; status: "OPEN" | "INVOICED" | "CANCELLED" | "ARCHIVED"; revision: number; invoice_id?: string; invoice_number?: string;
   parts: Part[]; labour: Labour[]; discount: number; tax_rate?: number; parts_total: number; labour_total: number; subtotal: number; tax: number; total: number;
   next_service_date?: string; next_service_km?: number; created_at: string; lines?: number; age_days?: number;
   front_photo?: string; plate_photo?: string; before_photos?: string[]; photo_count?: number;
+  stage?: Stage; brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean;
   delete_requested?: boolean; delete_request?: DeleteRequest; undo_seconds_left?: number; archive_reason?: string; archived_by?: string; archived_at?: string;
 };
 export type DeleteRequest = { job_id: string; registration: string; customer: string; reason: string; requested_by: string; requested_at: string; status: "PENDING" | "REJECTED"; note?: string; decided_by?: string };
 export type Visit = {
   id: string; created_at: string; summary: string; status: string; odometer?: number; total: number; invoice_number?: string; invoice_id?: string;
-  parts?: Part[]; labour?: Labour[]; mechanic?: string;
+  parts?: Part[]; labour?: Labour[]; mechanic?: string; customer?: string;
 };
+export type OwnerChange = { at: string; from_owner?: string; from_phone?: string; to_owner: string; to_phone?: string; by?: string };
 export type Vehicle = {
   id: string; registration: string; owner?: string; phone?: string; make?: string; notes?: string; last_km?: number; next_service_date?: string;
   next_service_km?: number; updated_at: string; reason?: string; history?: Visit[]; visits?: number; spent?: number; first_visit?: string | null; average_gap_days?: number | null;
-  front_photo?: string; plate_photo?: string;
+  front_photo?: string; plate_photo?: string; owner_log?: OwnerChange[];
 };
-export type Payment = { id: string; amount: number; method: string; note: string; at: string };
+export type Payment = { id: string; amount: number; method: string; note: string; at: string; refund?: boolean };
 export type Invoice = {
   id: string; invoice_number: string; job_id: string; registration: string; customer: string; address?: string; phone?: string; vehicle?: string; odometer?: number; summary?: string; mechanic?: string;
   parts: Part[]; labour: Labour[]; parts_total: number; labour_total: number; discount: number; subtotal: number; tax: number; tax_name?: string; tax_rate: number; total: number;
   paid: number; status: "UNPAID" | "PARTIAL" | "PAID" | "VOID"; created_at: string; payments: Payment[]; currency: string; business?: Business;
   next_service_date?: string; next_service_km?: number;
+  brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean;
 };
 
 export type Ctx = { owner: boolean; business: Business; go: (p: Page, notice?: string) => void; reloadBusiness: () => void };

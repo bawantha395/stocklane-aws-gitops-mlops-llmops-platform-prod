@@ -1,5 +1,6 @@
 import { t } from "../i18n";
 import { toast } from "../ui";
+import { api } from "../api";
 import { useState, useEffect, useRef } from "react";
 import { logoFromFile, resetLogo } from "../logoStore";
 import { useLogo } from "../BizLogo";
@@ -24,6 +25,15 @@ export function Settings() {
   const command = useCommand();
   const { data: dash } = useLoad<{ open_count: number; due_count: number; month: { billed: number; invoices: number } }>("/api/workshop/dashboard");
   const set = (k: keyof typeof f, v: string) => { setF((x) => ({ ...x, [k]: v })); setMsg(""); };
+  const exportAll = async () => {
+    setBusy(true); setError("");
+    try {
+      const data = await api("/api/workshop/export");
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
+      const a = document.createElement("a"); a.href = url; a.download = "lifta-data-" + new Date().toISOString().slice(0, 10) + ".json"; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError("");
     try { await command<Business>("/api/workshop/settings", { ...f, qr_bits: qrBits(f.qr_url), tax_rate: num(f.tax_rate), mechanic_discount_pct: num(f.mechanic_discount_pct), payment_terms_days: num(f.payment_terms_days), default_reorder_level: num(f.default_reorder_level), mechanics: f.mechanics.map((m) => m.trim()).filter(Boolean), labour_items: f.labour_items.filter((l) => l.description.trim()).map((l) => ({ description: l.description.trim(), amount: num(l.amount) })) }, "PUT"); reloadBusiness(); setMsg(t("Saved. New invoices use these details; old invoices keep the details they were issued with.")); }
@@ -139,6 +149,13 @@ export function Settings() {
             <label className="ws-field">{t("Footer note")}<textarea rows={2} value={f.footer} onChange={(e) => set("footer", e.target.value)} /></label>
             <small className="ws-hint">{t("Shows on the bill: the last line, for example a thank you.")}</small>
           </section>
+          {owner && (
+            <section className="ws-sec">
+              <h3>{t("Your data")}</h3>
+              <p className="muted">{t("One file with every job, bill, vehicle, stock part and movement. Keep a copy somewhere safe now and then. Photos are not in it.")}</p>
+              <button type="button" className="button secondary" disabled={busy} onClick={() => void exportAll()}>{t("Download all data")}</button>
+            </section>
+          )}
         </div>
       </div>
 
