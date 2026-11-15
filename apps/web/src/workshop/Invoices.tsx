@@ -23,7 +23,7 @@ export function Invoices() {
   const base = filter === "UNPAID" ? owing : filter === "PAID" ? data.filter((i) => i.status === "PAID") : data;
   const shown = base.filter((i) => inRange(i.created_at, range) && (!needle || (i.invoice_number + " " + i.registration + " " + i.customer + " " + (i.phone || "")).toLowerCase().includes(needle)));
   // rows: money still owed first, then one row per month (newest first); a search or a date filter shows a plain list
-  const rows = !needle && range.k === "all" && shown.length > 0;
+  const rows = shown.length > 0; // always rows (a search or a date filter just makes fewer rows)
   const newest = [...data].sort((a, b) => (b.created_at < a.created_at ? -1 : 1))[0];
   const owingShown = filter === "ALL" ? shown.filter((i) => i.status === "UNPAID" || i.status === "PARTIAL") : [];
   const groups = [...(owingShown.length ? [{ key: "owing", title: t("Not fully paid"), items: [...owingShown].sort((a, b) => (b.created_at < a.created_at ? -1 : 1)) }] : []), ...groupByPeriod(filter === "ALL" ? shown.filter((i) => !(i.status === "UNPAID" || i.status === "PARTIAL")) : shown, (i) => i.created_at, false)];

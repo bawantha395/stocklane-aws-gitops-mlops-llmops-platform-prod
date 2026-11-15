@@ -59,7 +59,7 @@ export function Vehicles() {
   const term = useDebounced(q.trim());
   const { data, error } = useLoad<Vehicle[]>("/api/workshop/vehicles?search=" + encodeURIComponent(term));
   const shown = (data || []).filter((v) => inRange(v.updated_at, range));
-  const rows = !term && range.k === "all" && shown.length > 0;
+  const rows = shown.length > 0;
   const newest = [...(data || [])].sort((a, b) => (b.updated_at < a.updated_at ? -1 : 1))[0];
   return (
     <>

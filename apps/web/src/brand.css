@@ -328,3 +328,14 @@ html[data-theme="dark"] .ws-row-badge { background: rgba(255,176,32,.2); color: 
 .ws-metal-logo .bl { border-radius: 12px; }
 .ws-metal-logo .bl-img { height: 40px !important; width: auto; max-width: 96px; object-fit: contain; display: block; background: #0d0d0f; }
 html[data-theme="dark"] .ws-metal-logo { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.18); }
+
+/* menu sheet: the business logo as the same rounded glass tile as the top bar (owner: tap to open Settings) */
+.menu-biz-logo { display: inline-flex; padding: 3px; border-radius: 18px; margin-bottom: 6px; background: rgba(var(--w), .55); border: 1px solid rgba(var(--w), .8); box-shadow: 0 6px 18px rgba(var(--sh0), .14), inset 0 1px 0 rgba(255,255,255,.7); }
+.menu-biz-logo .bl-img { height: 56px !important; width: auto !important; min-width: 56px; max-width: 120px !important; object-fit: contain !important; border-radius: 15px !important; display: block; background: #0d0d0f; filter: none !important; }
+.menu-biz-logo .bl { border-radius: 15px; }
+.menu-sheet-foot.biz-link { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.menu-sheet-foot.biz-link:active .menu-biz-logo { transform: scale(.97); }
+
+/* metal card: fixed size so Safari cannot shrink it to a narrow tall strip */
+.ws-metal { width: 100%; box-sizing: border-box; flex: none; height: 190px; min-height: 0; align-self: stretch; }
+.ws-rail-item .ws-metal { height: 200px; min-height: 0; }

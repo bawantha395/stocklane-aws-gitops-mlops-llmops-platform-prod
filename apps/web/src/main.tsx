@@ -937,8 +937,9 @@ function App() {
                 </button>
               ),
             )}
-            <div className="menu-sheet-foot">
-              <BizLogo name={businessName} size={84} />
+            <div className={"menu-sheet-foot" + (owner ? " biz-link" : "")}
+              {...(owner ? { role: "button", tabIndex: 0, title: t("Open business settings"), onClick: () => { setMenuOpen(false); openWorkshop({ name: "settings" }); }, onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setMenuOpen(false); openWorkshop({ name: "settings" }); } } } : {})}>
+              <span className="menu-biz-logo"><BizLogo name={businessName} size={56} /></span>
               <strong>{owner ? t("Owner workspace") : t("Stock team")}</strong>
               <small>{businessName}</small>
             </div>
