@@ -88,3 +88,22 @@ def test_quotation_is_a_fixed_price_estimate_can_have_unpriced_parts(api):
     assert sent['status'] == 'SENT' and sent['total'] == 10000
     kinds = sorted(x['kind'] for x in ok(api('GET', '/api/workshop/quotes', role='MECHANIC')))
     assert kinds == ['ESTIMATE', 'QUOTATION']
+
+
+def test_quote_part_number_prints_and_carries_to_the_job(api):
+    from datetime import date
+    q = make(api, customer='Nimal Perera', parts=[{'name': 'Head lamp', 'quantity': 1, 'unit_price': 9000, 'part_no': 'HL-8100'}, {'name': 'Clips', 'quantity': 2, 'unit_price': 0}])
+    assert q['parts'][0]['part_no'] == 'HL-8100' and 'part_no' not in q['parts'][1]
+    q = ok(api('POST', '/api/workshop/quotes/%s/status' % q['id'], {'revision': q['revision'], 'status': 'APPROVED'}))
+    job = ok(api('GET', '/api/workshop/jobs/' + ok(api('POST', '/api/workshop/quotes/%s/convert' % q['id'], {'revision': q['revision']}))['job_id']))
+    assert job['parts'][0]['part_no'] == 'HL-8100' and job['parts'][0]['added_at'] == date.today().isoformat()
+
+
+def test_bill_prints_job_no_type_and_chassis(api):
+    import base64
+    from test_returns_and_owing import invoiced
+    from stocklane_api import core
+    p, inv = invoiced(api, 1, 'CAB-6100')
+    core.transact([core.update('WINV', inv['id'], 'SET job_no = :n, invoice_type = :t, chassis = :c', {':n': 'JOB-0042', ':t': 'INSURANCE', ':c': 'ZVW30-9988'})], [None])
+    pdf = base64.b64decode(ok(api('GET', '/api/workshop/invoices/%s/pdf' % inv['id'], role='MECHANIC'))['pdf'])
+    assert b'Job: JOB-0042' in pdf and b'Insurance bill' in pdf and b'Chassis: ZVW30-9988' in pdf

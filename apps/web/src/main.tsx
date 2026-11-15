@@ -66,9 +66,9 @@ document.documentElement.dataset.glass = "light";
 const Scanner = React.lazy(() =>
   import("./Scanner").then((module) => ({ default: module.Scanner })),
 );
-import { StockReport } from "./StockReport";
+import { StockReport, MovementPdf } from "./StockReport";
 import { Workshop } from "./workshop";
-import { DateChips, SummaryBar, ALL, inRange, useSaved, type Range } from "./workshop/DateRange";
+import { DateChips, SummaryBar, ALL, bounds, inRange, useSaved, type Range } from "./workshop/DateRange";
 import "./brand.css";
 import { CommandBar } from "./CommandBar";
 import { CountStock } from "./CountStock";
@@ -1973,6 +1973,7 @@ function App() {
               <button className="button secondary small" onClick={() => { setActivitySearch(""); setActivityKind("ALL"); setActivityRange(ALL); }}>Clear filters</button>
             </section>
             <DateChips value={activityRange} onChange={setActivityRange} />
+            {owner && <MovementPdf range={bounds(activityRange)} />}
             <SummaryBar text={"Movements: " + visibleMoves.length} file="stock-history"
               rows={visibleMoves.map((m) => ({ Time: when(m.created_at), Item: m.name, SKU: m.sku, Direction: movementDirection(m.kind), Movement: m.kind, Quantity: m.quantity, "Recorded by": actorEmail(m) }))} />
             <section className="stock-panel stock-table-wrap">
@@ -2472,11 +2473,6 @@ function ProductEditor({
             <datalist id="category-options">
               {[...new Set(products.filter((p) => !p.archived).map((p) => (p.category || "").trim()).filter(Boolean))].sort().map((c) => <option key={c} value={c} />)}
             </datalist>
-            <label className="stock-field">
-              {t("Usual supplier")} <small>({t("optional")})</small>
-              <span className="input-wrap"><input value={supplierName} maxLength={100} list="supplier-options" autoComplete="off" placeholder="Lanka Spares" onChange={(e) => setSupplierName(e.target.value)} /></span>
-              <small className="stock-help">{t("Part came in fills this in for you.")}</small>
-            </label>
             <datalist id="supplier-options">
               {[...new Set(products.map((p) => (p.supplier || "").trim()).filter(Boolean))].sort().map((s) => <option key={s} value={s} />)}
             </datalist>
@@ -2515,6 +2511,11 @@ function ProductEditor({
             )}
             <details className="product-more" open={moreOpen} onToggle={(e) => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}>
               <summary>{t("More details")}</summary>
+              <label className="stock-field">
+                {t("Usual supplier")} <small>({t("optional")})</small>
+                <span className="input-wrap"><input value={supplierName} maxLength={100} list="supplier-options" autoComplete="off" placeholder="Lanka Spares" onChange={(e) => setSupplierName(e.target.value)} /></span>
+                <small className="stock-help">{t("Part came in fills this in for you.")}</small>
+              </label>
               <label className={"stock-field" + (filled.grade ? " filled-" + filled.grade : "")}>
                 {t("Specification")}
                 <span className="input-wrap"><input

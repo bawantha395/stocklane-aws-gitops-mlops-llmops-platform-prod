@@ -34,9 +34,11 @@ const LABEL: Record<Level, string> = { out: "Finished", low: "Order soon", ok: "
 const dayPlus = (iso: string, n: number) => new Date(Date.parse(iso + "T00:00:00Z") + n * 86400000).toISOString().slice(0, 10);
 
 /** Owner: what happened to every item between two dates (came in, went out, returned), as a PDF. */
-function MovementPdf() {
+export function MovementPdf({ range }: { range?: { from: string; to: string } }) {
   const end = colomboToday();
   const [from, setFrom] = useState(dayPlus(end, -30)), [to, setTo] = useState(end), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  // follow the date buttons on the History page when the owner picks a month or a custom range there
+  useEffect(() => { if (range?.from && range?.to) { setFrom(range.from); setTo(range.to > end ? end : range.to); } }, [range?.from, range?.to, end]);
   const go = async () => {
     if (!from || !to || from > to) { setErr("Pick a start date that is not after the end date"); return; }
     setBusy(true); setErr("");
@@ -77,7 +79,6 @@ export function StockReport() {
         <button className="button secondary" onClick={() => csv("stock-" + today + ".csv", shown.map((l) => ({ Item: l.name, Code: l.sku, Shelf: l.shelf, "In stock": l.stock, Status: LABEL[l.level], "Will last": l.lasts, "Order this week": l.order || "", Supplier: l.supplier, "Last cost": l.cost ?? "", "Selling price": l.price, "Profit each": l.cost == null ? "" : l.price - l.cost })))}>Download list</button>
       </div>
       {error && <p role="alert" className="stock-error">{error}</p>}
-      <MovementPdf />
       <div className="report-filters" role="group" aria-label="Show">
         {([["all", "All", lines.length], ["out", "Finished", counts.out], ["low", "Order soon", counts.low], ["ok", "Fine", counts.ok]] as [Level | "all", string, number][]).map(([key, label, n]) => (
           <button key={key} className={"report-chip " + key + (filter === key ? " chosen" : "")} onClick={() => setFilter(key)}><b>{n}</b> {label}</button>

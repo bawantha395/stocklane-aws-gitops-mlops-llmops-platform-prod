@@ -23,10 +23,10 @@ export function CommandBar({ open, onClose, workshop, openWorkshop, openPart }: 
     const n = norm(q); if (!data || n.length < 2) return [];
     const has = (...f: unknown[]) => f.some((x) => norm(x).includes(n));
     const out: Hit[] = [];
-    data.vehicles.filter((v) => has(v.registration, v.owner, v.phone, v.make)).slice(0, 5).forEach((v) => out.push({ key: "v" + v.id, icon: <Car size={18} />, title: v.registration, sub: [v.owner, v.make].filter(Boolean).join(" · ") || t("Vehicle"), run: () => openWorkshop({ name: "vehicle", id: v.id }) }));
-    data.jobs.filter((j) => has(j.registration, j.customer, j.phone, j.summary)).slice(0, 5).forEach((j) => out.push({ key: "j" + j.id, icon: <ClipboardList size={18} />, title: j.registration + " · " + (j.customer || ""), sub: t("Job") + " · " + (j.summary || ""), run: () => openWorkshop({ name: "job", id: j.id }) }));
-    data.invoices.filter((i) => has(i.invoice_number, i.registration, i.customer)).slice(0, 5).forEach((i) => out.push({ key: "i" + i.id, icon: <Receipt size={18} />, title: i.invoice_number + " · " + i.registration, sub: t("Invoice") + " · " + (i.customer || ""), run: () => openWorkshop({ name: "invoice", id: i.id }) }));
-    data.parts.filter((p) => has(p.name, p.sku, p.barcode, p.brand)).slice(0, 5).forEach((p) => out.push({ key: "p" + p.id, icon: <Package size={18} />, title: p.name, sub: t("Part") + " · " + p.sku + " · " + p.quantity + " " + (p.unit || ""), run: () => openPart(p.name) }));
+    data.vehicles.filter((v) => has(v.registration, v.owner, v.phone, v.make, v.chassis)).slice(0, 5).forEach((v) => out.push({ key: "v" + v.id, icon: <Car size={18} />, title: v.registration, sub: [v.owner, v.make].filter(Boolean).join(" · ") || t("Vehicle"), run: () => openWorkshop({ name: "vehicle", id: v.id }) }));
+    data.jobs.filter((j) => has(j.job_no, j.registration, j.customer, j.phone, j.summary, j.chassis)).slice(0, 5).forEach((j) => out.push({ key: "j" + j.id, icon: <ClipboardList size={18} />, title: j.registration + " · " + (j.customer || ""), sub: (j.job_no ? j.job_no + " · " : "") + t("Job") + " · " + (j.summary || ""), run: () => openWorkshop({ name: "job", id: j.id }) }));
+    data.invoices.filter((i) => has(i.invoice_number, i.registration, i.customer, i.job_no, i.chassis)).slice(0, 5).forEach((i) => out.push({ key: "i" + i.id, icon: <Receipt size={18} />, title: i.invoice_number + " · " + i.registration, sub: t("Invoice") + " · " + (i.customer || ""), run: () => openWorkshop({ name: "invoice", id: i.id }) }));
+    data.parts.filter((p) => has(p.name, p.sku, p.barcode, p.brand, p.part_number)).slice(0, 5).forEach((p) => out.push({ key: "p" + p.id, icon: <Package size={18} />, title: p.name, sub: t("Part") + " · " + p.sku + " · " + p.quantity + " " + (p.unit || ""), run: () => openPart(p.name) }));
     return out;
   }, [q, data, openWorkshop, openPart]);
   if (!open) return null;

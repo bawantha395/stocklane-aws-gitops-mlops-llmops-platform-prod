@@ -18,7 +18,7 @@ export function VisitCard({ v, open = false, onOpenJob, showCustomer = false }: 
   return (
     <div className={"ws-visit " + v.status.toLowerCase()}>
       <button className="ws-visit-head" onClick={() => setShow(!show)} aria-expanded={show}>
-        <span><b>{dateOnly(v.created_at)}</b>{v.odometer != null && <small>{kmText(v.odometer)}</small>}{showCustomer && v.customer && <small className="ws-visit-who">{v.customer}</small>}</span>
+        <span><b>{dateOnly(v.created_at)}</b>{v.job_no && <small className="ws-jobno">{v.job_no}</small>}{v.odometer != null && <small>{kmText(v.odometer)}</small>}{showCustomer && v.customer && <small className="ws-visit-who">{v.customer}</small>}</span>
         <span className="ws-visit-work">{v.summary || "No complaint noted"}</span>
         <span className="ws-visit-total">{v.status === "CANCELLED" ? <Pill s="CANCELLED" /> : v.status === "OPEN" ? <Pill s="OPEN" /> : <><b>{total(v)}</b>{v.pay_status && v.pay_status !== "PAID" && v.pay_status !== "REFUNDED" && <small className="ws-visit-owe"><Pill s={v.pay_status} /> {t("Balance")} {lkr(v.balance)}</small>}{v.pay_status === "REFUNDED" && <small className="ws-visit-owe"><Pill s="REFUNDED" /></small>}{v.pay_status === "PAID" && <small className="ws-visit-owe"><Pill s="PAID" /></small>}</>}</span>
       </button>
@@ -45,11 +45,11 @@ export function OwingNotice({ reg, phone }: { reg: string; phone?: string }) {
   const { data } = useLoad<Owing[]>(r.length >= 2 || p.length >= 7 ? "/api/workshop/owing?reg=" + encodeURIComponent(r) + "&phone=" + encodeURIComponent(p) : null);
   if (!data || !data.length) return null;
   const sum = data.reduce((s, i) => s + i.balance, 0);
-  const late = data.filter((i) => lateDays(i.created_at, business.payment_terms_days) > 0);
+  const late = data.filter((i) => lateDays(i, business.payment_terms_days) > 0);
   return (
     <section className={"ws-warn ws-owing" + (late.length ? " late" : "")} role="status" data-tour="owing-notice">
-      <strong>{t("This customer still owes")} LKR {lkr(sum)}{late.length ? " · " + t("overdue") + " " + (Math.max(...late.map((i) => i.age_days)) ) + " " + t("days") : ""}</strong>
-      {data.slice(0, 4).map((i) => <button type="button" key={i.id} className="ws-owing-row" onClick={() => go({ name: "invoice", id: i.id })}>{i.invoice_number} · {i.registration} · {dateOnly(i.created_at)} · {i.age_days} {t("days")} · {i.status === "PARTIAL" ? t("Part paid") : t("Not paid")} · LKR {lkr(i.balance)}{lateDays(i.created_at, business.payment_terms_days) > 0 ? " · " + t("OVERDUE") : ""}</button>)}
+      <strong>{t("This customer still owes")} LKR {lkr(sum)}{late.length ? " · " + t("overdue") + " " + (Math.max(...late.map((i) => lateDays(i, business.payment_terms_days))) ) + " " + t("days") : ""}</strong>
+      {data.slice(0, 4).map((i) => <button type="button" key={i.id} className="ws-owing-row" onClick={() => go({ name: "invoice", id: i.id })}>{i.invoice_number} · {i.registration} · {dateOnly(i.created_at)} · {i.age_days} {t("days")} · {i.status === "PARTIAL" ? t("Part paid") : t("Not paid")} · LKR {lkr(i.balance)}{lateDays(i, business.payment_terms_days) > 0 ? " · " + t("OVERDUE") : ""}</button>)}
     </section>
   );
 }
@@ -171,9 +171,9 @@ export function VehiclePage({ id }: { id: string }) {
         </dl>
       </section>
       <div className="ws-section-head"><h3>Repair history</h3><small>{v.history?.length || 0} job{v.history?.length === 1 ? "" : "s"}</small></div>
-      {timeline.map((r) => r.h
+      <div className="ws-list">{timeline.map((r) => r.h
         ? <VisitCard key={r.h.id} v={r.h} open={r.i === 0} showCustomer={showWho} onOpenJob={() => go({ name: "job", id: r.h!.id })} />
-        : <div key={"o" + r.at} className="ws-ownerchange"><b>{t("Owner changed")}</b><span>{(r.c!.from_owner || "?") + " \u2192 " + r.c!.to_owner}</span><small>{dateOnly(r.at)}</small></div>)}
+        : <div key={"o" + r.at} className="ws-ownerchange"><b>{t("Owner changed")}</b><span>{(r.c!.from_owner || "?") + " \u2192 " + r.c!.to_owner}</span><small>{dateOnly(r.at)}</small></div>)}</div>
       {!v.history?.length && <Empty>No repairs yet.</Empty>}
     </div>
   );

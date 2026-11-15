@@ -6,7 +6,7 @@ import { api } from "../api";
 export type PageName = "home" | "jobs" | "vehicles" | "due" | "invoices" | "archive" | "report" | "settings" | "new" | "job" | "vehicle" | "invoice" | "quotes" | "quote";
 export type Page = { name: PageName; id?: string; reg?: string; kind?: "ESTIMATE" | "QUOTATION" };
 export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string; qr_url?: string; invoice_prefix?: string; default_reorder_level?: number; labour_items?: Labour[]; mechanics?: string[]; logo?: { v: string; w: number; h: number; c: number } | null };
-export type Part = { name: string; quantity: number; unit_price: number; product_id?: string; discount_pct?: number };
+export type Part = { name: string; quantity: number; unit_price: number; product_id?: string; discount_pct?: number; part_no?: string; added_at?: string };
 export type Labour = { description: string; amount: number };
 export type Stage = "WAITING" | "IN_PROGRESS" | "PARTS" | "READY";
 export const STAGES: Stage[] = ["WAITING", "IN_PROGRESS", "PARTS", "READY"];
@@ -47,12 +47,12 @@ export type Payment = { id: string; amount: number; method: string; note: string
 export type Invoice = {
   id: string; invoice_number: string; job_id: string; registration: string; customer: string; address?: string; phone?: string; vehicle?: string; odometer?: number; summary?: string; mechanic?: string;
   parts: Part[]; labour: Labour[]; parts_total: number; labour_total: number; discount: number; subtotal: number; tax: number; tax_name?: string; tax_rate: number; total: number;
-  paid: number; status: "UNPAID" | "PARTIAL" | "PAID" | "REFUNDED" | "VOID"; created_at: string; payments: Payment[]; currency: string; business?: Business;
+  paid: number; status: "UNPAID" | "PARTIAL" | "PAID" | "REFUNDED" | "VOID"; created_at: string; payments: Payment[]; currency: string; business?: Business; invoice_type?: string; overdue_days?: number; due_days?: number; job_no?: string; chassis?: string;
   next_service_date?: string; next_service_km?: number;
   brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean;
   credit_total?: number; original_total?: number; credits?: { id: string; at: string; by: string; reason: string; amount: number; lines: { name: string; quantity: number; amount: number }[] }[];
 };
-export type Owing = { id: string; invoice_number: string; registration: string; customer: string; total: number; paid: number; balance: number; status: string; created_at: string; age_days: number };
+export type Owing = { id: string; invoice_number: string; registration: string; customer: string; total: number; paid: number; balance: number; status: string; created_at: string; age_days: number; invoice_type?: string; overdue_days?: number; due_days?: number };
 
 export type Ctx = { owner: boolean; business: Business; go: (p: Page, notice?: string) => void; reloadBusiness: () => void };
 export const WsContext = createContext<Ctx>(null as unknown as Ctx);
@@ -68,7 +68,13 @@ export const num = (s: string | number | undefined) => (Number.isFinite(Number(s
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 /** WhatsApp click-to-chat link for a Sri Lankan number (07x becomes 947x). */
 /** Days past the payment terms (Setup; 7 days when none is set) for a bill that still has a balance. 0 when it is not late. */
-export const lateDays = (created: string, terms?: number) => Math.max(0, Math.floor((Date.now() - new Date(created).getTime()) / 86400000) - (terms || 7));
+/** Days past due. Uses the server's own count when the bill carries it (same Colombo-date clock, and 30 days for Insurance/Credit bills); otherwise counts Colombo calendar days here. */
+export const lateDays = (i: { created_at: string; invoice_type?: string; overdue_days?: number }, terms?: number) => {
+  if (typeof i.overdue_days === "number") return i.overdue_days;
+  const age = Math.round((Date.parse(today() + "T00:00:00Z") - Date.parse(dateOnly(i.created_at) + "T00:00:00Z")) / 86400000);
+  const base = terms || 7;
+  return Math.max(0, age - (i.invoice_type === "INSURANCE" || i.invoice_type === "CREDIT" ? Math.max(base, 30) : base));
+};
 export const waLink = (phone: string, message: string) => {
   let d = phone.replace(/\D/g, "");
   if (d.startsWith("0")) d = "94" + d.slice(1);

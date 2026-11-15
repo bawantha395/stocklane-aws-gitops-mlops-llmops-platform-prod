@@ -26,7 +26,10 @@ def parts_in(value):
     out = []
     for r in rows(value, 60, 'parts'):
         price = money(r.get('unit_price') or 0, 'Part price')
-        out.append({'name': text(r.get('name'), 'Part name', 100, True), 'quantity': quantity(r.get('quantity', 1)), 'unit_price': price})
+        line = {'name': text(r.get('name'), 'Part name', 100, True), 'quantity': quantity(r.get('quantity', 1)), 'unit_price': price}
+        if text(r.get('part_no'), 'Part number', 60):
+            line['part_no'] = text(r.get('part_no'), 'Part number', 60)
+        out.append(line)
     return out
 
 
@@ -228,7 +231,7 @@ def convert(quote_id, key, who, body):
                    'registration': current['registration'], 'vehicle_key': current['vehicle_key'],
                    'customer': customer, 'phone': current.get('phone', ''), 'address': '', 'vehicle': current.get('vehicle', ''), 'odometer': current.get('odometer'),
                    'summary': summary, 'mechanic': '', 'notes': '', 'status': 'OPEN', 'revision': 0, 'stage': 'WAITING', 'brought_by': '', 'brought_phone': '',
-                   'parts': [dict(p) for p in current.get('parts', [])], 'labour': labour, 'discount': ZERO, 'quote_id': quote_id, 'quote_number': current['number'],
+                   'parts': [dict(p, added_at=workshop.today().isoformat()) for p in current.get('parts', [])], 'labour': labour, 'discount': ZERO, 'quote_id': quote_id, 'quote_number': current['number'],
                    'created_by': who, 'created_at': created, 'updated_at': created})
         ops = [put(j), vehicle_put(j['vehicle_key'], vehicle_fields(j), fill_only=FROM_JOBS), history_put(j), counter]
         if current.get('photos'):

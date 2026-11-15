@@ -145,11 +145,11 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   // parties
   const left = block(d, MARGIN, 230, "BILL TO", [[inv.customer, 11, true], [inv.address, 9.5, false], [inv.phone, 9.5, false], [inv.brought_by ? "Brought in by: " + inv.brought_by + (inv.brought_phone ? " " + inv.brought_phone : "") : "", 9, false]]);
   const km = inv.odometer != null ? Math.round(num(inv.odometer)).toLocaleString("en") + " km" : "";
-  const right = block(d, 320, 235, "VEHICLE", [[inv.registration, 13, true], [inv.vehicle, 9.5, false], [km, 9.5, false], [inv.mechanic ? "Mechanic: " + inv.mechanic : "", 9.5, false]]);
+  const right = block(d, 320, 235, "VEHICLE", [[inv.registration, 13, true], [inv.vehicle, 9.5, false], [km, 9.5, false], [inv.mechanic ? "Mechanic: " + inv.mechanic : "", 9.5, false], [[inv.job_no ? "Job: " + inv.job_no : "", inv.invoice_type ? inv.invoice_type.charAt(0) + inv.invoice_type.slice(1).toLowerCase() + " bill" : ""].filter(Boolean).join(" | "), 9.5, false], [inv.chassis ? "Chassis: " + inv.chassis : "", 9.5, false]]);
   d.y = Math.max(left, right) + 6;
   if (inv.summary) { d.text(MARGIN, d.y + 8, "WORK REQUESTED", 8, true, "l", MUTED); d.y += 14; d.paragraph(MARGIN, inv.summary, R - MARGIN, 9.5); d.y += 6; }
   // lines
-  const table = (title: string, items: { name: string; qty?: number; price?: number; amount: number }[]) => {
+  const table = (title: string, items: { name: string; sub?: string; qty?: number; price?: number; amount: number }[]) => {
     if (!items.length) return;
     d.room(60);
     d.rect(MARGIN, d.y, R - MARGIN, 18, GREY);
@@ -158,17 +158,18 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
     d.text(R - 6, d.y + 12.5, "AMOUNT (" + (inv.currency || "LKR") + ")", 8.5, true, "r");
     d.y += 18;
     items.forEach((row, n) => {
-      const lines = wrap(row.name, 270, 9.5), h = Math.max(20, lines.length * 13 + 8);
+      const lines = wrap(row.name, 270, 9.5), h = Math.max(20, lines.length * 13 + 8 + (row.sub ? 10 : 0));
       d.room(h);
       d.text(MARGIN + 6, d.y + 14, String(n + 1), 9.5, false, "l", MUTED);
       lines.forEach((part, k) => d.text(MARGIN + 34, d.y + 14 + k * 13, part, 9.5));
+      if (row.sub) d.text(MARGIN + 34, d.y + 14 + lines.length * 13 - 1, row.sub, 7.5, false, "l", MUTED);
       if (row.qty != null) { d.text(330, d.y + 14, qty(row.qty), 9.5, false, "r"); d.text(415, d.y + 14, money(row.price), 9.5, false, "r"); }
       d.text(R - 6, d.y + 14, money(row.amount), 9.5, false, "r");
       d.y += h; d.line(MARGIN, d.y, R, d.y);
     });
     d.y += 8;
   };
-  table("PARTS", (inv.parts || []).map((p) => ({ name: p.name + (num(p.discount_pct) > 0 ? " (" + qty(p.discount_pct) + "% off)" : ""), qty: p.quantity, price: p.unit_price, amount: Math.round(num(p.quantity) * num(p.unit_price) * (100 - num(p.discount_pct))) / 100 })));
+  table("PARTS", (inv.parts || []).map((p) => ({ sub: p.part_no ? "Part No: " + p.part_no : "", name: p.name + (num(p.discount_pct) > 0 ? " (" + qty(p.discount_pct) + "% off)" : ""), qty: p.quantity, price: p.unit_price, amount: Math.round(num(p.quantity) * num(p.unit_price) * (100 - num(p.discount_pct))) / 100 })));
   table("LABOUR", (inv.labour || []).map((l) => ({ name: l.description, amount: num(l.amount) })));
   // totals
   const totals: [string, string][] = [["Parts", money(inv.parts_total)], ["Labour", money(inv.labour_total)]];

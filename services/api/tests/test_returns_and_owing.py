@@ -198,3 +198,70 @@ def test_fully_refunded_bill_is_not_owing_and_overdue_counts(api):
     # money taken again: part paid, owing again
     again = ok(api('POST', '/api/workshop/invoices/%s/payments' % inv['id'], {'amount': 1000, 'method': 'CASH'}, role='MECHANIC'))
     assert again['status'] == 'PARTIAL' and len(ok(api('GET', '/api/workshop/owing', query={'reg': 'CAB-7777'}))) == 1
+
+
+def age_bill(inv_id, days, invoice_type=None):
+    """Make a bill look `days` old (and optionally change its type) the way real older data would."""
+    from stocklane_api import core
+    at = (date.today() - timedelta(days=days)).isoformat() + 'T06:00:00+00:00'
+    expr, vals = 'SET created_at = :a', {':a': at}
+    if invoice_type:
+        expr, vals = 'SET created_at = :a, invoice_type = :t', {':a': at, ':t': invoice_type}
+    core.transact([core.update('WINV', inv_id, expr, vals)], [None])
+
+
+def test_insurance_and_credit_bills_are_not_overdue_at_the_cash_deadline(api):
+    p, inv = invoiced(api, 3, 'CAB-5001')            # BIZ terms are 14 days
+    age_bill(inv['id'], 20, 'CASH')
+    row = [i for i in ok(api('GET', '/api/workshop/invoices')) if i['id'] == inv['id']][0]
+    assert row['due_days'] == 14 and row['overdue_days'] >= 5
+    assert ok(api('GET', '/api/workshop/dashboard'))['overdue_count'] == 1
+    age_bill(inv['id'], 20, 'INSURANCE')             # an insurer is given 30 days
+    row = [i for i in ok(api('GET', '/api/workshop/invoices')) if i['id'] == inv['id']][0]
+    assert row['due_days'] == 30 and row['overdue_days'] == 0
+    assert ok(api('GET', '/api/workshop/dashboard'))['overdue_count'] == 0
+    assert ok(api('GET', '/api/workshop/owing', query={'reg': 'CAB-5001'}))[0]['overdue_days'] == 0
+    age_bill(inv['id'], 35, 'CREDIT')
+    one = ok(api('GET', '/api/workshop/invoices/%s' % inv['id']))
+    assert one['due_days'] == 30 and one['overdue_days'] >= 5
+    assert ok(api('GET', '/api/workshop/dashboard'))['overdue_count'] == 1
+
+
+def test_old_refunded_bill_saved_as_unpaid_reads_as_refunded(api):
+    from stocklane_api import core
+    p, inv = invoiced(api, 3, 'CAB-5002')
+    ok(api('POST', '/api/workshop/invoices/%s/payments' % inv['id'], {'amount': 5400, 'method': 'CASH'}, role='MECHANIC'))
+    ok(api('POST', '/api/workshop/invoices/%s/refund' % inv['id'], {'amount': 5400, 'method': 'CASH', 'reason': 'Cancelled'}))
+    core.transact([core.update('WINV', inv['id'], 'SET #s = :u', {':u': 'UNPAID'}, names={'#s': 'status'})], [None])   # how it was stored before REFUNDED existed
+    assert ok(api('GET', '/api/workshop/invoices/%s' % inv['id']))['status'] == 'REFUNDED'
+    assert [i['status'] for i in ok(api('GET', '/api/workshop/invoices')) if i['id'] == inv['id']] == ['REFUNDED']
+    assert ok(api('GET', '/api/workshop/owing', query={'reg': 'CAB-5002'})) == []
+    dash = ok(api('GET', '/api/workshop/dashboard'))
+    assert dash['unpaid_count'] == 0 and dash['overdue_count'] == 0
+    assert ok(api('GET', '/api/workshop/vehicles/CAB-5002'))['history'][0]['pay_status'] == 'REFUNDED'
+
+
+def test_part_lines_remember_part_no_and_the_day_they_were_added(api):
+    """The job card's parts sheet prints Date and Part No: both are kept on the line and survive later saves."""
+    ok(api('PUT', '/api/workshop/settings', BIZ))
+    p, job = product(api, 10), new_job(api, 'CAB-6001')
+    j = ok(use(api, job, p['id'], 2))
+    line = j['parts'][0]
+    assert line['added_at'] == date.today().isoformat() and line['part_no']
+    # a later save (client sends only name, qty, price, product_id) keeps both and stamps a new free-text line
+    body = [{'name': line['name'], 'quantity': 2, 'unit_price': line['unit_price'], 'product_id': line['product_id']}, {'name': 'Gasket', 'quantity': 1, 'unit_price': 500}]
+    saved = ok(api('PATCH', '/api/workshop/jobs/%s' % job['id'], {'revision': j['revision'], 'parts': body}, role='MECHANIC'))
+    assert saved['parts'][0]['part_no'] == line['part_no'] and saved['parts'][0]['added_at'] == line['added_at']
+    assert saved['parts'][1]['added_at'] == date.today().isoformat() and 'part_no' not in saved['parts'][1]
+
+
+def test_bill_shows_part_number_even_for_older_lines(api):
+    from stocklane_api import core
+    p, inv = invoiced(api, 2, 'CAB-6002')
+    one = ok(api('GET', '/api/workshop/invoices/%s' % inv['id']))
+    assert one['parts'][0]['part_no']
+    # a line saved before part numbers were kept still gets one from the parts list
+    core.transact([core.update('WINV', inv['id'], 'SET parts[0] = :l', {':l': {k: v for k, v in inv['parts'][0].items() if k not in ('part_no', 'added_at')}})], [None])
+    again = ok(api('GET', '/api/workshop/invoices/%s' % inv['id']))
+    assert again['parts'][0]['part_no'] == one['parts'][0]['part_no']
+    assert ok(api('GET', '/api/workshop/invoices/%s/pdf' % inv['id'], role='MECHANIC'))['pdf']

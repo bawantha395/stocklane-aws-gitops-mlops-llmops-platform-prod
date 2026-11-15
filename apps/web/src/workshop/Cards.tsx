@@ -100,7 +100,7 @@ type InvoiceRow = Omit<Invoice, "payments" | "parts" | "labour">;
 export function InvoiceCard({ i, onOpen, age }: { i: InvoiceRow; onOpen: () => void; age: number }) {
   const owes = i.status === "UNPAID" || i.status === "PARTIAL";
   const { business } = useWs();
-  const late = owes && lateDays(i.created_at, business.payment_terms_days) > 0;
+  const late = owes && lateDays(i, business.payment_terms_days) > 0;
   return (
     <button className="ws-tile ws-invc" onClick={onOpen}>
       <span className="ws-c-body">

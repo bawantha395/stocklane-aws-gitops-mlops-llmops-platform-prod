@@ -53,7 +53,7 @@ export function QuotePage({ id, kind }: { id: string; kind?: "ESTIMATE" | "QUOTA
   return <QuoteForm key={data?.id || "new"} start={data} newKind={kind} />;
 }
 
-type PartRow = { name: string; quantity: string; unit_price: string };
+type PartRow = { name: string; quantity: string; unit_price: string; part_no?: string };
 type WorkRow = { description: string; amount: string; section: QuoteWork["section"] };
 const FIELDS = ["registration", "insurer", "insurer_branch", "claim_no", "policy_no", "customer", "phone", "vehicle", "odometer", "issue", "valid_until"] as const;
 
@@ -63,7 +63,7 @@ function QuoteForm({ start, newKind }: { start?: Quote | null; newKind?: "ESTIMA
   const known = useLoad<Quote[]>("/api/workshop/quotes").data;
   const [quote, setQuote] = useState<Quote | null>(start || null);
   const take = (q: Quote | null, k?: string) => ({ f: { ...Object.fromEntries(FIELDS.map((x) => [x, String((q?.[x] as unknown) ?? "")])), ...(!q && k === "QUOTATION" ? { valid_until: addDays(today(), 14) } : {}) } as Record<string, string>,
-    parts: (q?.parts || []).map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: p.unit_price ? String(p.unit_price) : "" })) as PartRow[],
+    parts: (q?.parts || []).map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: p.unit_price ? String(p.unit_price) : "", part_no: p.part_no || "" })) as PartRow[],
     work: (q?.labour || []).map((l) => ({ description: l.description, amount: String(l.amount), section: l.section || "Other" })) as WorkRow[], photos: q?.photos || [] });
   const first = useMemo(() => take(start || null, newKind), []); // eslint-disable-line react-hooks/exhaustive-deps
   const [f, setF] = useState(first.f), [parts, setParts] = useState(first.parts), [work, setWork] = useState(first.work), [photos, setPhotos] = useState(first.photos);
@@ -85,7 +85,7 @@ function QuoteForm({ start, newKind }: { start?: Quote | null; newKind?: "ESTIMA
   const insurers = useMemo(() => Array.from(new Set((known || []).map((x) => x.insurer).filter(Boolean) as string[])), [known]);
 
   const lines = useMemo(() => ({
-    parts: parts.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), quantity: num(p.quantity) || 1, unit_price: num(p.unit_price) })),
+    parts: parts.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), quantity: num(p.quantity) || 1, unit_price: num(p.unit_price), ...(p.part_no?.trim() ? { part_no: p.part_no.trim() } : {}) })),
     labour: work.filter((w) => w.description.trim()).map((w) => ({ description: w.description.trim(), amount: num(w.amount), section: w.section })),
   }), [parts, work]);
   const by = (s: string) => lines.labour.filter((l) => l.section === s).reduce((a, l) => a + l.amount, 0);
@@ -202,6 +202,7 @@ function QuoteForm({ start, newKind }: { start?: Quote | null; newKind?: "ESTIMA
             <input className="ws-l-price" disabled={locked} aria-label="Unit price" inputMode="decimal" placeholder="TBC" value={p.unit_price} onChange={(e) => part(i, { unit_price: e.target.value.replace(/[^0-9.]/g, "") })} />
             <output className="ws-l-total">{num(p.unit_price) ? lkr(num(p.quantity || "1") * num(p.unit_price)) : "TBC"}</output>
             {!locked && <button className="ws-l-del" aria-label={t("Remove")} onClick={() => { setParts(parts.filter((_, k) => k !== i)); setDirty(true); }}>×</button>}
+            <input className="ws-l-pno" disabled={locked} maxLength={60} aria-label={t("Part No")} placeholder={t("Part No (optional)")} value={p.part_no || ""} onChange={(e) => part(i, { part_no: e.target.value })} />
           </div>
         ))}
         {!locked && <div className="ws-add"><button className="button secondary small" onClick={() => { setParts([...parts, { name: "", quantity: "1", unit_price: "" }]); setDirty(true); }}>+ {t("Add part")}</button></div>}

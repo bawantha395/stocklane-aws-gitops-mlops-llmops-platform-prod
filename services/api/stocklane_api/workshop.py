@@ -124,6 +124,21 @@ def parts_in(value):
     return out
 
 
+def stamp_parts(new, old):
+    """Keep when a part line was added (added_at) and its part number (part_no) across saves; a line seen for the first time is stamped today.
+    The job card's parts sheet prints both."""
+    left = list(old or [])
+    for line in new:
+        same = next((o for o in left if (o.get('product_id') and o.get('product_id') == line.get('product_id')) or (not line.get('product_id') and not o.get('product_id') and o.get('name') == line['name'])), None)
+        if same:
+            left.remove(same)
+        for k in ('added_at', 'part_no'):
+            if same and same.get(k):
+                line[k] = same[k]
+        line.setdefault('added_at', today().isoformat())
+    return new
+
+
 MAX_STOCK_LINES = 12  # keeps one cancel or delete inside a single transaction
 
 
@@ -371,7 +386,7 @@ def vehicle(key):
         raise missing('Vehicle not found')
     history = sorted((h for h in query('VJOB#' + key) if h['status'] != 'ARCHIVED'), key=lambda h: h['sk'], reverse=True)
     stored = {j['id']: j for j in batch_get([('WJOB', h['id']) for h in history[:40]])}
-    bills = {i['id']: i for i in batch_get([('WINV', h['invoice_id']) for h in history[:40] if h.get('invoice_id')])}
+    bills = {i['id']: settled(i) for i in batch_get([('WINV', h['invoice_id']) for h in history[:40] if h.get('invoice_id')])}
     visits, spent, dates = [], ZERO, []
     for h in history:
         row = public(h)
@@ -459,15 +474,16 @@ def owing(reg='', phone_number=''):
     key = re.sub(r'[^A-Z0-9]', '', str(reg or '').upper())
     key = key if 2 <= len(key) <= 12 else ''
     digits = ''.join(c for c in (phone_number or '') if c.isdigit())[-9:]
-    out = []
-    for i in query('WINV'):
+    out, terms = [], terms_days()
+    for i in winv():
         if i['status'] not in ('UNPAID', 'PARTIAL'):
             continue
         same_phone = len(digits) >= 7 and ''.join(c for c in (i.get('phone') or '') if c.isdigit())[-9:] == digits
         if (key and i.get('vehicle_key') == key) or same_phone:
             out.append({'id': i['id'], 'invoice_number': i['invoice_number'], 'registration': i['registration'], 'customer': i.get('customer', ''),
                         'total': i['total'], 'paid': i['paid'], 'balance': i['total'] - i['paid'], 'status': i['status'],
-                        'created_at': i['created_at'], 'age_days': age_days(i['created_at'])})
+                        'created_at': i['created_at'], 'age_days': age_days(i['created_at']), 'invoice_type': i.get('invoice_type'),
+                        'due_days': due_days(i, terms), 'overdue_days': overdue_days(i, terms)})
     return sorted(out, key=lambda r: r['created_at'])[:20]
 
 
@@ -522,6 +538,7 @@ def jobs():
 def get_job(job_id, who='', owner=False):
     current = job(job_id)
     out = view(current, business()['tax_rate'])
+    out['parts'] = with_part_nos(out['parts'])
     left = UNDO_SECONDS - (datetime.now(COLOMBO) - datetime.fromisoformat(current['created_at'])).total_seconds()
     out['undo_seconds_left'] = int(left) if current['status'] == 'OPEN' and left > 0 and (owner or current.get('created_by') == who) else 0
     req = get('WREQ', job_id)
@@ -610,7 +627,7 @@ def save_job(job_id, key, who, body, owner=True):
         if 'invoice_type' in b:
             j['invoice_type'] = invoice_type(b['invoice_type'])
         if 'parts' in b:
-            j['parts'] = parts_in(b['parts'])
+            j['parts'] = stamp_parts(parts_in(b['parts']), current.get('parts'))
             if stock_quantities(j['parts']) != stock_quantities(current.get('parts', [])):
                 raise bad('Parts taken from stock change only with Pick from stock or Take back, so the stock stays right')
         if 'labour' in b:
@@ -695,7 +712,8 @@ def use_stock(job_id, key, who, body):
             if line:
                 line['quantity'] += qty
             else:
-                parts.append({'name': line_name(product), 'quantity': qty, 'unit_price': product['selling_price'], 'product_id': product['id']})
+                parts.append({'name': line_name(product), 'quantity': qty, 'unit_price': product['selling_price'], 'product_id': product['id'],
+                              'part_no': (product.get('part_number') or product['sku'])[:60], 'added_at': today().isoformat()})
         else:
             if not line:
                 raise conflict('This part was not taken from stock for this job')
@@ -861,6 +879,34 @@ def terms_days(shop=None):
     return int((shop or business()).get('payment_terms_days') or 0) or 7
 
 
+SLOW_PAYERS = ('INSURANCE', 'CREDIT')  # an insurer or a credit account pays in weeks, so these are not chased at 7 days
+SLOW_PAYER_DAYS = 30
+
+
+def due_days(i, terms=None):
+    """Days allowed before this bill counts as overdue: the shop terms, or at least 30 days for Insurance and Credit bills."""
+    terms = terms_days() if terms is None else terms
+    return max(terms, SLOW_PAYER_DAYS) if i.get('invoice_type') in SLOW_PAYERS else terms
+
+
+def overdue_days(i, terms=None):
+    """Whole days past due, counted on Colombo calendar days (the same clock as age_days). 0 when not overdue or nothing is owed."""
+    if i.get('status') not in ('UNPAID', 'PARTIAL'):
+        return 0
+    return max(0, age_days(i['created_at']) - due_days(i, terms))
+
+
+def settled(i):
+    """Old bills saved before the REFUNDED status: all money given back and nothing left paid, so show REFUNDED, not 'unpaid'."""
+    if i.get('status') == 'UNPAID' and not i.get('paid') and any(p.get('refund') for p in i.get('payments') or ()):
+        return dict(i, status='REFUNDED')
+    return i
+
+
+def winv():
+    return [settled(i) for i in query('WINV')]
+
+
 def finalise(job_id, key, who, body):
     """Create the invoice from the job's saved lines; the job becomes INVOICED."""
     def build():
@@ -897,21 +943,34 @@ def invoice(invoice_id):
     item = get('WINV', invoice_id)
     if not item:
         raise missing('Invoice not found')
-    return item
+    return settled(item)
 
 
 def invoices():
     out = []
-    for i in sorted(query('WINV'), key=lambda i: i['created_at'], reverse=True):
+    terms = terms_days()
+    for i in sorted(winv(), key=lambda i: i['created_at'], reverse=True):
         v = public(i)
         v.pop('parts'), v.pop('labour'), v.pop('business', None)
+        v.update(due_days=due_days(i, terms), overdue_days=overdue_days(i, terms))
         out.append(v)
     return out
 
 
+def with_part_nos(parts):
+    """Stock lines saved before part numbers were kept get theirs from the parts list, so every bill can print it."""
+    need = {p['product_id'] for p in parts if p.get('product_id') and not p.get('part_no')}
+    if not need:
+        return parts
+    found = {x['id']: (x.get('part_number') or x.get('sku') or '') for x in batch_get([('PRODUCT', n) for n in need]) if x}
+    return [dict(p, part_no=found[p['product_id']]) if p.get('product_id') and not p.get('part_no') and found.get(p['product_id']) else p for p in parts]
+
+
 def get_invoice(invoice_id):
-    i = public(invoice(invoice_id))
-    i['parts'] = [{**p, 'amount': line_total(p)} for p in i['parts']]
+    raw = invoice(invoice_id)
+    i = public(raw)
+    i.update(due_days=due_days(raw), overdue_days=overdue_days(raw))
+    i['parts'] = [{**p, 'amount': line_total(p)} for p in with_part_nos(i['parts'])]
     return i
 
 
@@ -1085,7 +1144,7 @@ def dashboard():
     rate = business()['tax_rate']
     now_day, month = today().isoformat(), today().replace(day=1).isoformat()
     open_jobs = [view(j, rate) for j in sorted(query('WJOB'), key=lambda j: j['created_at'], reverse=True) if j['status'] == 'OPEN']
-    inv = [i for i in query('WINV') if i['status'] != 'VOID']
+    inv = [i for i in winv() if i['status'] != 'VOID']
     unpaid = [i for i in inv if i['status'] in ('UNPAID', 'PARTIAL')]
     out = {'today': {'date': now_day, 'invoices': 0, 'billed': ZERO, 'received': ZERO}, 'month': {'from': month, 'invoices': 0, 'billed': ZERO, 'received': ZERO}}
     for i in inv:
@@ -1105,7 +1164,7 @@ def dashboard():
     ready = [j for j in open_jobs if j.get('stage') == 'READY']
     return {**out, 'open_jobs': open_jobs[:12], 'open_count': len(open_jobs), 'ready_jobs': ready[:12], 'ready_count': len(ready), 'unpaid_count': len(unpaid),
             'unpaid_total': sum((i['total'] - i['paid'] for i in unpaid), ZERO),
-            'overdue_count': sum(1 for i in unpaid if age_days(i['created_at']) > terms_days()), 'terms_days': terms_days(),
+            'overdue_count': sum(1 for i in unpaid if overdue_days(i) > 0), 'terms_days': terms_days(),
             'oldest_unpaid_days': max((age_days(i['created_at']) for i in unpaid), default=0), 'due_count': len(service_due()),
             'delete_requests': sorted((public(r) for r in query('WREQ') if r['status'] == 'PENDING'), key=lambda r: r['requested_at'])}
 
@@ -1137,7 +1196,7 @@ def report(start='', end=''):
     by_mechanic, by_method, top_parts, top_labour, cars = {}, {}, {}, {}, set()
     count, period_unpaid, received = 0, ZERO, ZERO
     ageing, unpaid_list = {'d0_7': ZERO, 'd8_30': ZERO, 'd31_60': ZERO, 'd60_plus': ZERO}, []
-    for i in query('WINV'):
+    for i in winv():
         if i['status'] == 'VOID':
             continue
         balance = i['total'] - i['paid']

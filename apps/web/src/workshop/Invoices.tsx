@@ -21,7 +21,7 @@ export function Invoices() {
   const owing = data.filter((i) => i.status === "UNPAID" || i.status === "PARTIAL");
   const needle = q.trim().toLowerCase();
   const base = filter === "UNPAID" ? owing : filter === "PAID" ? data.filter((i) => i.status === "PAID") : data;
-  const shown = base.filter((i) => inRange(i.created_at, range) && (!needle || (i.invoice_number + " " + i.registration + " " + i.customer + " " + (i.phone || "")).toLowerCase().includes(needle)));
+  const shown = base.filter((i) => inRange(i.created_at, range) && (!needle || (i.invoice_number + " " + i.registration + " " + i.customer + " " + (i.phone || "") + " " + (i.job_no || "") + " " + (i.chassis || "")).toLowerCase().includes(needle)));
   // rows: money still owed first, then one row per month (newest first); a search or a date filter shows a plain list
   const rows = shown.length > 0; // always rows (a search or a date filter just makes fewer rows)
   const newest = [...data].sort((a, b) => (b.created_at < a.created_at ? -1 : 1))[0];
@@ -40,7 +40,7 @@ export function Invoices() {
       {filter === "UNPAID" && <p className="ws-owed">{t("Customers owe")} <b>LKR {lkr(owing.reduce((s, i) => s + i.total - i.paid, 0))}</b></p>}
       <DateChips value={range} onChange={setRange} />
       <SummaryBar text={cap(t("bills")) + ": " + shown.length + " · LKR " + lkr(shown.reduce((s, i) => s + (i.status === "VOID" ? 0 : i.total), 0))} file="bills"
-        rows={shown.map((i) => ({ Date: dateOnly(i.created_at), Invoice: i.invoice_number, "Vehicle no.": i.registration, Customer: i.customer, Status: i.status, "Total (LKR)": i.total, "Paid (LKR)": i.paid, "Owing (LKR)": i.status === "VOID" ? 0 : i.total - i.paid }))} />
+        rows={shown.map((i) => ({ Date: dateOnly(i.created_at), Invoice: i.invoice_number, "Vehicle no.": i.registration, Customer: i.customer, Status: i.status, "Job no.": i.job_no || "", "Invoice type": i.invoice_type || "", Chassis: i.chassis || "", "Total (LKR)": i.total, "Paid (LKR)": i.paid, "Owing (LKR)": i.status === "VOID" ? 0 : i.total - i.paid }))} />
       {rows ? (
         <Rows groups={groups} idOf={(i) => i.id} latest={newest?.id} render={(i) => <InvoiceCard i={i} age={days(i.created_at)} onOpen={() => go({ name: "invoice", id: i.id })} />} />
       ) : (
@@ -123,7 +123,7 @@ export function InvoicePage({ id }: { id: string }) {
     // Phones with a share sheet send the PDF itself; otherwise open WhatsApp with the message.
     if (!(await shareInvoicePdf(inv, shop, msg))) window.open(waLink(inv.phone || "", msg), "_blank", "noopener");
   });
-  const late = lateDays(inv.created_at, shop.payment_terms_days);
+  const late = lateDays(inv, shop.payment_terms_days);
   return (
     <div>
       <section className={"ws-sum " + (inv.status === "PAID" ? "paid" : inv.status === "VOID" || inv.status === "REFUNDED" ? "void" : "owes")}>
@@ -139,7 +139,7 @@ export function InvoicePage({ id }: { id: string }) {
         <button className="button secondary small" onClick={() => go({ name: "job", id: inv.job_id })}>{t("View job")}</button>
         <button className="button secondary small" onClick={() => go({ name: "vehicle", id: inv.registration.replace(/[^A-Za-z0-9]/g, "").toUpperCase() })}>{t("Vehicle file")}</button>
         <button className="button secondary small" disabled={busy} onClick={shareBill}>{t("Share bill")}</button>
-        {(inv.status === "UNPAID" || inv.status === "PARTIAL") && <button data-tour="remind" className="button secondary small" disabled={!inv.phone} title={inv.phone ? "" : t("No phone number on this bill")} onClick={() => window.open(waLink(inv.phone || "", "Hello " + inv.customer + ", this is a reminder from " + shop.name + ": invoice " + inv.invoice_number + " (" + inv.registration + ") has a balance of LKR " + lkr(balance) + (late > 0 ? ", " + late + " days past the due date" : "") + ". Thank you."), "_blank", "noopener")}>{late > 0 ? t("Remind") + " · " + t("Overdue") : t("Remind")}</button>}
+        {(inv.status === "UNPAID" || inv.status === "PARTIAL") && <button data-tour="remind" className="button secondary small" disabled={!inv.phone} title={inv.phone ? "" : t("No phone number on this bill")} onClick={() => window.open(waLink(inv.phone || "", "Hello " + inv.customer + ", this is a reminder from " + shop.name + ": " + (inv.invoice_type === "INSURANCE" ? "the insurance claim bill " : "invoice ") + inv.invoice_number + " (" + inv.registration + ") has a balance of LKR " + lkr(balance) + (late > 0 ? ", " + late + " days past the due date" : "") + ". Thank you."), "_blank", "noopener")}>{late > 0 ? t("Remind") + " · " + t("Overdue") : t("Remind")}</button>}
         {owner && inv.status !== "VOID" && inv.parts.some((p) => num(p.quantity) > num((p as { returned?: number }).returned)) && <button data-tour="return-parts-btn" className="button secondary small" disabled={busy} onClick={() => { setReturning(!returning); setRefunding(false); }}>{t("Parts came back")}</button>}
         {owner && inv.status !== "VOID" && num(inv.paid) > 0 && <button data-tour="refund" className="button secondary small" disabled={busy} onClick={() => { setRAmount(""); setRefunding(!refunding); }}>{t("Refund")}</button>}
         {owner && inv.status !== "VOID" && num(inv.paid) === 0 && <button className="button secondary small" disabled={busy} onClick={voidIt}>{t("Void invoice")}</button>}
@@ -175,7 +175,7 @@ export function InvoicePage({ id }: { id: string }) {
         </form>
       )}
       <div className="ws-print">
-        <Bill d={{ business: shop, number: inv.invoice_number, date: dateOnly(inv.created_at), status: inv.status, customer: inv.customer, address: inv.address, phone: inv.phone, registration: inv.registration, vehicle: inv.vehicle,
+        <Bill d={{ job_no: inv.job_no, chassis: inv.chassis, invoice_type: inv.invoice_type, business: shop, number: inv.invoice_number, date: dateOnly(inv.created_at), status: inv.status, customer: inv.customer, address: inv.address, phone: inv.phone, registration: inv.registration, vehicle: inv.vehicle,
           odometer: inv.odometer, mechanic: inv.mechanic, summary: inv.summary, parts: inv.parts, labour: inv.labour, discount: inv.discount, tax_name: inv.tax_name, tax_rate: inv.tax_rate, credit_total: inv.credit_total,
           payments: inv.payments, paid: inv.paid, next_service_date: inv.next_service_date, next_service_km: inv.next_service_km,
           brought_by: inv.brought_by, brought_phone: inv.brought_phone, warranty_until: inv.warranty_until, warranty_km: inv.warranty_km, warranty_job: inv.warranty_job }} />

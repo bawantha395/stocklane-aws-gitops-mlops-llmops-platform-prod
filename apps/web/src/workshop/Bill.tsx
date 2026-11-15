@@ -9,6 +9,7 @@ export type BillData = {
   vehicle?: string; odometer?: number | null; mechanic?: string; summary?: string; parts: Part[]; labour: Labour[]; discount: number;
   tax_name?: string; tax_rate: number; payments?: Payment[]; paid?: number; next_service_date?: string; next_service_km?: number | null;
   brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean; credit_total?: number;
+  job_no?: string; chassis?: string; invoice_type?: string;
 };
 
 /** A part line's amount: quantity times price, less the line's own discount percent. */
@@ -50,14 +51,14 @@ export function Bill({ d }: { d: BillData }) {
       </header>
       <section className="ws-bill-parties">
         <div><small>BILL TO</small><b>{d.customer}</b>{d.address && <span className="ws-pre">{d.address}</span>}<span>{d.phone}</span>{d.brought_by && <span className="ws-bill-bring">Brought in by: {d.brought_by}{d.brought_phone ? " " + d.brought_phone : ""}</span>}</div>
-        <div><small>VEHICLE</small><b className="ws-bill-reg">{d.registration}</b><span>{d.vehicle}</span><span>{d.odometer != null ? kmText(d.odometer) : ""}</span>{d.mechanic && <span>Mechanic: {d.mechanic}</span>}</div>
+        <div><small>VEHICLE</small><b className="ws-bill-reg">{d.registration}</b><span>{d.vehicle}</span><span>{d.odometer != null ? kmText(d.odometer) : ""}</span>{d.mechanic && <span>Mechanic: {d.mechanic}</span>}{(d.job_no || d.invoice_type) && <span>{[d.job_no ? "Job: " + d.job_no : "", d.invoice_type ? d.invoice_type.charAt(0) + d.invoice_type.slice(1).toLowerCase() + " bill" : ""].filter(Boolean).join(" | ")}</span>}{d.chassis && <span>Chassis: {d.chassis}</span>}</div>
       </section>
       {d.summary && <section><small>WORK REQUESTED</small><p>{d.summary}</p></section>}
       <div className="ws-bill-scroll">
         <table className="ws-bill-table">
           <thead><tr><th>#</th><th>Parts</th><th className="r">Qty</th><th className="r">Unit price</th><th className="r">Amount (LKR)</th></tr></thead>
           <tbody>
-            {d.parts.map((p, i) => <tr key={i}><td>{i + 1}</td><td>{p.name}{num(p.discount_pct) > 0 && <small className="ws-line-off"> ({num(p.discount_pct)}% off)</small>}</td><td className="r">{num(p.quantity)}</td><td className="r">{lkr(p.unit_price)}</td><td className="r">{lkr(partAmount(p))}</td></tr>)}
+            {d.parts.map((p, i) => <tr key={i}><td>{i + 1}</td><td>{p.name}{p.part_no && <small className="ws-line-off"> · Part No: {p.part_no}</small>}{num(p.discount_pct) > 0 && <small className="ws-line-off"> ({num(p.discount_pct)}% off)</small>}</td><td className="r">{num(p.quantity)}</td><td className="r">{lkr(p.unit_price)}</td><td className="r">{lkr(partAmount(p))}</td></tr>)}
             {!d.parts.length && <tr><td colSpan={5} className="muted">No parts</td></tr>}
           </tbody>
           <thead><tr><th>#</th><th colSpan={3}>Labour</th><th className="r">Amount (LKR)</th></tr></thead>

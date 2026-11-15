@@ -94,7 +94,7 @@
 .ws-visit-body { padding: 8px 12px; font-size: 14px; }
 .ws-visit-line { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
 .ws-visit-work { margin: 0 0 6px; }
-.ws-visit-foot { display: flex; justify-content: space-between; padding: 8px 12px; border-top: 1px solid var(--ws-line); font-size: 13px; }
+.ws-visit-foot { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--ws-line); font-size: 13px; }
 .ws-visit-total { font-weight: 700; }
 
 /* tables and chart */
@@ -784,3 +784,6 @@ button.ws-kpi { text-align: left; cursor: pointer; font: inherit; color: inherit
 .ws-late { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: #b4452c; color: #fff; margin-right: 4px; }
 .ws-owing.late { border-color: #b4452c; background: #fdeeea; }
 .ws-owing.late > strong { color: #8f2f1c; }
+
+.ws-line .ws-l-pno { grid-column: 1 / -1; font-size: 13px; padding: 6px 10px; min-height: 0; }
+.ws-line .stock-pno { font-size: 12px; color: var(--muted, #6b7770); }

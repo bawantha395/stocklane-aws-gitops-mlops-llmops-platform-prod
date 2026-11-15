@@ -102,7 +102,9 @@ def invoice(i):
                                          (('Brought in by: ' + i['brought_by'] + ((' ' + i['brought_phone']) if i.get('brought_phone') else '')) if i.get('brought_by') else '', 9, False)])
     odo = kms(i['odometer']) if i.get('odometer') is not None else ''
     right = block(d, 320, 235, 'VEHICLE', [(i['registration'], 13, True), (i.get('vehicle'), 9.5, False), (odo, 9.5, False),
-                                          ('Mechanic: ' + i['mechanic'] if i.get('mechanic') else '', 9.5, False)])
+                                          ('Mechanic: ' + i['mechanic'] if i.get('mechanic') else '', 9.5, False),
+                                          (' | '.join(x for x in (i.get('job_no') and 'Job: ' + i['job_no'], i.get('invoice_type') and i['invoice_type'].title() + ' bill') if x), 9.5, False),
+                                          ('Chassis: ' + i['chassis'] if i.get('chassis') else '', 9.5, False)])
     d.y = max(left, right) + 6
     if i.get('summary'):
         d.text(MARGIN, d.y + 8, 'WORK REQUESTED', 8, True, color=MUTED)
@@ -125,12 +127,14 @@ def invoice(i):
         d.y += 18
         for n, row in enumerate(items, 1):
             lines = wrap(row['name'], 270, 9.5)
-            h = max(20, len(lines) * 13 + 8)
+            h = max(20, len(lines) * 13 + 8 + (10 if row.get('sub') else 0))
             if d.room(h):
                 pass
             d.text(cols[0][0], d.y + 14, str(n), 9.5, color=MUTED)
             for k, part in enumerate(lines):
                 d.text(cols[1][0], d.y + 14 + k * 13, part, 9.5)
+            if row.get('sub'):
+                d.text(cols[1][0], d.y + 14 + len(lines) * 13 - 1, row['sub'], 7.5, color=MUTED)
             if row.get('qty') is not None:
                 d.text(cols[2][0], d.y + 14, q(row['qty']), 9.5, align='r')
                 d.text(cols[3][0], d.y + 14, m(row['price']), 9.5, align='r')
@@ -139,7 +143,7 @@ def invoice(i):
             d.line(MARGIN, d.y, R, d.y)
         d.y += 8
 
-    rows('PARTS', [{'name': p['name'] + (' (' + q(p['discount_pct']) + '% off)' if p.get('discount_pct') else ''), 'qty': p['quantity'], 'price': p['unit_price'], 'amount': p['amount']} for p in i['parts']])
+    rows('PARTS', [{'name': p['name'] + (' (' + q(p['discount_pct']) + '% off)' if p.get('discount_pct') else ''), 'qty': p['quantity'], 'price': p['unit_price'], 'amount': p['amount'], 'sub': ('Part No: ' + p['part_no']) if p.get('part_no') else ''} for p in i['parts']])
     rows('LABOUR', [{'name': l['description'], 'amount': l['amount']} for l in i['labour']])
 
     # totals, right-aligned block
@@ -261,7 +265,7 @@ def history(v, visits, business):
         need = 84 + 13 * (len(j['lines']) + 1)
         d.room(min(need, 220))
         d.rect(MARGIN, d.y, R - MARGIN, 22, GREY)
-        bits = [j['date']] + ([kms(j['odometer'])] if j.get('odometer') is not None else []) + ([j['invoice_number']] if j.get('invoice_number') else [])
+        bits = [j['date']] + ([j['job_no']] if j.get('job_no') else []) + ([kms(j['odometer'])] if j.get('odometer') is not None else []) + ([j['invoice_number']] if j.get('invoice_number') else [])
         d.text(MARGIN + 8, d.y + 15, '  |  '.join(bits), 9.5, True)
         d.text(R - 8, d.y + 15, ('CANCELLED' if j['status'] == 'CANCELLED' else 'Open' if j['status'] == 'OPEN' else m(j['total'])), 9.5, True, 'r')
         d.y += 28

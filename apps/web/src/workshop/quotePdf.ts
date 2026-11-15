@@ -44,11 +44,12 @@ export function quotePdf(q: Quote, shop: Business): Blob {
     d.text(R - 6, d.y + 12.5, "AMOUNT (LKR)", 8.5, true, "r");
     d.y += 18;
   };
-  const row = (n: number, name: string, amount: string, extra?: { qty: string; price: string }) => {
-    const lines = wrap(name, 270, 9.5), h = Math.max(20, lines.length * 13 + 8);
+  const row = (n: number, name: string, amount: string, extra?: { qty: string; price: string }, partNo = "") => {
+    const lines = wrap(name, 270, 9.5), h = Math.max(20, lines.length * 13 + 8 + (partNo ? 10 : 0));
     d.room(h);
     d.text(MARGIN + 6, d.y + 14, String(n), 9.5, false, "l", MUTED);
     lines.forEach((part, k) => d.text(MARGIN + 34, d.y + 14 + k * 13, part, 9.5));
+    if (partNo) d.text(MARGIN + 34, d.y + 14 + lines.length * 13 - 1, "Part No: " + partNo, 7.5, false, "l", MUTED);
     if (extra) { d.text(330, d.y + 14, extra.qty, 9.5, false, "r"); d.text(415, d.y + 14, extra.price, 9.5, false, "r"); }
     d.text(R - 6, d.y + 14, amount, 9.5, false, "r");
     d.y += h; d.line(MARGIN, d.y, R, d.y, 0.6, LINE);
@@ -65,7 +66,7 @@ export function quotePdf(q: Quote, shop: Business): Blob {
   const unpriced = (q.parts || []).filter((p) => !num(p.unit_price)).length;
   if ((q.parts || []).length) {
     header("SPARE PARTS", true);
-    (q.parts || []).forEach((p, n) => row(n + 1, p.name, num(p.unit_price) ? money(Math.round(num(p.quantity) * num(p.unit_price) * 100) / 100) : "TBC", { qty: qty(p.quantity), price: num(p.unit_price) ? money(p.unit_price) : "TBC" }));
+    (q.parts || []).forEach((p, n) => row(n + 1, p.name, num(p.unit_price) ? money(Math.round(num(p.quantity) * num(p.unit_price) * 100) / 100) : "TBC", { qty: qty(p.quantity), price: num(p.unit_price) ? money(p.unit_price) : "TBC" }, p.part_no || ""));
     sub("Total spare parts", money(q.parts_total));
   }
   d.room(70);
