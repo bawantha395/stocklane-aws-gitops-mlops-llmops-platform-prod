@@ -1,10 +1,9 @@
-import { createPortal } from "react-dom";
 import { t } from "../i18n";
 import { toast, askConfirm } from "../ui";
 import { isPractice } from "../practice";
 import { JobPhotos } from "./Photos";
 import { useEffect, useMemo, useState } from "react";
-import { Bill, PrintButton, billTotals, partAmount, type BillData } from "./Bill";
+import { billTotals, partAmount } from "./Bill";
 import { PastRepairs } from "./Vehicles";
 import { StockPicker } from "./StockPicker";
 import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job, STAGES, STAGE_LABEL, type Stage, waLink } from "./common";
@@ -20,7 +19,7 @@ export function JobPage({ id }: { id: string }) {
   const [job, setJob] = useState<Job | null>(null);
   const [f, setF] = useState<Record<string, string>>({});
   const [parts, setParts] = useState<PartRow[]>([]), [labour, setLabour] = useState<LabourRow[]>([]);
-  const [openOff, setOpenOff] = useState<number[]>([]), [picking, setPicking] = useState(false), [dialog, setDialog] = useState<"" | "delete" | "request" | "reject" | "approve">(""), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState(""), [preview, setPreview] = useState(false);
+  const [openOff, setOpenOff] = useState<number[]>([]), [picking, setPicking] = useState(false), [dialog, setDialog] = useState<"" | "delete" | "request" | "reject" | "approve">(""), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState("");
   useEffect(() => { if (saved) toast(saved); }, [saved]);
   const command = useCommand();
 
@@ -99,11 +98,6 @@ export function JobPage({ id }: { id: string }) {
   const workName = (i: number, description: string) => {
     const hit = sugg?.labour?.find((s) => s.description.toLowerCase() === description.trim().toLowerCase());
     work(i, { description, ...(hit && !labour[i].amount ? { amount: String(hit.amount) } : {}) });
-  };
-  const bill: BillData = {
-    business, number: job.invoice_number, date: today(), draft: !locked, status: locked ? "INVOICED" : undefined, customer: f.customer, address: f.address, phone: f.phone, brought_by: f.brought_by, brought_phone: f.brought_phone, warranty_until: f.warranty_until, warranty_km: f.warranty_km ? Number(f.warranty_km) : null, warranty_job: f.warranty_job === "1", registration: job.registration,
-    vehicle: f.vehicle, odometer: f.odometer === "" ? null : Number(f.odometer), mechanic: f.mechanic, summary: f.summary, ...lines, discount: num(f.discount),
-    tax_name: business.tax_name, tax_rate: rate, next_service_date: f.next_service_date, next_service_km: f.next_service_km === "" ? null : Number(f.next_service_km),
   };
   const odo = f.odometer === "" ? 0 : Number(f.odometer);
   const stage: Stage = job.stage || "WAITING";
@@ -254,7 +248,6 @@ export function JobPage({ id }: { id: string }) {
       
       <div className="ws-actionbar">
         <span className="ws-actionbar-total"><small>{dirty ? "Unsaved changes" : "Total"}</small><b>LKR {lkr(totals.total)}</b></span>
-        <button className="button secondary" disabled={busy} onClick={() => setPreview(true)}>{t("Preview bill")}</button>
         {!!job.undo_seconds_left && !waiting && <button className="button secondary" disabled={busy} onClick={undo}>{t("Undo job")}</button>}
         {!locked && !owner && !waiting && <button className="button secondary" disabled={busy} onClick={() => setDialog("request")}>{t("Request delete")}</button>}
         {owner && (job.status === "OPEN" || job.status === "CANCELLED") && <button className="button secondary" disabled={busy} onClick={() => setDialog("delete")}>{t("Delete job")}</button>}
@@ -270,11 +263,6 @@ export function JobPage({ id }: { id: string }) {
         onDone={async (reason) => { await command(base + "/delete-request", { reason }); setDialog(""); setSaved("Sent to the owner."); await reload(); }} onClose={() => setDialog("")} />}
       {dialog === "reject" && <ReasonDialog title="Reject the delete request" label="Note for the mechanic (optional)" confirm="Reject" required={false}
         onDone={async (note) => { await command(base + "/delete-request/reject", { note }); setDialog(""); setSaved("Request rejected."); await reload(); }} onClose={() => setDialog("")} />}
-      {preview && createPortal(
-        <div className="ws-modal" role="dialog" aria-modal="true" aria-label="Bill preview">
-          <div className="ws-modal-bar"><b>{locked ? "Bill" : "Draft bill (not issued yet)"}</b><span><PrintButton /> <button className="button primary small" onClick={() => setPreview(false)}>Close</button></span></div>
-          <div className="ws-print"><Bill d={bill} /></div>
-        </div>, document.body)}
     </div>
   );
 }

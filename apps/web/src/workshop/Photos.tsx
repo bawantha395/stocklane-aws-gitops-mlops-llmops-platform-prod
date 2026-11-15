@@ -10,7 +10,7 @@ export function Photo({ id, size = "thumb", className = "", onClick }: { id: str
   const { url, failed } = usePhoto(id, size);
   if (failed) return <span className={"ws-photo-missing " + className}><Car size={18} /></span>;
   if (!url) return <span className={"ws-photo-wait " + className} aria-busy="true" />;
-  return <img className={className} src={url} alt="" onClick={onClick} draggable={false} />;
+  return <img className={className} src={url} alt="" onClick={onClick} draggable={false} decoding="async" />;
 }
 
 /** A small round-cornered face for lists: the vehicle's front photo, or a plain car when there is none. */
