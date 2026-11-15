@@ -339,3 +339,50 @@ html[data-theme="dark"] .ws-metal-logo { background: rgba(255,255,255,.1); borde
 /* metal card: fixed size so Safari cannot shrink it to a narrow tall strip */
 .ws-metal { width: 100%; box-sizing: border-box; flex: none; height: 190px; min-height: 0; align-self: stretch; }
 .ws-rail-item .ws-metal { height: 200px; min-height: 0; }
+
+/* card rows: show the whole name and number (wrap onto a second line instead of cutting with "...") */
+.ws-c-row { align-items: flex-start; }
+.ws-c-row dd { flex: 1 1 auto; min-width: 0; overflow: visible !important; text-overflow: clip !important; white-space: normal !important; overflow-wrap: anywhere; }
+
+/* ===== job page: stage steps, customer summary, part lines with a discount, totals, action bar ===== */
+.ws-job .ws-quick { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; margin: 0; border: 1px solid var(--line, #d3d4d8); border-radius: 999px; background: var(--surface, #fff); color: var(--ink, #1b1d1f); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.ws-job .ws-quick:disabled { opacity: .6; }
+.ws-stage-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 6px; }
+.ws-stage-chips .ws-quick.on { background: var(--brand, #0f4d38); color: #fff; border-color: transparent; }
+.ws-stage-chips .ws-stage-auto { border-style: dashed; color: var(--muted); font-weight: 500; cursor: default; }
+.ws-stage-note { display: block; margin-bottom: 6px; }
+.ws-cust-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.ws-cust-head h3 { margin: 0; }
+.ws-cust-sum { margin-top: 6px; }
+.ws-cust-sum .ws-c-row { padding: 6px 0; border-top: 1px solid var(--line, #e5e5ea); }
+.ws-cust-sum .ws-c-row:first-child { border-top: 0; }
+.ws-lim { display: block; margin: -2px 0 6px; }
+.ws-job .ws-line:not(.labour) { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(72px, auto) 44px; grid-template-areas: "name name name name del" "qty price off total total"; align-items: end; }
+.ws-job .ws-line:not(.labour) .ws-l-name { grid-area: name; }
+.ws-job .ws-line:not(.labour) .ws-l-qty { grid-area: qty; }
+.ws-job .ws-line:not(.labour) .ws-l-price { grid-area: price; }
+.ws-job .ws-line:not(.labour) .ws-l-off { grid-area: off; display: flex; flex-direction: column; align-items: stretch; gap: 2px; font-size: 12px; color: var(--muted); }
+.ws-job .ws-line:not(.labour) .ws-l-off input { width: 100%; min-height: 44px; }
+.ws-job .ws-line:not(.labour) .ws-l-total { grid-area: total; text-align: right; padding-bottom: 12px; font-weight: 700; }
+.ws-job .ws-line:not(.labour) .ws-l-del { grid-area: del; align-self: start; }
+.ws-job .ws-line:not(.labour) .stock-qty { display: inline-flex; align-items: center; gap: 6px; }
+.ws-sum .off { color: var(--ok, #1a7f4b); }
+.ws-sum .ws-need { margin: 0; }
+.ws-actionbar { align-items: center; }
+.ws-actionbar-total { flex: 1 1 auto; display: flex; flex-direction: column; gap: 0; }
+.ws-actionbar-total small { font-size: 12px; color: var(--muted); font-weight: 500; }
+.ws-actionbar-btns { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; }
+.ws-actionbar-btns .button { flex: 0 0 auto; }
+.ws-need { flex: 1 1 100%; margin: 0 0 2px; padding: 8px 12px; border-radius: 10px; background: rgba(224,138,0,.16); color: #8a5300; font-size: 14px; font-weight: 600; }
+html[data-theme="dark"] .ws-need { background: rgba(255,176,32,.2); color: #ffc457; }
+.ws-more { position: relative; }
+.ws-more-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; min-width: 190px; padding: 6px; border-radius: 14px; background: var(--surface, #fff); border: 1px solid var(--line, #d3d4d8); box-shadow: 0 12px 32px rgba(var(--sh0), .22); display: flex; flex-direction: column; }
+.ws-more-menu button { text-align: left; min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; font: inherit; font-size: 15px; font-weight: 600; color: var(--ink, #1b1d1f); cursor: pointer; }
+.ws-more-menu button:hover { background: rgba(var(--sh0), .06); }
+.ws-actionbar { background: rgba(var(--w), .97) !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-theme="dark"] .ws-actionbar { background: var(--surface, #1c1e21) !important; }
+@media (max-width: 420px) { .ws-job .ws-photo-grid { grid-template-columns: 1fr 1fr; gap: 8px; } }
+.ws-job .ws-photo-slot { padding: 8px; min-height: 0; }
+.ws-job .ws-photo-slot img { width: 100%; height: 96px; object-fit: contain; border-radius: 10px; }
+.ws-more-menu { right: auto; left: 0; }
+.ws-job .ws-line:not(.labour) { grid-template-columns: minmax(0,.9fr) minmax(0,1.3fr) minmax(0,.9fr) minmax(72px, auto) 44px; }

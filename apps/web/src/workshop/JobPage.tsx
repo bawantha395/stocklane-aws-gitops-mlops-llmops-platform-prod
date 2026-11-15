@@ -2,11 +2,11 @@ import { t } from "../i18n";
 import { toast, askConfirm } from "../ui";
 import { isPractice } from "../practice";
 import { JobPhotos } from "./Photos";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { billTotals, partAmount } from "./Bill";
 import { PastRepairs } from "./Vehicles";
 import { StockPicker } from "./StockPicker";
-import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job, STAGES, STAGE_LABEL, type Stage, waLink } from "./common";
+import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job, STAGE_LABEL, type Stage, waLink } from "./common";
 
 type PartRow = { name: string; quantity: string; unit_price: string; product_id?: string; discount_pct?: string };
 type LabourRow = { description: string; amount: string };
@@ -19,9 +19,11 @@ export function JobPage({ id }: { id: string }) {
   const [job, setJob] = useState<Job | null>(null);
   const [f, setF] = useState<Record<string, string>>({});
   const [parts, setParts] = useState<PartRow[]>([]), [labour, setLabour] = useState<LabourRow[]>([]);
-  const [openOff, setOpenOff] = useState<number[]>([]), [picking, setPicking] = useState(false), [dialog, setDialog] = useState<"" | "delete" | "request" | "reject" | "approve">(""), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState("");
+  const [picking, setPicking] = useState(false), [dialog, setDialog] = useState<"" | "delete" | "request" | "reject" | "approve">(""), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState("");
   useEffect(() => { if (saved) toast(saved); }, [saved]);
   const command = useCommand();
+  const [editing, setEditing] = useState(false), [more, setMore] = useState(false), [needLines, setNeedLines] = useState(false);
+  const partsRef = useRef<HTMLElement>(null);
 
   const adopt = (j: Job) => {
     setJob(j); setDirty(false);
@@ -44,7 +46,8 @@ export function JobPage({ id }: { id: string }) {
     labour: labour.filter((l) => l.description.trim()).map((l) => ({ description: l.description.trim(), amount: num(l.amount) })),
   }), [parts, labour]);
   const totals = billTotals({ ...lines, discount: num(f.discount), tax_rate: rate });
-  const pct = (n: number) => set("discount", String(round2(((totals.parts + totals.labour) * n) / 100)));
+  const grossParts = round2(lines.parts.reduce((a, p) => a + p.quantity * p.unit_price, 0)), lineOff = round2(grossParts - totals.parts);
+  useEffect(() => { if (lines.parts.length || lines.labour.length) setNeedLines(false); }, [lines]);
   if (!job) return <Loading error={loadError} />;
   const locked = job.status !== "OPEN";
 
@@ -85,11 +88,10 @@ export function JobPage({ id }: { id: string }) {
 
   const part = (i: number, patch: Partial<PartRow>) => { setParts(parts.map((x, k) => (k === i ? { ...x, ...patch } : x))); setDirty(true); };
   const work = (i: number, patch: Partial<LabourRow>) => { setLabour(labour.map((x, k) => (k === i ? { ...x, ...patch } : x))); setDirty(true); };
-  /** A small "% off" control under a part line: shown when the line has a discount, otherwise a one-tap link. */
+  /** The discount for one part line, in percent. Labour has no discount. */
   const offRow = (p: PartRow, i: number) => {
     if (locked && !num(p.discount_pct)) return null;
-    if (!num(p.discount_pct) && !openOff.includes(i)) return <button type="button" className="ws-l-offlink" onClick={() => setOpenOff([...openOff, i])}>{t("+ Discount on this line")}</button>;
-    return <label className="ws-l-off">{t("Discount on this line (%)")}<input disabled={locked} inputMode="decimal" aria-label="Line discount percent" placeholder="0" value={p.discount_pct || ""} onChange={(e) => part(i, { discount_pct: e.target.value.replace(/[^0-9.]/g, "") })} /></label>;
+    return <label className="ws-l-off"><span>{t("Disc %")}</span><input disabled={locked} inputMode="decimal" aria-label="Line discount percent" placeholder="0" value={p.discount_pct || ""} onChange={(e) => part(i, { discount_pct: e.target.value.replace(/[^0-9.]/g, "") })} /></label>;
   };
   const partName = (i: number, name: string) => {
     const hit = sugg?.parts?.find((s) => s.name.toLowerCase() === name.trim().toLowerCase());
@@ -104,6 +106,12 @@ export function JobPage({ id }: { id: string }) {
   const setStage = (next: Stage) => void run(async () => { const j = await command<Job>("/api/workshop/jobs/" + id + "/stage", { stage: next }); setJob((x) => (x ? { ...x, stage: j.stage } : x)); });
   const readyTo = f.brought_phone || f.phone;
   const readyMsg = "Hello " + (f.brought_by || f.customer) + ", your vehicle " + job.registration + " is ready for pickup. Thank you. " + (business.name || "");
+
+  const moreItems: { label: string; run: () => void }[] = [];
+  if (!!job.undo_seconds_left && !waiting) moreItems.push({ label: t("Undo job"), run: () => void undo() });
+  if (!locked && !owner && !waiting) moreItems.push({ label: t("Request delete"), run: () => setDialog("request") });
+  if (owner && (job.status === "OPEN" || job.status === "CANCELLED")) moreItems.push({ label: t("Delete job"), run: () => setDialog("delete") });
+  if (!locked && owner) moreItems.push({ label: t("Cancel job"), run: () => void cancel() });
 
   return (
     <div className="ws-job">
@@ -127,16 +135,20 @@ export function JobPage({ id }: { id: string }) {
         <section className="ws-card ws-stage" data-tour="job-stage" aria-label={t("Where is this job?")}>
           <h3>{t("Where is this job?")}</h3>
           <div className="ws-stage-chips" role="group">
-            {STAGES.map((s2) => <button key={s2} type="button" className={"ws-quick" + (stage === s2 ? " on" : "")} aria-pressed={stage === s2} disabled={busy} onClick={() => stage !== s2 && setStage(s2)}>{t(STAGE_LABEL[s2])}</button>)}
+            <button type="button" className={"ws-quick" + (stage !== "READY" ? " on" : "")} aria-pressed={stage !== "READY"} disabled={busy} onClick={() => stage === "READY" && setStage("IN_PROGRESS")}>{t("Open")}</button>
+            <button type="button" className={"ws-quick" + (stage === "READY" ? " on" : "")} aria-pressed={stage === "READY"} disabled={busy} onClick={() => stage !== "READY" && setStage("READY")}>{t(STAGE_LABEL.READY)}</button>
+            <span className="ws-quick ws-stage-auto">{t("Invoiced")}</span>
           </div>
+          <small className="muted ws-stage-note">{t("Invoiced is set when you create the invoice.")}</small>
           {stage === "READY" && (readyTo
             ? <a className="button primary small" href={waLink(readyTo, readyMsg)} target="_blank" rel="noopener noreferrer" onClick={(e) => { if (isPractice()) { e.preventDefault(); toast(t("Practice: WhatsApp would open here with the message ready.")); } }}>{t("Tell the customer it is ready")}</a>
             : <small className="muted">{t("Add a contact number to send the ready message.")}</small>)}
         </section>
       )}
 
-      <section className="ws-card">
-        <h3>{t("Customer and vehicle")}</h3>
+      <section className="ws-card ws-cust">
+        <div className="ws-cust-head"><h3>{t("Customer and vehicle")}</h3>{!locked && <button type="button" className="button secondary small" onClick={() => setEditing(!editing)}>{editing ? t("Done") : t("Edit")}</button>}</div>
+        {editing && !locked ? (
         <div className="ws-grid2">
           <label className="ws-field">{t("Customer name")}<input disabled={locked} value={f.customer || ""} onChange={(e) => set("customer", e.target.value)} /></label>
           <label className="ws-field">{t("Contact number")}<input disabled={locked} inputMode="tel" value={f.phone || ""} onChange={(e) => set("phone", e.target.value)} /></label>
@@ -153,14 +165,20 @@ export function JobPage({ id }: { id: string }) {
           ) : <><input disabled={locked} value={f.mechanic || ""} onChange={(e) => set("mechanic", e.target.value)} /><small className="muted">{t("Mechanics added in Setup can be picked from a list, so every name is spelled the same.")}</small></>}</label>
           <label className="ws-field">{t("Complaint / work")}<textarea disabled={locked} rows={2} value={f.summary || ""} onChange={(e) => set("summary", e.target.value)} /></label>
         </div>
+        ) : (
+        <dl className="ws-c-rows ws-cust-sum">
+          {([[t("Customer"), f.customer], [t("Phone"), f.phone], [t("Customer address"), f.address], [t("Brought in by"), [f.brought_by, f.brought_phone].filter(Boolean).join(" · ")], [t("Make and model"), f.vehicle], [t("Odometer (km)"), f.odometer], [t("Mechanic"), f.mechanic], [t("Complaint / work"), f.summary]] as [string, string | undefined][]).filter(([, v]) => v).map(([k, v]) => <div className="ws-c-row" key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+        </dl>
+        )}
       </section>
 
       {picking && <StockPicker taken={Object.fromEntries(parts.filter((p) => p.product_id).map((p) => [p.product_id!, num(p.quantity)]))} onClose={() => setPicking(false)}
         onPick={async (p, qty) => { const left = await stockCall(p.id, qty, "use"); setPicking(false); toast(p.name + " " + t("added to the job") + ". " + t("In stock") + ": " + left); }} />}
       <JobPhotos id={id} start={job} locked={locked} />
 
-      <section className="ws-card">
+      <section className="ws-card" ref={partsRef}>
         <h3>{t("Parts")}</h3>
+        {!owner && !locked && business.mechanic_discount_pct != null && <small className="muted ws-lim">{t("You can give up to {n}% off. More needs the owner.", { n: String(business.mechanic_discount_pct) })}</small>}
         <datalist id="ws-part-names">{sugg?.parts?.map((s) => <option key={s.name} value={s.name} />)}</datalist>
         <datalist id="ws-work-names">{sugg?.labour?.map((s) => <option key={s.description} value={s.description} />)}</datalist>
         {parts.map((p, i) => (
@@ -180,7 +198,7 @@ export function JobPage({ id }: { id: string }) {
           ) : (
           <div className="ws-line" key={i}>
             <input className="ws-l-name" disabled={locked} list="ws-part-names" aria-label="Part name" placeholder={t("Part name")} value={p.name} onChange={(e) => partName(i, e.target.value)} />
-            <input className="ws-l-qty" disabled={locked} aria-label="Quantity" inputMode="decimal" value={p.quantity} onChange={(e) => part(i, { quantity: e.target.value })} />
+            <input className="ws-l-qty" disabled={locked} aria-label="Quantity" inputMode="decimal" placeholder={t("Qty")} value={p.quantity} onChange={(e) => part(i, { quantity: e.target.value })} />
             <input className="ws-l-price" disabled={locked} aria-label="Unit price" inputMode="decimal" placeholder={t("Price")} value={p.unit_price} onChange={(e) => part(i, { unit_price: e.target.value })} />
             <output className="ws-l-total">{lkr(partAmount({ name: p.name, quantity: num(p.quantity), unit_price: num(p.unit_price), discount_pct: num(p.discount_pct) }))}</output>
             {!locked && <button className="ws-l-del" aria-label="Remove part" onClick={() => { setParts(parts.filter((_, k) => k !== i)); setDirty(true); }}>×</button>}
@@ -210,9 +228,10 @@ export function JobPage({ id }: { id: string }) {
           </div>
         )}
         <dl className="ws-sum">
-          <div><dt>{t("Parts")}</dt><dd>{lkr(totals.parts)}</dd></div>
+          <div><dt>{t("Parts")}</dt><dd>{lkr(grossParts)}</dd></div>
+          {lineOff > 0 && <div className="off"><dt>{t("Parts discount")}</dt><dd>- {lkr(lineOff)}</dd></div>}
           <div><dt>{t("Labour")}</dt><dd>{lkr(totals.labour)}</dd></div>
-          <div><dt>Discount{!owner && !locked && business.mechanic_discount_pct != null ? <small> (up to {business.mechanic_discount_pct}%)</small> : null}</dt><dd><input disabled={locked} inputMode="decimal" aria-label="Discount" placeholder="0" value={f.discount || ""} onChange={(e) => set("discount", e.target.value)} onBlur={(e) => { const m = e.target.value.trim().match(/^(\d+(?:\.\d+)?)\s*%$/); if (m) pct(Number(m[1])); }} />{!locked && <span className="ws-pcts">{[5, 10].map((n) => <button type="button" key={n} className="ws-quick" onClick={() => pct(n)}>{n}%</button>)}</span>}</dd></div>
+          {num(f.discount) > 0 && <div><dt>{t("Discount")}</dt><dd><input disabled={locked} inputMode="decimal" aria-label="Discount" placeholder="0" value={f.discount || ""} onChange={(e) => set("discount", e.target.value)} /></dd></div>}
           {totals.tax > 0 && <div><dt>{business.tax_name} ({rate}%)</dt><dd>{lkr(totals.tax)}</dd></div>}
           <div className="grand"><dt>{t("Total (LKR)")}</dt><dd>{lkr(totals.total)}</dd></div>
         </dl>
@@ -247,13 +266,18 @@ export function JobPage({ id }: { id: string }) {
       {error && <p role="alert" className="stock-error">{error}</p>}
       
       <div className="ws-actionbar">
+        {needLines && <p className="ws-need" role="status">{t("Add at least one part or labour line to create the invoice.")}</p>}
         <span className="ws-actionbar-total"><small>{dirty ? "Unsaved changes" : "Total"}</small><b>LKR {lkr(totals.total)}</b></span>
-        {!!job.undo_seconds_left && !waiting && <button className="button secondary" disabled={busy} onClick={undo}>{t("Undo job")}</button>}
-        {!locked && !owner && !waiting && <button className="button secondary" disabled={busy} onClick={() => setDialog("request")}>{t("Request delete")}</button>}
-        {owner && (job.status === "OPEN" || job.status === "CANCELLED") && <button className="button secondary" disabled={busy} onClick={() => setDialog("delete")}>{t("Delete job")}</button>}
-        {!locked && owner && <button className="button secondary" disabled={busy} onClick={cancel}>{t("Cancel job")}</button>}
-        {!locked && <button className="button secondary" disabled={busy || !dirty} onClick={() => void run(async () => { await save(); setSaved("Saved."); })}>{t("Save")}</button>}
-        {!locked && <button data-tour="create-invoice" className="button primary" disabled={busy || (!lines.parts.length && !lines.labour.length)} onClick={invoice}>{t("Create invoice")}</button>}
+        <span className="ws-actionbar-btns">
+          {moreItems.length > 0 && (
+            <span className="ws-more">
+              <button type="button" className="button secondary" aria-label={t("More")} aria-expanded={more} disabled={busy} onClick={() => setMore(!more)}>⋯</button>
+              {more && <div className="ws-more-menu" role="menu">{moreItems.map((m) => <button key={m.label} type="button" role="menuitem" onClick={() => { setMore(false); m.run(); }}>{m.label}</button>)}</div>}
+            </span>
+          )}
+          {!locked && <button className="button secondary" disabled={busy || !dirty} onClick={() => void run(async () => { await save(); setSaved("Saved."); })}>{t("Save")}</button>}
+          {!locked && <button data-tour="create-invoice" className="button primary" disabled={busy} onClick={() => { if (!lines.parts.length && !lines.labour.length) { setNeedLines(true); partsRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }); return; } setNeedLines(false); void invoice(); }}>{t("Create invoice")}</button>}
+        </span>
       </div>
       {dialog === "delete" && <ReasonDialog title="Delete this job?" help="It moves to the Archive and disappears from jobs and the vehicle history. You can restore it later." label="Reason" confirm="Delete job"
         onDone={async (reason) => { await command(base + "/archive", { reason }); removed("Job deleted. It is in the Archive."); }} onClose={() => setDialog("")} />}

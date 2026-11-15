@@ -72,7 +72,7 @@ export function JobCard({ j, onOpen, inRow }: { j: Job; onOpen: () => void; inRo
   return (
     <Swipe phone={j.phone} onOpen={onOpen}><button className="ws-tile ws-jobc" onClick={onOpen}>
       <Hero photo={j.front_photo} reg={j.registration} text={inRow ? dateOnly(j.created_at) : undefined}>
-        <span className="ws-hero-top"><Pill s={j.status} />{j.status === "OPEN" && <span className={"ws-stage-pill st-" + (j.stage || "WAITING").toLowerCase()}>{t(STAGE_LABEL[j.stage || "WAITING"])}</span>}</span>
+        <span className="ws-hero-top"><Pill s={j.status} />{j.status === "OPEN" && j.stage === "READY" && <span className="ws-stage-pill st-ready">{t(STAGE_LABEL.READY)}</span>}</span>
         {j.photo_count ? <span className="ws-hero-count">{"\u{1F4F7} " + j.photo_count}</span> : null}
       </Hero>
       <span className="ws-c-body">
