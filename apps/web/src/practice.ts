@@ -34,7 +34,9 @@ const next = (p: string) => p + String(++db.seq);
 const regKey = (s: string) => String(s || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+const practiceQuotes: Row[] = [];
 function reset() {
+  practiceQuotes.length = 0;
   db.settings = {}; db.logo = null; db.edits = {}; db.owners = {}; db.archived = []; db.log = []; db.requests = []; db.photos = {}; db.seq = 0; db.created = 0; db.moved = 0; db.jobsMade = 0; db.paid = 0; db.jobs = []; db.invoices = []; db.movements = [];
   const p = (name: string, brand: string, category: string, qty: number, location: string, part: string, extra: Row = {}) => ({
     id: next("p"), sku: "DEMO-" + String(db.seq).padStart(3, "0"), name, category, brand, grade: "", capacity: "", barcode: null, unit: "UNIT", quantity: qty,
@@ -173,6 +175,25 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
   const seg = p.split("/").filter(Boolean); // api, area, ...
   const area = seg[1], a = seg[2], b = seg[3];
 
+  if (area === "workshop" && a === "quotes") {
+    const money = (n: unknown) => Math.round(Number(n || 0) * 100) / 100;
+    const view = (q: Row): Row => { const sec: Row = { "Rem/Refit": 0, Repaint: 0, Other: 0 }; for (const l of q.labour) sec[l.section || "Other"] = money(sec[l.section || "Other"] + money(l.amount)); const parts = q.parts.reduce((x: number, p: Row) => x + money(p.quantity * p.unit_price), 0), total = money(parts + sec["Rem/Refit"] + sec.Repaint + sec.Other); return { ...q, parts_total: money(parts), labour_total: money(total - parts), sections: sec, total, parts_unpriced: q.parts.filter((p: Row) => !Number(p.unit_price)).length }; };
+    const fill = (q: Row) => { for (const k of ["registration", "insurer", "insurer_branch", "claim_no", "policy_no", "customer", "phone", "vehicle", "issue", "valid_until"]) if (k in body) q[k] = body[k]; if (q.registration) { q.registration = String(q.registration).toUpperCase(); q.vehicle_key = String(q.registration).replace(/[^A-Z0-9]/g, ""); } if ("photos" in body) q.photos = body.photos; if ("parts" in body) q.parts = body.parts; if ("labour" in body) q.labour = body.labour; return q; };
+    if (!b) {
+      if (method === "GET") return practiceQuotes.map((q) => { const v = view(q); return { ...v, lines: v.parts.length + v.labour.length, rev_count: q.rev_no, photo_count: (q.photos || []).length }; });
+      const id = next("q"), n = practiceQuotes.length + 1;
+      const q: Row = fill({ id, number: "QT-PRACTICE-" + String(n).padStart(4, "0"), status: "DRAFT", revision: 0, rev_no: 1, history: [], parts: [], labour: [], photos: [], created_at: now(), updated_at: now() });
+      practiceQuotes.unshift(q); return clone(view(q));
+    }
+    const q = practiceQuotes.find((x) => x.id === b); if (!q) throw new ApiError("Quotation not found", 404);
+    if (method === "GET") return clone(view(q));
+    if (method === "DELETE") { practiceQuotes.splice(practiceQuotes.indexOf(q), 1); return { deleted: b }; }
+    if (method === "PATCH") { fill(q); q.revision++; q.updated_at = now(); return clone(view(q)); }
+    const act = seg[4];
+    if (act === "revise") { q.history.push({ rev_no: q.rev_no, at: now(), status: q.status, total: view(q).total, parts: q.parts, labour: q.labour }); q.rev_no++; q.status = "DRAFT"; q.revision++; return clone(view(q)); }
+    if (act === "status") { q.status = body.status; q.revision++; return clone(view(q)); }
+    if (act === "convert") { q.status = "CONVERTED"; q.revision++; return { job_id: "practice-none", quote: clone(view(q)) }; }
+  }
   if (area === "inventory") {
     if (a === "session") return { name: "Practice", roles: [state.owner ? "ROLE_OWNER" : "ROLE_MECHANIC"] };
     if (a === "products" && b === "archived") return clone(db.products.filter((x) => x.archived));

@@ -3,15 +3,15 @@ import QRCode from "qrcode";
 import { addDays, dateOnly, num, type Business, type Invoice } from "./common";
 import { peekLogo } from "../logoStore";
 
-type RGB = [number, number, number];
-const W = 595, H = 842, MARGIN = 40, R = W - MARGIN;
+export type RGB = [number, number, number];
+export const W = 595, H = 842, MARGIN = 40, R = W - MARGIN;
 const REGULAR = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584];
 const BOLD = [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584];
-const INK: RGB = [0.1, 0.12, 0.11], MUTED: RGB = [0.42, 0.45, 0.44], LINE: RGB = [0.82, 0.85, 0.83], ACCENT: RGB = [0.2, 0.41, 0.31], WASH: RGB = [0.94, 0.96, 0.94], GREY: RGB = [0.93, 0.94, 0.93];
+export const INK: RGB = [0.1, 0.12, 0.11], MUTED: RGB = [0.42, 0.45, 0.44], LINE: RGB = [0.82, 0.85, 0.83], ACCENT: RGB = [0.2, 0.41, 0.31], WASH: RGB = [0.94, 0.96, 0.94], GREY: RGB = [0.93, 0.94, 0.93];
 
-const clean = (s: unknown) => Array.from(String(s ?? "")).map((c) => (c.charCodeAt(0) >= 32 && c.charCodeAt(0) < 127 ? c : "?")).join("");
-const width = (s: string, size = 10, bold = false) => { const t = bold ? BOLD : REGULAR; let n = 0; for (const c of clean(s)) n += t[c.charCodeAt(0) - 32]; return (n * size) / 1000; };
-function wrap(s: string, max: number, size = 10, bold = false): string[] {
+export const clean = (s: unknown) => Array.from(String(s ?? "")).map((c) => (c.charCodeAt(0) >= 32 && c.charCodeAt(0) < 127 ? c : "?")).join("");
+export const width = (s: string, size = 10, bold = false) => { const t = bold ? BOLD : REGULAR; let n = 0; for (const c of clean(s)) n += t[c.charCodeAt(0) - 32]; return (n * size) / 1000; };
+export function wrap(s: string, max: number, size = 10, bold = false): string[] {
   const out: string[] = [];
   for (const para of String(s ?? "").split("\n")) {
     let line = "";
@@ -31,10 +31,10 @@ function wrap(s: string, max: number, size = 10, bold = false): string[] {
 const esc = (s: string) => clean(s).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 const rgb = (c: RGB) => c.map((v) => v.toFixed(3)).join(" ");
 const f1 = (n: number) => n.toFixed(1);
-const money = (n: unknown) => num(n as number).toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const qty = (n: unknown) => String(Number(num(n as number).toFixed(3)));
+export const money = (n: unknown) => num(n as number).toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export const qty = (n: unknown) => String(Number(num(n as number).toFixed(3)));
 
-class Doc {
+export class Doc {
   pages: string[][] = [[]];
   images: { bin: string; w: number; h: number; c: number }[] = [];
   y = MARGIN;
@@ -99,7 +99,7 @@ class Doc {
   }
 }
 
-function block(d: Doc, x: number, w: number, label: string, rows: [string | undefined, number, boolean][]) {
+export function block(d: Doc, x: number, w: number, label: string, rows: [string | undefined, number, boolean][]) {
   d.text(x, d.y + 8, label, 8, true, "l", MUTED);
   let y = d.y + 22;
   for (const [text, size, bold] of rows) if (text) for (const part of wrap(text, w, size, bold)) { d.text(x, y + size * 0.8, part, size, bold); y += size * 1.4; }

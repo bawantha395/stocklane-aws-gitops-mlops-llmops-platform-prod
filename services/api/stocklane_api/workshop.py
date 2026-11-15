@@ -978,6 +978,7 @@ def export_all():
     return {'exported_at': now(), 'format': 'lifta-export-1',
             'settings': {k: v for k, v in business().items() if k != 'logo'},
             'jobs': [public(j) for j in query('WJOB')],
+            'quotations': [public(q) for q in sorted(query('WQUO'), key=lambda q: q['created_at'])],
             'invoices': [public(i) for i in sorted(query('WINV'), key=lambda i: i['created_at'])],
             'vehicles': [public(v) for v in query('VEHICLE')],
             'workshop_log': [public(a) for a in query('WAUDIT')],

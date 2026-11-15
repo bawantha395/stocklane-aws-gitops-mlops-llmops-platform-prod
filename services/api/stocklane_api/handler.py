@@ -8,7 +8,7 @@ import json
 import re
 import traceback
 
-from . import forecast, inventory, photos, workshop
+from . import forecast, inventory, photos, quotes, workshop
 from .core import ApiError, actor, bad, dumps, groups, remember_email, require
 
 OWNER, STAFF = ('OWNER',), ('OWNER', 'MECHANIC')
@@ -66,6 +66,14 @@ route('POST', '/api/workshop/jobs/([^/]+)/stage', STAFF, lambda e, p, b, k: work
 route('POST', '/api/workshop/jobs/([^/]+)/delete-request', STAFF, lambda e, p, b, k: workshop.request_delete(p[0], k, actor(e), b))
 route('POST', '/api/workshop/jobs/([^/]+)/delete-request/reject', OWNER, lambda e, p, b, k: workshop.reject_delete(p[0], k, actor(e), b))
 route('POST', '/api/workshop/jobs/([^/]+)/cancel', OWNER, lambda e, p, b, k: workshop.cancel_job(p[0], k, actor(e), b))
+route('GET', '/api/workshop/quotes', STAFF, lambda e, p, b, k: quotes.quotes())
+route('POST', '/api/workshop/quotes', STAFF, lambda e, p, b, k: quotes.create(k, actor(e), b))
+route('GET', '/api/workshop/quotes/([^/]+)', STAFF, lambda e, p, b, k: quotes.get_quote(p[0]))
+route('PATCH', '/api/workshop/quotes/([^/]+)', STAFF, lambda e, p, b, k: quotes.save(p[0], k, actor(e), b))
+route('POST', '/api/workshop/quotes/([^/]+)/revise', STAFF, lambda e, p, b, k: quotes.revise(p[0], k, actor(e), b))
+route('POST', '/api/workshop/quotes/([^/]+)/status', OWNER, lambda e, p, b, k: quotes.set_status(p[0], k, actor(e), b))
+route('POST', '/api/workshop/quotes/([^/]+)/convert', OWNER, lambda e, p, b, k: quotes.convert(p[0], k, actor(e), b))
+route('DELETE', '/api/workshop/quotes/([^/]+)', OWNER, lambda e, p, b, k: quotes.remove(p[0], k, actor(e), b))
 route('GET', '/api/workshop/logo', STAFF, lambda e, p, b, k: workshop.logo_image())
 route('PUT', '/api/workshop/logo', OWNER, lambda e, p, b, k: workshop.save_logo(k, actor(e), b))
 route('DELETE', '/api/workshop/logo', OWNER, lambda e, p, b, k: workshop.remove_logo(k, actor(e), b))

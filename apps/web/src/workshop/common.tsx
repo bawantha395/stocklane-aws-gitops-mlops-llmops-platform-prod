@@ -3,7 +3,7 @@ import { t } from "../i18n";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
-export type PageName = "home" | "jobs" | "vehicles" | "due" | "invoices" | "archive" | "report" | "settings" | "new" | "job" | "vehicle" | "invoice";
+export type PageName = "home" | "jobs" | "vehicles" | "due" | "invoices" | "archive" | "report" | "settings" | "new" | "job" | "vehicle" | "invoice" | "quotes" | "quote";
 export type Page = { name: PageName; id?: string; reg?: string };
 export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string; qr_url?: string; invoice_prefix?: string; default_reorder_level?: number; labour_items?: Labour[]; mechanics?: string[]; logo?: { v: string; w: number; h: number; c: number } | null };
 export type Part = { name: string; quantity: number; unit_price: number; product_id?: string; discount_pct?: number };
@@ -21,6 +21,15 @@ export type Job = {
   delete_requested?: boolean; delete_request?: DeleteRequest; undo_seconds_left?: number; archive_reason?: string; archived_by?: string; archived_at?: string;
 };
 export type DeleteRequest = { job_id: string; registration: string; customer: string; reason: string; requested_by: string; requested_at: string; status: "PENDING" | "REJECTED"; note?: string; decided_by?: string };
+export type QuoteWork = { description: string; amount: number; section: "Rem/Refit" | "Repaint" | "Other" };
+export type QuoteStatus = "DRAFT" | "SENT" | "APPROVED" | "REJECTED" | "CONVERTED";
+export type QuoteVersion = { rev_no: number; at: string; by?: string; status: QuoteStatus; total: number; parts: Part[]; labour: QuoteWork[]; note?: string };
+export type Quote = {
+  id: string; number: string; status: QuoteStatus; revision: number; rev_no: number; registration: string; vehicle_key: string; vehicle?: string; customer?: string; phone?: string;
+  insurer?: string; insurer_branch?: string; claim_no?: string; policy_no?: string; issue?: string; valid_until?: string; photos?: string[]; parts: Part[]; labour: QuoteWork[];
+  history: QuoteVersion[]; parts_total: number; labour_total: number; sections: Record<string, number>; total: number; parts_unpriced: number; created_at: string; updated_at: string;
+  job_id?: string; lines?: number; photo_count?: number; front_photo?: string; rev_count?: number;
+};
 export type Visit = {
   id: string; created_at: string; summary: string; status: string; odometer?: number; total: number; invoice_number?: string; invoice_id?: string;
   parts?: Part[]; labour?: Labour[]; mechanic?: string; customer?: string;
@@ -89,8 +98,8 @@ export function useDebounced(value: string, ms = 250) {
   return v;
 }
 
-const LABEL: Record<string, string> = { OPEN: "Open", INVOICED: "Invoiced", CANCELLED: "Cancelled", ARCHIVED: "Deleted", UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", VOID: "Void" };
-const ICON: Record<string, typeof Ban> = { OPEN: CircleDashed, INVOICED: FileText, UNPAID: FileText, PARTIAL: CircleDollarSign, PAID: CheckCircle2, VOID: Ban, CANCELLED: Ban, ARCHIVED: Trash2 };
+const LABEL: Record<string, string> = { DRAFT: "Draft", SENT: "Sent", APPROVED: "Approved", REJECTED: "Rejected", CONVERTED: "Made into a job", OPEN: "Open", INVOICED: "Invoiced", CANCELLED: "Cancelled", ARCHIVED: "Deleted", UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", VOID: "Void" };
+const ICON: Record<string, typeof Ban> = { DRAFT: CircleDashed, SENT: FileText, APPROVED: CheckCircle2, REJECTED: Ban, CONVERTED: CheckCircle2, OPEN: CircleDashed, INVOICED: FileText, UNPAID: FileText, PARTIAL: CircleDollarSign, PAID: CheckCircle2, VOID: Ban, CANCELLED: Ban, ARCHIVED: Trash2 };
 /** Status: colour + icon + word, so it never relies on colour alone. */
 export const Pill = ({ s }: { s: string }) => { const I = ICON[s] || CircleDashed; return <span className={"ws-pill " + s.toLowerCase()}><I size={13} strokeWidth={2.4} aria-hidden="true" />{t(LABEL[s] || s)}</span>; };
 export const Empty = ({ children, action }: { children: string; action?: { label: string; onClick: () => void } }) => (
