@@ -1,9 +1,9 @@
 import { t } from "../i18n";
 import { useContext, useRef, useState, type ReactNode } from "react";
-import { Car } from "lucide-react";
 import { Photo } from "./Photos";
 import { RailCtx } from "./Rows";
-import { Pill, STAGE_LABEL, dateOnly, kmText, lkr, type Invoice, type Job, type Vehicle } from "./common";
+import { BizLogo } from "../BizLogo";
+import { Pill, STAGE_LABEL, dateOnly, kmText, lkr, useWs, type Invoice, type Job, type Vehicle } from "./common";
 
 /** Swipe a card left to reveal Call and Open. Vertical scrolling still works; a tap still opens the card. */
 function Swipe({ phone, onOpen, children }: { phone?: string; onOpen: () => void; children: ReactNode }) {
@@ -28,9 +28,10 @@ function Swipe({ phone, onOpen, children }: { phone?: string; onOpen: () => void
 export const hue = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; };
 
 /** Top picture of a card: the front photo, or a tinted plate with a car. Children sit on top of it (status, counts). */
-function Hero({ photo, reg, children }: { photo?: string; reg: string; children?: ReactNode }) {
-  // No photo: a slim plain row (icon on the left, status on the right) - no absolutely placed layers that some phones paint as an empty block.
-  if (!photo) return <span className="ws-slim" style={{ ["--h" as string]: hue(reg || "x") }}><Car size={22} strokeWidth={1.7} aria-hidden="true" />{children}</span>;
+function Hero({ photo, reg, text, children }: { photo?: string; reg: string; text?: string; children?: ReactNode }) {
+  const { business } = useWs();
+  // No photo: a metal card (logo and status on top, the number or `text` embossed below) - all in normal flow, no absolutely placed layers that some phones paint as an empty block.
+  if (!photo) return <span className="ws-metal" style={{ ["--h" as string]: hue(reg || "x") }}><span className="ws-metal-top"><span className="ws-metal-logo"><BizLogo name={business.name || "Workshop"} size={40} /></span>{children}</span><span className="ws-metal-plate">{text ?? reg}</span></span>;
   return (
     <span className="ws-hero" style={{ ["--h" as string]: hue(reg || "x") }}>
       <Photo id={photo} className="ws-hero-bg" />
@@ -65,17 +66,18 @@ export function VehicleCard({ v, onOpen }: { v: Vehicle; onOpen: () => void }) {
 }
 
 /** A job: photo with status on it, number plate, customer, what is being done, and the money. */
-export function JobCard({ j, onOpen }: { j: Job; onOpen: () => void }) {
+/** `inRow`: the card sits in a vehicle's row (the row header already has the number), so the number is not repeated. */
+export function JobCard({ j, onOpen, inRow }: { j: Job; onOpen: () => void; inRow?: boolean }) {
   const when = j.status === "OPEN" && j.age_days != null ? (j.age_days === 0 ? t("Opened today") : t("Open") + " " + j.age_days + " d") : dateOnly(j.created_at);
   return (
     <Swipe phone={j.phone} onOpen={onOpen}><button className="ws-tile ws-jobc" onClick={onOpen}>
-      <Hero photo={j.front_photo} reg={j.registration}>
+      <Hero photo={j.front_photo} reg={j.registration} text={inRow ? dateOnly(j.created_at) : undefined}>
         <span className="ws-hero-top"><Pill s={j.status} />{j.status === "OPEN" && <span className={"ws-stage-pill st-" + (j.stage || "WAITING").toLowerCase()}>{t(STAGE_LABEL[j.stage || "WAITING"])}</span>}</span>
         {j.photo_count ? <span className="ws-hero-count">{"\u{1F4F7} " + j.photo_count}</span> : null}
       </Hero>
       <span className="ws-c-body">
-        <span className="ws-c-label">{t("Vehicle no.")}</span>
-        <strong className="ws-plate">{j.registration}</strong>
+        {!inRow && <><span className="ws-c-label">{t("Vehicle no.")}</span>
+        <strong className="ws-plate">{j.registration}</strong></>}
         {j.vehicle && <span className="ws-c-make">{j.vehicle}</span>}
         <dl className="ws-c-rows">
           <Row label={t("Customer")}>{j.customer}</Row>

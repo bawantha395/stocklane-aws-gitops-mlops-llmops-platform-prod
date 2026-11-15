@@ -1,6 +1,7 @@
 import { t } from "../i18n";
 import { AlertTriangle, Banknote, CalendarClock, ClipboardCheck, Receipt, TrendingUp, Wrench } from "lucide-react";
 import { JobCard } from "./Cards";
+import { Rows } from "./Rows";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Num, Empty, Loading, ReasonDialog, dateOnly, useCommand, useDebounced, useLoad, useWs, type DeleteRequest, type Job, type Vehicle } from "./common";
@@ -10,7 +11,7 @@ type Dash = {
   open_jobs: Job[]; open_count: number; unpaid_count: number; unpaid_total: number; oldest_unpaid_days: number; due_count: number; delete_requests?: DeleteRequest[];
 };
 
-export const JobItem = JobCard;
+export const JobItem = JobCard; // JobItem takes the same props, incl. `inRow`
 
 export function Dashboard() {
   const { go, owner } = useWs();
@@ -64,11 +65,13 @@ export function Dashboard() {
               ))}
             </section>
           )}
-          <div className="ws-section-head"><h3>{t("Open jobs")}</h3></div>
-          <div className="ws-cards">
-            {data.open_jobs.map((j) => <JobItem key={j.id} j={j} onOpen={() => go({ name: "job", id: j.id })} />)}
-            {!data.open_jobs.length && <Empty>No open jobs. Press New job when a vehicle comes in.</Empty>}
-          </div>
+          {data.open_jobs.length ? (
+            // newest first, side by side like the Jobs tab; the plate stays on each card because these are different vehicles
+            <Rows groups={[{ key: "open", title: t("Open jobs"), items: [...data.open_jobs].sort((a, b) => (b.created_at < a.created_at ? -1 : 1)) }]} idOf={(j) => j.id} latest={undefined}
+              render={(j) => <JobItem j={j} onOpen={() => go({ name: "job", id: j.id })} />} />
+          ) : (
+            <><div className="ws-section-head"><h3>{t("Open jobs")}</h3></div><div className="ws-cards"><Empty>No open jobs. Press New job when a vehicle comes in.</Empty></div></>
+          )}
         </>
       )}
       {ask && (

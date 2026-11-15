@@ -182,10 +182,6 @@ html[data-theme="dark"] .counter-lowchip { color: #f0b266; }
 @media (max-width: 760px) { .ws-quick { min-height: 36px; } .ws-l-offlink { min-height: 34px; } }
 
 /* Cards without a photo: a slim row instead of a hero block */
-.ws-slim { display: flex; align-items: center; gap: 10px; padding: 12px 16px 0; color: hsl(var(--h, 150), 28%, 45%); }
-.ws-slim .ws-hero-top, .ws-slim .ws-hero-count { position: static; margin-left: auto; }
-.ws-slim .ws-hero-count + .ws-hero-top, .ws-slim .ws-hero-top + .ws-hero-count { margin-left: 8px; }
-.ws-slim .ws-hero-count { background: rgba(var(--w), .92); }
 
 /* Vehicle page: who owned it, and when the owner changed */
 .ws-visit-who { display: block; font-size: 12px; font-weight: 600; color: var(--muted); }
@@ -280,16 +276,15 @@ html[data-theme="dark"] .counter-lowchip { color: #f0b266; }
 
 /* ===== Cards in the rows: inset rounded picture, big plate, soft text, pill footer (light and dark) ===== */
 .ws-rail-item .ws-tile { padding: 12px 12px 14px; border-radius: 28px; gap: 4px; background: var(--surface); border: 1px solid rgba(var(--sh), .08); box-shadow: 0 1px 2px rgba(var(--sh), .05), 0 18px 40px -22px rgba(var(--sh), .38); }
-.ws-rail-item .ws-hero, .ws-rail-item .ws-slim { border-radius: 20px; width: 100%; margin: 0; }
+.ws-rail-item .ws-hero { border-radius: 20px; width: 100%; margin: 0; }
 .ws-rail-item .ws-hero { height: 200px !important; }
-.ws-rail-item .ws-slim { min-height: 52px; }
 .ws-rail-item .ws-c-body { padding: 14px 8px 6px; gap: 6px; }
 .ws-rail-item .ws-c-make { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
 .ws-rail-item .ws-c-rows, .ws-rail-item .ws-c-work { color: var(--muted); }
 .ws-rail-item .ws-c-stats { margin: 6px 0 0; border-radius: 18px; border: 1px solid rgba(var(--sh), .07); background: rgba(var(--sh), .04); }
 /* the pill that says "open" like the Read more button */
-.ws-rail-item .ws-tile:not(.static)::after { content: "Open \2192"; align-self: flex-start; margin: 8px 8px 2px; padding: 9px 18px; border-radius: 14px; font-weight: 700; font-size: 14px; background: var(--brand, #0f4d38); color: #fff; box-shadow: 0 8px 18px -10px rgba(var(--sh0), .6); }
-.ws-rail-item .ws-tile.ws-invc:not(.static)::after, .ws-rail-item .ws-tile.ws-jobc:not(.static)::after { content: "Open \2192"; }
+.ws-rail-item .ws-tile:not(.static)::after { content: "View \2192"; align-self: flex-start; margin: 8px 8px 2px; padding: 9px 18px; border-radius: 14px; font-weight: 700; font-size: 14px; background: var(--brand, #0f4d38); color: #fff; box-shadow: 0 8px 18px -10px rgba(var(--sh0), .6); }
+.ws-rail-item .ws-tile.ws-invc:not(.static)::after, .ws-rail-item .ws-tile.ws-jobc:not(.static)::after { content: "View \2192"; }
 /* arrows: rounded squares at the sides; dots underneath */
 .ws-rail-arrow { width: 44px; height: 44px; border-radius: 16px; top: 45%; background: rgba(var(--sh), .72); color: #fff; border: 1px solid rgba(255,255,255,.12); }
 .ws-rail-arrow.left { left: 6px; } .ws-rail-arrow.right { right: 6px; }
@@ -301,3 +296,35 @@ html[data-theme="dark"] .counter-lowchip { color: #f0b266; }
 .ws-hero-count { bottom: 8px !important; right: 10px !important; }
 html[data-theme="dark"] .ws-stage-pill { background: rgba(255,255,255,.18) !important; color: #f4f4f6 !important; }
 html[data-theme="dark"] .ws-latest { background: rgba(30,32,36,.9); color: #f4f4f6; }
+
+/* ===== No picture: a brushed-metal card (like a metal card): Lifta mark on top, the plate embossed below. In normal flow, nothing absolutely placed ===== */
+.ws-metal { display: flex; flex-direction: column; justify-content: space-between; gap: 18px; min-height: 150px; padding: 14px 16px 16px; border-radius: 20px; position: relative; overflow: hidden; color: #6b7078;
+  background: repeating-linear-gradient(90deg, rgba(255,255,255,.16) 0 1px, rgba(255,255,255,0) 1px 3px), linear-gradient(135deg, #f6f7f9 0%, #cfd3d9 22%, #eef0f3 42%, #aeb3ba 64%, #e6e9ed 82%, #bdc2c9 100%);
+  border: 1px solid rgba(255,255,255,.75); box-shadow: inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(0,0,0,.08); }
+.ws-metal-top { display: flex; align-items: center; gap: 8px; }
+.ws-metal-top .ws-hero-top, .ws-metal-top .ws-hero-count { position: static !important; margin-left: auto; }
+.ws-metal-top .ws-hero-count + .ws-hero-top, .ws-metal-top .ws-hero-top + .ws-hero-count { margin-left: 8px; }
+.ws-metal-plate { font-weight: 800; font-size: 28px; line-height: 1.05; letter-spacing: .1em; color: #7b8088; text-shadow: 0 1px 0 rgba(255,255,255,.9), 0 -1px 0 rgba(0,0,0,.18); overflow-wrap: anywhere; }
+.ws-rail-item .ws-metal { min-height: 200px; }
+html[data-theme="dark"] .ws-metal { color: #b4b9c1; background: repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, rgba(255,255,255,0) 1px 3px), linear-gradient(135deg, #5b6068 0%, #34373d 24%, #52565d 44%, #25282c 66%, #474b52 84%, #2d3035 100%); border-color: rgba(255,255,255,.12); box-shadow: inset 0 1px 0 rgba(255,255,255,.18), inset 0 -1px 0 rgba(0,0,0,.4); }
+html[data-theme="dark"] .ws-metal-plate { color: #c3c8cf; text-shadow: 0 1px 0 rgba(0,0,0,.55), 0 -1px 0 rgba(255,255,255,.12); }
+.ws-row-head { align-items: center; flex-wrap: wrap; }
+.ws-row.plate .ws-row-head h3 { font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .06em; }
+.ws-row-sub { color: var(--muted); font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-row-head small { margin-left: auto; }
+
+.ws-row-badge { background: rgba(224,138,0,.16); color: #b26a00; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+html[data-theme="dark"] .ws-row-badge { background: rgba(255,176,32,.2); color: #ffc457; }
+.ws-rail-wait { min-height: 330px; }
+.ws-rows-more { display: block; margin: 8px auto 28px; }
+.ws-row-head h3 { min-width: 0; }
+.ws-row-head { flex-wrap: nowrap; gap: 10px; }
+.ws-row-head h3 { flex: none; }
+.ws-row-sub { flex: 1 1 0; }
+.ws-row-badge, .ws-row-head small { flex: none; }
+
+/* the shop's own logo (or its initials) on the metal card */
+.ws-metal-logo { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 3px; border-radius: 15px; background: rgba(255,255,255,.55); border: 1px solid rgba(255,255,255,.8); box-shadow: 0 4px 12px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.8); }
+.ws-metal-logo .bl { border-radius: 12px; }
+.ws-metal-logo .bl-img { height: 40px !important; width: auto; max-width: 96px; object-fit: contain; display: block; background: #0d0d0f; }
+html[data-theme="dark"] .ws-metal-logo { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.18); }

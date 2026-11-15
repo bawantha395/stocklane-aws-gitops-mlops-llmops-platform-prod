@@ -6,7 +6,21 @@ import { addDays, dateOnly, today } from "./common";
 /** Cards inside a row are swiped sideways, so the card's own swipe-to-reveal turns itself off there. */
 export const RailCtx = createContext(false);
 
-export type Group<T> = { key: string; title: string; items: T[] };
+export type Group<T> = { key: string; title: string; sub?: string; badge?: string; plate?: boolean; items: T[] };
+
+/** One row per vehicle (its jobs, newest first); the vehicle with the most recent job is the first row. */
+export function groupByVehicle<T>(items: T[], keyOf: (x: T) => string, dateOf: (x: T) => string | undefined, titleOf: (x: T) => string, subOf: (x: T) => string, badgeOf?: (items: T[]) => string): Group<T>[] {
+  const by = new Map<string, Group<T>>();
+  const sorted = [...items].sort((a, b) => ((dateOf(b) || "") < (dateOf(a) || "") ? -1 : 1));
+  for (const x of sorted) {
+    const k = keyOf(x); let g = by.get(k);
+    if (!g) { g = { key: k, title: titleOf(x), sub: subOf(x), plate: true, items: [] }; by.set(k, g); }
+    g.items.push(x);
+  }
+  const out = [...by.values()]; // insertion order = newest job first
+  if (badgeOf) for (const g of out) g.badge = badgeOf(g.items);
+  return out;
+}
 
 const monthName = (d: string, now: string) => {
   const s = new Date(d.slice(0, 7) + "-15T12:00:00").toLocaleString("en-GB", { month: "long", ...(d.slice(0, 4) !== now.slice(0, 4) ? { year: "numeric" as const } : {}) });
@@ -35,15 +49,20 @@ export function groupByPeriod<T>(items: T[], dateOf: (x: T) => string | undefine
 const MAX = 30;
 
 /** One horizontally swiped row per group (Apple-style): the next card peeks in, snaps into place, arrows on a computer. */
-export function Rows<T>({ groups, idOf, render, latest }: { groups: Group<T>[]; idOf: (x: T) => string; render: (x: T) => ReactNode; latest?: string }) {
+const ROWS = 12;
+export function Rows<T>({ groups, idOf, render, latest, noun }: { groups: Group<T>[]; idOf: (x: T) => string; render: (x: T) => ReactNode; latest?: string; noun?: string }) {
+  const [n, setN] = useState(ROWS), list = groups.filter((g) => g.items.length);
   return (
     <div className="ws-rows">
-      {groups.filter((g) => g.items.length).map((g) => <Row key={g.key} g={g} idOf={idOf} render={render} latest={latest} />)}
+      {list.slice(0, n).map((g) => <Row key={g.key} g={g} idOf={idOf} render={render} latest={latest} />)}
+      {list.length > n && <button type="button" className="button secondary ws-rows-more" onClick={() => setN(n + ROWS)}>{t("Show more")} · {list.length - n} {noun || t("more")}</button>}
     </div>
   );
 }
 
 function Row<T>({ g, idOf, render, latest }: { g: Group<T>; idOf: (x: T) => string; render: (x: T) => ReactNode; latest?: string }) {
+  const sec = useRef<HTMLElement>(null), [seen, setSeen] = useState(typeof IntersectionObserver === "undefined");
+  useEffect(() => { const el = sec.current; if (seen || !el) return; const io = new IntersectionObserver((e) => { if (e.some((x) => x.isIntersecting)) { setSeen(true); io.disconnect(); } }, { rootMargin: "900px 0px" }); io.observe(el); return () => io.disconnect(); }, [seen]);
   const rail = useRef<HTMLDivElement>(null), [edge, setEdge] = useState({ l: false, r: false }), [all, setAll] = useState(false), [at, setAt] = useState(0);
   const measure = () => {
     const el = rail.current; if (!el) return;
@@ -55,8 +74,9 @@ function Row<T>({ g, idOf, render, latest }: { g: Group<T>; idOf: (x: T) => stri
   const by = (dir: number) => rail.current?.scrollBy({ left: dir * Math.max(240, rail.current.clientWidth * 0.85), behavior: "smooth" });
   const shown = all ? g.items : g.items.slice(0, MAX), more = g.items.length - shown.length;
   return (
-    <section className="ws-row" aria-label={g.title}>
-      <div className="ws-row-head"><h3>{g.title}</h3><small>{g.items.length}</small></div>
+    <section ref={sec} className={"ws-row" + (g.plate ? " plate" : "")} aria-label={g.title}>
+      <div className="ws-row-head"><h3>{g.title}</h3>{g.sub && <span className="ws-row-sub">{g.sub}</span>}{g.badge && <span className="ws-row-badge">{g.badge}</span>}<small>{g.items.length}</small></div>
+      {!seen ? <div className="ws-rail-wait" aria-hidden="true" /> : <>
       <div className="ws-rail-wrap">
         {edge.l && <button type="button" className="ws-rail-arrow left" aria-label={t("Earlier cards")} onClick={() => by(-1)}><ChevronLeft size={20} /></button>}
         <div ref={rail} className="ws-rail" onScroll={measure}>
@@ -77,6 +97,7 @@ function Row<T>({ g, idOf, render, latest }: { g: Group<T>; idOf: (x: T) => stri
           {shown.map((x, i) => <button key={idOf(x)} type="button" role="tab" aria-selected={i === Math.min(at, shown.length - 1)} aria-label={String(i + 1)} className={i === Math.min(at, shown.length - 1) ? "on" : ""} onClick={() => goTo(i)} />)}
         </div>
       )}
+      </>}
     </section>
   );
 }
