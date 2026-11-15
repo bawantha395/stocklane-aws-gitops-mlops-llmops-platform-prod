@@ -265,3 +265,25 @@ def test_bill_shows_part_number_even_for_older_lines(api):
     again = ok(api('GET', '/api/workshop/invoices/%s' % inv['id']))
     assert again['parts'][0]['part_no'] == one['parts'][0]['part_no']
     assert ok(api('GET', '/api/workshop/invoices/%s/pdf' % inv['id'], role='MECHANIC'))['pdf']
+
+
+def test_job_shows_parts_that_came_back_after_the_bill(api):
+    p, inv = invoiced(api, 3, 'CAB-6200')
+    job = ok(api('GET', '/api/workshop/jobs/%s' % inv['job_id']))
+    assert 'returned' not in job['parts'][0]
+    ok(api('POST', '/api/workshop/invoices/%s/return' % inv['id'], {'lines': [{'index': 0, 'quantity': 1}], 'reason': 'Wrong part'}))
+    job = ok(api('GET', '/api/workshop/jobs/%s' % inv['job_id']))
+    assert job['parts'][0]['returned'] == 1 and job['parts'][0]['returned_at'] == date.today().isoformat() and job['parts'][0]['quantity'] == 3
+
+
+def test_void_after_parts_came_back_does_not_return_them_to_stock_twice(api):
+    """3 used, 1 came back after the bill (stock 8), bill voided, job cancelled: the job must give back only the 2 it still holds (stock 10, not 11)."""
+    p, inv = invoiced(api, 3, 'CAB-6300')
+    assert stock(api, p['id']) == 7
+    ok(api('POST', '/api/workshop/invoices/%s/return' % inv['id'], {'lines': [{'index': 0, 'quantity': 1}], 'reason': 'Wrong part'}))
+    assert stock(api, p['id']) == 8
+    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {}))
+    job = ok(api('GET', '/api/workshop/jobs/%s' % inv['job_id']))
+    assert job['status'] == 'OPEN' and job['parts'][0]['quantity'] == 2 and 'returned' not in job['parts'][0]
+    ok(api('POST', '/api/workshop/jobs/%s/cancel' % inv['job_id'], {'revision': job['revision']}))
+    assert stock(api, p['id']) == 10

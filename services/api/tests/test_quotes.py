@@ -107,3 +107,25 @@ def test_bill_prints_job_no_type_and_chassis(api):
     core.transact([core.update('WINV', inv['id'], 'SET job_no = :n, invoice_type = :t, chassis = :c', {':n': 'JOB-0042', ':t': 'INSURANCE', ':c': 'ZVW30-9988'})], [None])
     pdf = base64.b64decode(ok(api('GET', '/api/workshop/invoices/%s/pdf' % inv['id'], role='MECHANIC'))['pdf'])
     assert b'Job: JOB-0042' in pdf and b'Insurance bill' in pdf and b'Chassis: ZVW30-9988' in pdf
+
+
+def test_quotation_expires_and_home_counts_it(api):
+    from datetime import date, timedelta
+    def mk(kind, days, status=None):
+        until = (date.today() + timedelta(days=days)).isoformat()
+        code, q = api('POST', '/api/workshop/quotes', {'registration': 'CAB-%d' % (days + 50), 'customer': 'Nimal', 'kind': kind, 'valid_until': until,
+                                                      'parts': [{'name': 'Door', 'quantity': 1, 'unit_price': 5000}]})
+        assert code == 200
+        if status:
+            code, q = api('POST', '/api/workshop/quotes/%s/status' % q['id'], {'revision': q['revision'], 'status': status})
+            assert code == 200
+        return q
+    old = mk('QUOTATION', -2, 'SENT')
+    soon = mk('QUOTATION', 2, 'SENT')
+    far = mk('QUOTATION', 10, 'SENT')
+    est = mk('ESTIMATE', 5, 'SENT')
+    assert old['expired'] is True and soon['expired'] is False and soon['days_left'] == 2
+    code, d = api('GET', '/api/workshop/dashboard')
+    assert d['quotes_expiring'] == 1 and d['estimates_waiting'] == 1
+    code, rows = api('GET', '/api/workshop/quotes')
+    assert {r['id']: r['expired'] for r in rows}[old['id']] is True

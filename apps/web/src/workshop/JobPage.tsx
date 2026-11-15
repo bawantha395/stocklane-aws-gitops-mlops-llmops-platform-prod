@@ -9,7 +9,7 @@ import { StockPicker } from "./StockPicker";
 import { printJobCard } from "./jobCardPdf";
 import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job, STAGE_LABEL, type Stage, waLink } from "./common";
 
-type PartRow = { name: string; quantity: string; unit_price: string; product_id?: string; discount_pct?: string; part_no?: string };
+type PartRow = { name: string; quantity: string; unit_price: string; product_id?: string; discount_pct?: string; part_no?: string; returned?: number };
 type LabourRow = { description: string; amount: string };
 type Suggest = { parts: { name: string; price: number; uses: number }[]; labour: { description: string; amount: number; uses: number }[] };
 
@@ -31,7 +31,7 @@ export function JobPage({ id }: { id: string }) {
     setJob(j); setDirty(false);
     setF({ customer: j.customer, address: j.address || "", brought_by: j.brought_by || "", brought_phone: j.brought_phone || "", warranty_until: j.warranty_until || "", warranty_km: j.warranty_km == null ? "" : String(j.warranty_km), warranty_job: j.warranty_job ? "1" : "", phone: j.phone, vehicle: j.vehicle, chassis: j.chassis || "", invoice_type: j.invoice_type || "CASH", odometer: j.odometer == null ? "" : String(j.odometer), summary: j.summary, mechanic: j.mechanic, notes: j.notes,
       discount: j.discount ? String(j.discount) : "", next_service_date: j.next_service_date || "", next_service_km: j.next_service_km == null ? "" : String(j.next_service_km) });
-    setParts(j.parts.map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: String(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(p.part_no ? { part_no: p.part_no } : {}), ...(p.discount_pct ? { discount_pct: String(p.discount_pct) } : {}) })));
+    setParts(j.parts.map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: String(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(p.part_no ? { part_no: p.part_no } : {}), ...(p.returned ? { returned: p.returned } : {}), ...(p.discount_pct ? { discount_pct: String(p.discount_pct) } : {}) })));
     setLabour(j.labour.map((l) => ({ description: l.description, amount: String(l.amount) })));
   };
   useEffect(() => { if (data) adopt(data); }, [data]);
@@ -124,7 +124,7 @@ export function JobPage({ id }: { id: string }) {
   return (
     <div className="ws-job">
       <div className="ws-job-head">
-        <div><h2>{job.registration}</h2><p>{job.job_no && <b className="ws-jobno">{job.job_no}</b>} {dateOnly(job.created_at)} <Pill s={job.status} /></p></div>
+        <div><h2>{job.registration}</h2><p>{job.job_no && <b className="ws-jobno">{job.job_no}</b>} {dateOnly(job.created_at)} <Pill s={job.status} /></p>{job.quote_id && <p className="ws-fromquote muted">{t("From")} <button type="button" className="linklike" onClick={() => go({ name: "quote", id: job.quote_id })}>{job.quote_number || t("estimate")}</button></p>}</div>
         <div className="ws-bar">
           {!locked && f.phone && <button className="button secondary small" data-tour="cost-so-far" onClick={() => costSoFar()}>{t("Cost so far")}</button>}
           {!madeNow && <button className="button secondary small" data-tour="print-jobcard" onClick={() => printJobCard(dirty ? { ...job, customer: f.customer, address: f.address, phone: f.phone, vehicle: f.vehicle, chassis: f.chassis, invoice_type: f.invoice_type as Job["invoice_type"], odometer: f.odometer === "" ? undefined : Number(f.odometer), summary: f.summary, mechanic: f.mechanic } : job, business)}>{t("Print job card")}</button>}
@@ -202,7 +202,7 @@ export function JobPage({ id }: { id: string }) {
         {parts.map((p, i) => (
           p.product_id ? (
             <div className="ws-line from-stock" key={p.product_id}>
-              <span className="ws-l-name stock-name"><b>{p.name}</b>{p.part_no && <small className="stock-pno">{t("Part No")}: {p.part_no}</small>}<small className="stock-tag">{t("From stock")}</small></span>
+              <span className="ws-l-name stock-name"><b>{p.name}</b>{p.part_no && <small className="stock-pno">{t("Part No")}: {p.part_no}</small>}{Number(p.returned) > 0 && <small className="stock-pno">{t("Returned")}: {p.returned}</small>}<small className="stock-tag">{t("From stock")}</small></span>
               <span className="ws-l-qty stock-qty">
                 {!locked && <button type="button" className="ws-stk-step" aria-label={"Take one " + p.name + " back"} disabled={busy} onClick={() => stepStock(p, "return")}>−</button>}
                 <output>{p.quantity}</output>

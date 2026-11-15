@@ -4,9 +4,9 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { api } from "../api";
 
 export type PageName = "home" | "jobs" | "vehicles" | "due" | "invoices" | "archive" | "report" | "settings" | "new" | "job" | "vehicle" | "invoice" | "quotes" | "quote";
-export type Page = { name: PageName; id?: string; reg?: string; kind?: "ESTIMATE" | "QUOTATION" };
+export type Page = { name: PageName; id?: string; reg?: string; kind?: "ESTIMATE" | "QUOTATION"; tab?: "JOBS" | "ESTIMATE" | "QUOTATION" };
 export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string; qr_url?: string; invoice_prefix?: string; default_reorder_level?: number; labour_items?: Labour[]; mechanics?: string[]; logo?: { v: string; w: number; h: number; c: number } | null };
-export type Part = { name: string; quantity: number; unit_price: number; product_id?: string; discount_pct?: number; part_no?: string; added_at?: string };
+export type Part = { name: string; quantity: number; unit_price: number; product_id?: string; discount_pct?: number; part_no?: string; added_at?: string; returned?: number; returned_at?: string };
 export type Labour = { description: string; amount: number };
 export type Stage = "WAITING" | "IN_PROGRESS" | "PARTS" | "READY";
 export const STAGES: Stage[] = ["WAITING", "IN_PROGRESS", "PARTS", "READY"];
@@ -17,7 +17,7 @@ export type Job = {
   parts: Part[]; labour: Labour[]; discount: number; tax_rate?: number; parts_total: number; labour_total: number; subtotal: number; tax: number; total: number;
   next_service_date?: string; next_service_km?: number; created_at: string; lines?: number; age_days?: number;
   front_photo?: string; plate_photo?: string; before_photos?: string[]; photo_count?: number;
-  job_no?: string; chassis?: string; invoice_type?: "CASH" | "CREDIT" | "INSURANCE" | "WARRANTY"; out_at?: string; quote_number?: string;
+  job_no?: string; chassis?: string; invoice_type?: "CASH" | "CREDIT" | "INSURANCE" | "WARRANTY"; out_at?: string; quote_number?: string; quote_id?: string;
   stage?: Stage; brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean;
   delete_requested?: boolean; delete_request?: DeleteRequest; undo_seconds_left?: number; archive_reason?: string; archived_by?: string; archived_at?: string;
 };
@@ -29,7 +29,7 @@ export type Quote = {
   id: string; kind?: "ESTIMATE" | "QUOTATION"; number: string; status: QuoteStatus; revision: number; rev_no: number; registration: string; vehicle_key: string; vehicle?: string; odometer?: number | null; customer?: string; phone?: string;
   insurer?: string; insurer_branch?: string; claim_no?: string; policy_no?: string; issue?: string; valid_until?: string; photos?: string[]; parts: Part[]; labour: QuoteWork[];
   history: QuoteVersion[]; parts_total: number; labour_total: number; sections: Record<string, number>; total: number; parts_unpriced: number; created_at: string; updated_at: string;
-  job_id?: string; lines?: number; photo_count?: number; front_photo?: string; rev_count?: number;
+  job_id?: string; expired?: boolean; days_left?: number | null; lines?: number; photo_count?: number; front_photo?: string; rev_count?: number;
 };
 export type Visit = {
   job_no?: string;
@@ -111,8 +111,8 @@ export function useDebounced(value: string, ms = 250) {
   return v;
 }
 
-const LABEL: Record<string, string> = { DRAFT: "Draft", SENT: "Sent", APPROVED: "Approved", REJECTED: "Rejected", CONVERTED: "Made into a job", OPEN: "Open", INVOICED: "Invoiced", CANCELLED: "Cancelled", ARCHIVED: "Deleted", UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", REFUNDED: "Refunded", VOID: "Void" };
-const ICON: Record<string, typeof Ban> = { DRAFT: CircleDashed, SENT: FileText, APPROVED: CheckCircle2, REJECTED: Ban, CONVERTED: CheckCircle2, OPEN: CircleDashed, INVOICED: FileText, UNPAID: FileText, PARTIAL: CircleDollarSign, PAID: CheckCircle2, REFUNDED: Ban, VOID: Ban, CANCELLED: Ban, ARCHIVED: Trash2 };
+const LABEL: Record<string, string> = { DRAFT: "Draft", SENT: "Sent", APPROVED: "Approved", REJECTED: "Rejected", CONVERTED: "Made into a job", OPEN: "Open", INVOICED: "Invoiced", CANCELLED: "Cancelled", ARCHIVED: "Deleted", UNPAID: "Unpaid", PARTIAL: "Part paid", PAID: "Paid", REFUNDED: "Refunded", VOID: "Void", EXPIRED: "Expired" };
+const ICON: Record<string, typeof Ban> = { DRAFT: CircleDashed, SENT: FileText, APPROVED: CheckCircle2, REJECTED: Ban, CONVERTED: CheckCircle2, OPEN: CircleDashed, INVOICED: FileText, UNPAID: FileText, PARTIAL: CircleDollarSign, PAID: CheckCircle2, REFUNDED: Ban, VOID: Ban, EXPIRED: Ban, CANCELLED: Ban, ARCHIVED: Trash2 };
 /** Status: colour + icon + word, so it never relies on colour alone. */
 export const Pill = ({ s }: { s: string }) => { const I = ICON[s] || CircleDashed; return <span className={"ws-pill " + s.toLowerCase()}><I size={13} strokeWidth={2.4} aria-hidden="true" />{t(LABEL[s] || s)}</span>; };
 export const Empty = ({ children, action }: { children: string; action?: { label: string; onClick: () => void } }) => (

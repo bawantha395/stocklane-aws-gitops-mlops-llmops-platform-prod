@@ -79,12 +79,12 @@ export function jobCardPdf(j: Job, shop: Business, partNos: Record<string, strin
   for (const c of cols) d.text(c.x, d.y + 14, c.t, 9, true);
   const top2 = d.y; d.y += 20;
   // Date = the day the part went on the job (older lines: the day the job opened); Part No = from the stock item
-  const given = (j.parts || []).map((p) => ({ name: p.name, qty: String(Number(p.quantity)), date: dateOnly(p.added_at || j.created_at), no: p.part_no || (p.product_id ? partNos[p.product_id] : "") || "" }));
+  const given = (j.parts || []).map((p) => ({ name: p.name, qty: String(Number(p.quantity)), date: dateOnly(p.added_at || j.created_at), no: p.part_no || (p.product_id ? partNos[p.product_id] : "") || "", back: Number(p.returned) > 0 ? "Returned " + Number(p.returned) + (p.returned_at ? " (" + p.returned_at.slice(5) + ")" : "") : "" }));
   const rowH = 30, bottom = 842 - MARGIN - 22;
   let n = 0;
   while (d.y + rowH <= bottom) {
     const p = given[n]; n++;
-    if (p) { const nm = wrap(p.name, 170, 9)[0] || ""; d.text(cols[0]!.x, d.y + 18, p.date, 8.5); d.text(cols[1]!.x, d.y + 18, wrap(clean(p.no), 78, 8.5)[0] || "", 8.5); d.text(cols[2]!.x, d.y + 18, nm, 9); d.text(cols[3]!.x, d.y + 18, p.qty, 9); }
+    if (p) { const nm = wrap(p.name, 170, 9)[0] || ""; d.text(cols[0]!.x, d.y + 18, p.date, 8.5); d.text(cols[1]!.x, d.y + 18, wrap(clean(p.no), 78, 8.5)[0] || "", 8.5); d.text(cols[2]!.x, d.y + 18, nm, 9); d.text(cols[3]!.x, d.y + 18, p.qty, 9); if (p.back) d.text(cols[4]!.x, d.y + 18, wrap(p.back, 76, 8)[0] || "", 8, false, "l", MUTED); }
     d.line(MARGIN, d.y + rowH, R, d.y + rowH, 0.5, RULE); d.y += rowH;
   }
   for (const c of cols.slice(1)) d.line(c.x - 4, top2, c.x - 4, d.y, 0.5, RULE);

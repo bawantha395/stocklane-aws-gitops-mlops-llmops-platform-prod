@@ -57,8 +57,25 @@ def label(q):
     return 'quotation' if q.get('kind') == 'QUOTATION' else 'estimate'
 
 
+EXPIRING_DAYS = 3
+
+
+def validity(q):
+    """Days left until "valid until" (Colombo calendar days), or None. Only an unanswered estimate/quotation (draft or sent) can expire."""
+    v = q.get('valid_until')
+    if not v or q.get('status') not in ('DRAFT', 'SENT'):
+        return None
+    try:
+        return (datetime.strptime(v, '%Y-%m-%d').date() - workshop.today()).days
+    except ValueError:
+        return None
+
+
 def view(q):
     out = {**public(q), **totals(q)}
+    left = validity(q)
+    out['days_left'] = left
+    out['expired'] = left is not None and left < 0
     out['kind'] = 'QUOTATION' if q.get('kind') == 'QUOTATION' else 'ESTIMATE'
     out['history'] = [{**h, 'total': h['total']} for h in q.get('history', [])]
     return out
@@ -242,3 +259,15 @@ def convert(quote_id, key, who, body):
         labels = [None] * (len(ops) - 1) + [CHANGED]
         return ops, labels, {'job_id': job_id, 'quote': view(done)}
     return command(key, 'convert-quote:' + quote_id, who, body, build)
+
+
+def counts():
+    """For Home: estimates still waiting for the insurer/customer to answer, and quotations that end within a few days."""
+    waiting = expiring = 0
+    for q in query('WQUO'):
+        if q.get('status') == 'SENT' and q.get('kind') != 'QUOTATION':
+            waiting += 1
+        left = validity(q)
+        if q.get('kind') == 'QUOTATION' and left is not None and 0 <= left <= EXPIRING_DAYS:
+            expiring += 1
+    return {'estimates_waiting': waiting, 'quotes_expiring': expiring}

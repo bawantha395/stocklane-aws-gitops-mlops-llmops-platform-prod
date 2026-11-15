@@ -6,9 +6,27 @@ import { OwingNotice, PastRepairs } from "./Vehicles";
 import { PhotoSlot, PhotoStrip } from "./Photos";
 import { Rows, groupByVehicle } from "./Rows";
 import { DateChips, SummaryBar, cap, ALL, inRange, useSaved, type Range } from "./DateRange";
+import { Quotes } from "./Quotes";
 import { Empty, Loading, dateOnly, kmText, lkr, regKey, useCommand, useDebounced, useLoad, useWs, type Job, type Vehicle } from "./common";
 
-export function Jobs() {
+/** Work hub: one place for the three kinds of work. Jobs are the repairs in the workshop; estimates and quotations come before a job. */
+export function Jobs({ tab: start }: { tab?: "JOBS" | "ESTIMATE" | "QUOTATION" }) {
+  const [tab, setTab] = useState<"JOBS" | "ESTIMATE" | "QUOTATION">(start || "JOBS");
+  const quotes = useLoad<{ kind?: string; status: string; expired?: boolean }[]>("/api/workshop/quotes").data;
+  const jobs = useLoad<Job[]>("/api/workshop/jobs").data;
+  const open = (k: string) => (quotes || []).filter((x) => (x.kind || "ESTIMATE") === k && ["DRAFT", "SENT", "APPROVED"].includes(x.status) && !x.expired).length;
+  const tabs: ["JOBS" | "ESTIMATE" | "QUOTATION", string, number | undefined][] = [["JOBS", t("Jobs"), jobs?.filter((j) => j.status === "OPEN").length], ["ESTIMATE", t("Estimates"), quotes ? open("ESTIMATE") : undefined], ["QUOTATION", t("Quotations"), quotes ? open("QUOTATION") : undefined]];
+  return (
+    <>
+      <div className="ws-hubtabs" role="tablist" aria-label={t("Work")}>
+        {tabs.map(([k, label, n]) => <button key={k} role="tab" aria-selected={tab === k} data-tour={k === "JOBS" ? undefined : "ws-tab-" + (k === "ESTIMATE" ? "quotes" : "quotations")} className={tab === k ? "chosen" : ""} onClick={() => setTab(k)}>{label}{n !== undefined && <b>{n}</b>}</button>)}
+      </div>
+      {tab === "JOBS" ? <JobList /> : <Quotes key={tab} lock={tab} />}
+    </>
+  );
+}
+
+function JobList() {
   const { go } = useWs();
   const { data, error } = useLoad<Job[]>("/api/workshop/jobs");
   const [filter, setFilter] = useSaved("jobs.status", "OPEN"), [q, setQ] = useState(""), [range, setRange] = useSaved<Range>("jobs.range", ALL);

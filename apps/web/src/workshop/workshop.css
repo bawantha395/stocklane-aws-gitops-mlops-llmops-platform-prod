@@ -612,6 +612,12 @@ button.ws-kpi:hover { transform: translateY(-4px); box-shadow: 0 22px 40px -20px
 .ws-pill.invoiced, .ws-pill.unpaid { background: var(--st-invoiced-bg); color: var(--st-invoiced); }
 .ws-pill.paid { background: var(--st-paid-bg); color: var(--st-paid); }
 .ws-pill.void, .ws-pill.cancelled, .ws-pill.archived { background: var(--st-void-bg); color: var(--st-void); text-decoration: none; }
+.ws-pill.expired { background: var(--st-open-bg); color: var(--st-open); }
+.ws-hubtabs { display: flex; gap: 6px; margin: 0 0 12px; flex-wrap: wrap; }
+.ws-hubtabs button { flex: 1 1 0; min-width: 96px; min-height: 44px; border-radius: 12px; border: 1px solid var(--line, #d8dde3); background: transparent; font: inherit; font-weight: 600; cursor: pointer; color: inherit; }
+.ws-hubtabs button.chosen { background: var(--brand, #0f766e); color: #fff; border-color: transparent; }
+.ws-hubtabs b { margin-left: 4px; opacity: .85; }
+.ws-fromquote { margin: 4px 0 0; font-size: .85rem; }
 .ws-pill.void, .ws-pill.cancelled { text-decoration: line-through; text-decoration-thickness: 1px; }
 .ws-pill svg { flex: none; }
 /* charts */
@@ -787,3 +793,10 @@ button.ws-kpi { text-align: left; cursor: pointer; font: inherit; color: inherit
 
 .ws-line .ws-l-pno { grid-column: 1 / -1; font-size: 13px; padding: 6px 10px; min-height: 0; }
 .ws-line .stock-pno { font-size: 12px; color: var(--muted, #6b7770); }
+
+.ws-qbar { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+.ws-qbar .ws-newq-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ws-qbar .ws-newq { white-space: nowrap; flex: 0 0 auto; }
+.ws-qbar .ws-qrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ws-qbar .ws-qlabel { min-width: 52px; color: var(--muted, #6b7770); font-weight: 600; }
+.linklike { background: none; border: 0; padding: 0; font: inherit; color: var(--brand-ink, #0f766e); text-decoration: underline; cursor: pointer; }

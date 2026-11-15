@@ -8,26 +8,28 @@ import { Empty, Loading, Pill, addDays, dateOnly, kmText, lkr, num, regKey, toda
 const SECTIONS: QuoteWork["section"][] = ["Rem/Refit", "Repaint", "Other"];
 const SECTION_LABEL: Record<string, string> = { "Rem/Refit": "Rem / Refit", Repaint: "Repaint", Other: "Other work" };
 
-export function Quotes() {
+export function Quotes({ lock }: { lock?: "ESTIMATE" | "QUOTATION" } = {}) {
   const { go } = useWs();
   const { data, error } = useLoad<Quote[]>("/api/workshop/quotes");
-  const [filter, setFilter] = useState("ALL"), [kind, setKind] = useState("ALL"), [q, setQ] = useState("");
+  const [filter, setFilter] = useState("ALL"), [kindPick, setKind] = useState("ALL"), [q, setQ] = useState(""), kind = lock || kindPick;
   if (!data) return <Loading error={error} />;
   const needle = q.trim().toLowerCase();
-  const shown = data.filter((x) => (filter === "ALL" || x.status === filter) && (kind === "ALL" || (x.kind || "ESTIMATE") === kind) && (!needle || [x.registration, x.insurer, x.claim_no, x.customer, x.number].join(" ").toLowerCase().includes(needle)));
-  const count = (s: string) => data.filter((x) => x.status === s).length;
+  const pool = lock ? data.filter((x) => (x.kind || "ESTIMATE") === lock) : data;
+  const hit = (x: Quote) => filter === "ALL" || (filter === "EXPIRED" ? !!x.expired : x.status === filter);
+  const shown = data.filter((x) => hit(x) && (kind === "ALL" || (x.kind || "ESTIMATE") === kind) && (!needle || [x.registration, x.insurer, x.claim_no, x.customer, x.number].join(" ").toLowerCase().includes(needle)));
+  const count = (s: string) => pool.filter((x) => (s === "EXPIRED" ? !!x.expired : x.status === s)).length;
   return (
     <>
-      <div className="ws-toolbar">
-        <span className="ws-newq-row"><button className="button primary small ws-newq" data-tour="new-estimate" onClick={() => go({ name: "quote", id: "new", kind: "ESTIMATE" })}>+ {t("New estimate")}</button>
-        <button className="button secondary small ws-newq" data-tour="new-quotation" onClick={() => go({ name: "quote", id: "new", kind: "QUOTATION" })}>+ {t("New quotation")}</button></span>
-        <div className="ws-chips" role="group" aria-label={t("Type")}>
+      <div className="ws-toolbar ws-qbar">
+        <span className="ws-newq-row">{lock !== "QUOTATION" && <button className="button primary small ws-newq" data-tour="new-estimate" onClick={() => go({ name: "quote", id: "new", kind: "ESTIMATE" })}>+ {t("New estimate")}</button>}
+        {lock !== "ESTIMATE" && <button className={"button small ws-newq " + (lock === "QUOTATION" ? "primary" : "secondary")} data-tour="new-quotation" onClick={() => go({ name: "quote", id: "new", kind: "QUOTATION" })}>+ {t("New quotation")}</button>}</span>
+        {!lock && <div className="ws-chips ws-qrow" role="group" aria-label={t("Type")}><small className="ws-qlabel">{t("Type")}</small>
           {([["ALL", t("All")], ["ESTIMATE", t("Estimates")], ["QUOTATION", t("Quotations")]] as [string, string][]).map(([k, label]) => (
             <button key={k} className={"ws-chip" + (kind === k ? " chosen" : "")} onClick={() => setKind(k)}>{label}</button>
           ))}
-        </div>
-        <div className="ws-chips">
-          {([["ALL", t("All"), data.length], ["DRAFT", t("Draft"), count("DRAFT")], ["SENT", t("Sent"), count("SENT")], ["APPROVED", t("Approved"), count("APPROVED")]] as [string, string, number][]).map(([k, label, n]) => (
+        </div>}
+        <div className="ws-chips ws-qrow" role="group" aria-label={t("Status")}><small className="ws-qlabel">{t("Status")}</small>
+          {([["ALL", t("All"), pool.length], ["DRAFT", t("Draft"), count("DRAFT")], ["SENT", t("Sent"), count("SENT")], ["APPROVED", t("Approved"), count("APPROVED")], ["REJECTED", t("Rejected"), count("REJECTED")], ["EXPIRED", t("Expired"), count("EXPIRED")], ["CONVERTED", t("Made into a job"), count("CONVERTED")]] as [string, string, number][]).filter(([k, , n]) => k === "ALL" || n > 0 || filter === k).map(([k, label, n]) => (
             <button key={k} className={"ws-chip" + (filter === k ? " chosen" : "")} onClick={() => setFilter(k)}><b>{n}</b> {label}</button>
           ))}
         </div>
@@ -36,8 +38,8 @@ export function Quotes() {
       <div className="ws-qlist">
         {shown.map((x) => (
           <button key={x.id} className="ws-qitem" onClick={() => go({ name: "quote", id: x.id })}>
-            <span className="ws-qmain"><b className="ws-qplate">{x.registration}</b><small>{[x.insurer, x.claim_no].filter(Boolean).join(" · ") || x.customer || x.vehicle || ""}</small><small className="muted">{(x.kind === "QUOTATION" ? t("Quotation") : t("Estimate")) + " · "}{x.number} · {dateOnly(x.updated_at || x.created_at)}{(x.rev_count || 1) > 1 ? " · v" + x.rev_count : ""}</small></span>
-            <span className="ws-qside"><Pill s={x.status} /><b>LKR {lkr(x.total)}</b>{x.parts_unpriced > 0 && <small className="muted">{x.parts_unpriced} {t("parts TBC")}</small>}</span>
+            <span className="ws-qmain"><b className="ws-qplate">{x.registration}</b><small>{[x.insurer, x.claim_no].filter(Boolean).join(" · ") || x.customer || x.vehicle || ""}</small><small className="muted">{(x.kind === "QUOTATION" ? t("Quotation") : t("Estimate")) + " · "}{x.number} · {dateOnly(x.updated_at || x.created_at)}{(x.rev_count || 1) > 1 ? " · v" + x.rev_count : ""}{x.valid_until && ["DRAFT", "SENT"].includes(x.status) ? " · " + t("Valid until") + " " + x.valid_until : ""}</small></span>
+            <span className="ws-qside"><Pill s={x.expired ? "EXPIRED" : x.status} /><b>LKR {lkr(x.total)}</b>{x.parts_unpriced > 0 && <small className="muted">{x.parts_unpriced} {t("parts TBC")}</small>}</span>
           </button>
         ))}
       </div>
@@ -46,18 +48,18 @@ export function Quotes() {
   );
 }
 
-export function QuotePage({ id, kind }: { id: string; kind?: "ESTIMATE" | "QUOTATION" }) {
+export function QuotePage({ id, kind, reg }: { id: string; kind?: "ESTIMATE" | "QUOTATION"; reg?: string }) {
   const isNew = id === "new";
   const { data, error } = useLoad<Quote>(isNew ? null : "/api/workshop/quotes/" + id);
   if (!isNew && !data) return <Loading error={error} />;
-  return <QuoteForm key={data?.id || "new"} start={data} newKind={kind} />;
+  return <QuoteForm key={data?.id || "new"} start={data} newKind={kind} reg={reg} />;
 }
 
 type PartRow = { name: string; quantity: string; unit_price: string; part_no?: string };
 type WorkRow = { description: string; amount: string; section: QuoteWork["section"] };
 const FIELDS = ["registration", "insurer", "insurer_branch", "claim_no", "policy_no", "customer", "phone", "vehicle", "odometer", "issue", "valid_until"] as const;
 
-function QuoteForm({ start, newKind }: { start?: Quote | null; newKind?: "ESTIMATE" | "QUOTATION" }) {
+function QuoteForm({ start, newKind, reg }: { start?: Quote | null; newKind?: "ESTIMATE" | "QUOTATION"; reg?: string }) {
   const { go, business, owner } = useWs();
   const command = useCommand();
   const known = useLoad<Quote[]>("/api/workshop/quotes").data;
@@ -65,8 +67,10 @@ function QuoteForm({ start, newKind }: { start?: Quote | null; newKind?: "ESTIMA
   const take = (q: Quote | null, k?: string) => ({ f: { ...Object.fromEntries(FIELDS.map((x) => [x, String((q?.[x] as unknown) ?? "")])), ...(!q && k === "QUOTATION" ? { valid_until: addDays(today(), 14) } : {}) } as Record<string, string>,
     parts: (q?.parts || []).map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: p.unit_price ? String(p.unit_price) : "", part_no: p.part_no || "" })) as PartRow[],
     work: (q?.labour || []).map((l) => ({ description: l.description, amount: String(l.amount), section: l.section || "Other" })) as WorkRow[], photos: q?.photos || [] });
-  const first = useMemo(() => take(start || null, newKind), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const first = useMemo(() => { const n = take(start || null, newKind); if (!start && reg) n.f.registration = reg; return n; }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [f, setF] = useState(first.f), [parts, setParts] = useState(first.parts), [work, setWork] = useState(first.work), [photos, setPhotos] = useState(first.photos);
+  const veh = useLoad<Vehicle>(!start && reg ? "/api/workshop/vehicles/" + regKey(reg) : null);
+  useEffect(() => { const v = veh.data; if (v) setF((x) => ({ ...x, customer: x.customer || v.owner || "", phone: x.phone || v.phone || "", vehicle: x.vehicle || v.make || "" })); }, [veh.data?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [editing, setEditing] = useState(!start), [more, setMore] = useState(false), [error, setError] = useState("");
   const [need, setNeed] = useState("");
   const partsRef = useRef<HTMLElement>(null);
@@ -122,12 +126,12 @@ function QuoteForm({ start, newKind }: { start?: Quote | null; newKind?: "ESTIMA
   });
   const remove = async () => {
     if (!quote || !(await askConfirm(t("It is deleted for good."), { title: t("Delete this?"), confirm: t("Delete"), danger: true }))) return;
-    void run(async () => { await command("/api/workshop/quotes/" + quote.id, {}, "DELETE"); go({ name: "quotes" }, t("Deleted.")); });
+    void run(async () => { await command("/api/workshop/quotes/" + quote.id, {}, "DELETE"); go({ name: "jobs", tab: quote.kind === "QUOTATION" ? "QUOTATION" : "ESTIMATE" }, t("Deleted.")); });
   };
   const withSaved = async (use: (q: Quote) => void | Promise<void>) => { if (!ready()) return; await run(async () => { const q = dirty || !quote ? await save() : quote; await use(q); }); };
   const download = () => void withSaved((q) => downloadQuotePdf(q, business));
   const share = () => void withSaved(async (q) => {
-    const text = (business.name || "") + " - " + t("Estimate") + " " + q.number + (q.insurer ? " - " + q.insurer : "") + " - " + q.registration;
+    const text = (business.name || "") + " - " + (q.kind === "QUOTATION" ? t("Quotation") : t("Estimate")) + " " + q.number + (q.insurer ? " - " + q.insurer : "") + " - " + q.registration + (q.kind === "QUOTATION" && q.valid_until ? " - " + t("Valid until") + " " + q.valid_until : "");
     // Phones with a share sheet send the PDF itself (pick WhatsApp there); otherwise WhatsApp opens with the message and the PDF is saved to attach.
     if (!(await shareQuotePdf(q, business, text))) { downloadQuotePdf(q, business); toast(t("PDF saved. Send it from your files.")); window.open(waLink(q.phone || "", text), "_blank", "noopener"); }
   });
@@ -214,7 +218,7 @@ function QuoteForm({ start, newKind }: { start?: Quote | null; newKind?: "ESTIMA
         </dl>
       </section>
       <section className="ws-card ws-send">
-        <h3>{t("Send to the insurer")}</h3>
+        <h3>{isQuo || !f.insurer.trim() ? t("Send to the customer") : t("Send to the insurer")}</h3>
         <div className="ws-actions">
           <button className="button secondary" disabled={busy} onClick={download}>{t("Download PDF")}</button>
           <button className="button secondary" disabled={busy} onClick={share}>{t("Share on WhatsApp")}</button>

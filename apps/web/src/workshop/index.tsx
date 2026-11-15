@@ -8,7 +8,7 @@ import { Dashboard } from "./Dashboard";
 import { InvoicePage, Invoices } from "./Invoices";
 import { JobPage } from "./JobPage";
 import { Jobs, NewJob } from "./Jobs";
-import { QuotePage, Quotes } from "./Quotes";
+import { QuotePage } from "./Quotes";
 import { Reports } from "./Reports";
 import { Settings } from "./Settings";
 import { Due, VehiclePage, Vehicles } from "./Vehicles";
@@ -55,12 +55,12 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
   const LABEL: Record<string, string> = Object.fromEntries(tabs);
   const GROUPS: { key: string; label: string; pages: PageName[] }[] = [
     { key: "home", label: t("Home"), pages: ["home"] },
-    { key: "jobs", label: t("Jobs"), pages: ["jobs", "quotes"] },
+    { key: "jobs", label: t("Jobs"), pages: ["jobs"] },
     { key: "vehicles", label: t("Vehicles"), pages: ["vehicles", "due"] },
     { key: "money", label: t("Bills"), pages: owner ? ["invoices", "report"] : ["invoices"] },
     ...(owner ? [{ key: "setup", label: t("Setup"), pages: ["archive", "settings"] as PageName[] }] : []),
   ];
-  const tab: PageName = page.name === "job" || page.name === "new" ? "jobs" : page.name === "quote" ? "quotes" : page.name === "vehicle" ? "vehicles" : page.name === "invoice" ? "invoices" : page.name;
+  const tab: PageName = page.name === "job" || page.name === "new" ? "jobs" : page.name === "quote" || page.name === "quotes" ? "jobs" : page.name === "vehicle" ? "vehicles" : page.name === "invoice" ? "invoices" : page.name;
   const TITLES: Partial<Record<PageName, string>> = { home: t("Today"), jobs: t("Jobs"), new: t("New job"), job: t("Job"), quotes: t("Estimates and quotations"), quote: t("Estimate or quotation"), vehicles: t("Vehicles"), vehicle: t("Vehicle"), due: t("Service due"), invoices: t("Invoices"), invoice: t("Invoice"), archive: t("Archive"), report: t("Sales report"), settings: t("Settings") };
   const title = TITLES[page.name] || business.name;
   const headRef = useRef<HTMLHeadingElement>(null), pageRef = useRef<HTMLDivElement>(null), [shrunk, setShrunk] = useState(false);
@@ -73,7 +73,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
   }, [page.name]);
   useScrollFeel(pageRef, page.name + (page.id || ""));
   const group = GROUPS.find((g) => g.pages.includes(tab)) || GROUPS[0]!;
-  const crumbs: { label: string; to: Page }[] = page.name === "job" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "new" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "quote" ? [{ label: t("Quotes"), to: { name: "quotes" } }] : page.name === "vehicle" ? [{ label: t("Vehicles"), to: { name: "vehicles" } }] : page.name === "invoice" ? [{ label: t("Invoices"), to: { name: "invoices" } }] : [];
+  const crumbs: { label: string; to: Page }[] = page.name === "job" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "new" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "quote" ? [{ label: t("Jobs"), to: { name: "jobs", tab: page.kind === "QUOTATION" ? "QUOTATION" : "ESTIMATE" } as Page }] : page.name === "vehicle" ? [{ label: t("Vehicles"), to: { name: "vehicles" } }] : page.name === "invoice" ? [{ label: t("Invoices"), to: { name: "invoices" } }] : [];
   return (
     <WsContext.Provider value={{ owner, business, go, reloadBusiness }}>
       <section className="ws" aria-label="Workshop">
@@ -94,9 +94,8 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
         {HELP[page.name] && <p className="ws-help">{t(HELP[page.name]!)}</p>}
         <div className="ws-page" ref={pageRef} key={page.name + (page.id || "")}>
         {page.name === "home" && <Dashboard />}
-        {page.name === "jobs" && <Jobs />}
-        {page.name === "quotes" && <Quotes />}
-        {page.name === "quote" && page.id && <QuotePage key={page.id + (page.kind || "")} id={page.id} kind={page.kind} />}
+        {(page.name === "jobs" || page.name === "quotes") && <Jobs key={page.tab || page.name} tab={page.tab || (page.name === "quotes" ? "ESTIMATE" : undefined)} />}
+        {page.name === "quote" && page.id && <QuotePage key={page.id + (page.kind || "") + (page.reg || "")} id={page.id} kind={page.kind} reg={page.reg} />}
         {page.name === "new" && <NewJob key={page.reg || "new"} reg={page.reg} />}
         {page.name === "job" && page.id && <JobPage key={page.id} id={page.id} />}
         {page.name === "vehicles" && <Vehicles />}

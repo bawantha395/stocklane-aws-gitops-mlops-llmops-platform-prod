@@ -122,6 +122,8 @@ export function VehiclePage({ id }: { id: string }) {
       <OwingNotice reg={v.registration} phone={v.phone} />
       <div className="ws-bar">
         <button className="button primary small" onClick={() => go({ name: "new", reg: v.registration })}>+ New job</button>
+        <button className="button secondary small" onClick={() => go({ name: "quote", id: "new", kind: "ESTIMATE", reg: v.registration })}>+ {t("New estimate")}</button>
+        <button className="button secondary small" onClick={() => go({ name: "quote", id: "new", kind: "QUOTATION", reg: v.registration })}>+ {t("New quotation")}</button>
         <button className="button secondary small" onClick={() => void download("/api/workshop/vehicles/" + id + "/history.pdf", "history-" + id + ".pdf").catch((e) => setMsg(e.message))}>History PDF</button>
         <button className="button secondary small" onClick={startEdit}>{t("Edit details")}</button>
         <button data-tour="vehicle-new-owner" className="button secondary small" onClick={() => { setNw({ owner: "", phone: "" }); setSold(true); setEdit(false); setMsg(""); }}>{t("New owner")}</button>

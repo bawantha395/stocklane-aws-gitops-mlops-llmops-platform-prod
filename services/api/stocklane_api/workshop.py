@@ -535,10 +535,27 @@ def jobs():
     return out
 
 
+def returned_marks(parts, inv):
+    """Parts that came back after the invoice are only written on the bill, so show them on the job too (same order as the bill):
+    each line gets how many came back and the day, and the job card prints it in Remarks."""
+    if not inv or len(inv.get('parts') or []) != len(parts):
+        return parts
+    out = []
+    for p, bp in zip(parts, inv['parts']):
+        back = bp.get('returned') or ZERO
+        if back > 0:
+            days = [local_date(c['at']).isoformat() for c in inv.get('credits') or () for l in c.get('lines') or () if l.get('name') == bp['name']]
+            p = dict(p, returned=back, returned_at=days[-1] if days else '')
+        out.append(p)
+    return out
+
+
 def get_job(job_id, who='', owner=False):
     current = job(job_id)
     out = view(current, business()['tax_rate'])
     out['parts'] = with_part_nos(out['parts'])
+    if current.get('invoice_id') and current['status'] == 'INVOICED':
+        out['parts'] = returned_marks(out['parts'], get('WINV', current['invoice_id']))
     left = UNDO_SECONDS - (datetime.now(COLOMBO) - datetime.fromisoformat(current['created_at'])).total_seconds()
     out['undo_seconds_left'] = int(left) if current['status'] == 'OPEN' and left > 0 and (owner or current.get('created_by') == who) else 0
     req = get('WREQ', job_id)
@@ -1034,6 +1051,14 @@ def void_invoice(invoice_id, key, who, body):
         new = dict(current, status='VOID', revision=int(current['revision']) + 1, voided_by=who, voided_at=now())
         reopened = clean({k: v for k, v in j.items() if k not in ('invoice_id', 'invoice_number', 'tax_rate')})
         reopened.update(status='OPEN', revision=int(j['revision']) + 1, updated_at=now())
+        # parts that already came back into stock after the bill are not on the reopened job any more, or cancelling it would return them twice
+        if len(j.get('parts', [])) == len(current['parts']):
+            kept = []
+            for line, billed in zip(j['parts'], current['parts']):
+                left = line['quantity'] - (billed.get('returned') or ZERO)
+                if left > 0:
+                    kept.append(dict(line, quantity=left))
+            reopened['parts'] = kept
         ops = [put(new, ConditionExpression='revision = :r', ExpressionAttributeValues={':r': current['revision']}),
                put(reopened, ConditionExpression='revision = :r and #s = :done', ExpressionAttributeNames={'#s': 'status'},
                    ExpressionAttributeValues={':r': j['revision'], ':done': 'INVOICED'}), history_put(reopened, business()['tax_rate']),
@@ -1140,6 +1165,11 @@ def age_days(iso):
     return (today() - local_date(iso)).days
 
 
+def quote_counts():
+    from . import quotes  # quotes imports this module
+    return quotes.counts()
+
+
 def dashboard():
     rate = business()['tax_rate']
     now_day, month = today().isoformat(), today().replace(day=1).isoformat()
@@ -1165,7 +1195,7 @@ def dashboard():
     return {**out, 'open_jobs': open_jobs[:12], 'open_count': len(open_jobs), 'ready_jobs': ready[:12], 'ready_count': len(ready), 'unpaid_count': len(unpaid),
             'unpaid_total': sum((i['total'] - i['paid'] for i in unpaid), ZERO),
             'overdue_count': sum(1 for i in unpaid if overdue_days(i) > 0), 'terms_days': terms_days(),
-            'oldest_unpaid_days': max((age_days(i['created_at']) for i in unpaid), default=0), 'due_count': len(service_due()),
+            'oldest_unpaid_days': max((age_days(i['created_at']) for i in unpaid), default=0), 'due_count': len(service_due()), **quote_counts(),
             'delete_requests': sorted((public(r) for r in query('WREQ') if r['status'] == 'PENDING'), key=lambda r: r['requested_at'])}
 
 
