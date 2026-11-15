@@ -68,7 +68,7 @@ variable "gemini_api_key" {
 
 variable "gemini_model" {
   type    = string
-  default = "gemini-3.8-flash,gemini-3.8-flash-lite"
+  default = "gemini-3.5-flash-lite,gemini-3.8-flash"
 }
 
 variable "bedrock_daily_limit" {
