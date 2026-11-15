@@ -761,3 +761,5 @@ button.ws-kpi:hover { transform: translateY(-4px); box-shadow: 0 22px 40px -20px
   html.ws-receipt-mode .ws-bill-band { display: none !important; }
   html.ws-receipt-mode .ws-bill-stamp { position: absolute !important; display: block !important; left: 50%; top: 50%; margin: 0; transform: translate(-50%, -50%) rotate(-18deg) !important; width: auto; font-size: 54px; line-height: 1.05; padding: 0 14px; border-width: 4px; border-radius: 14px; opacity: .3; -webkit-text-stroke-width: 2px; z-index: 0; break-inside: avoid; }
 }
+.ws-kpi.on { border-color: var(--brand, #1f6feb); box-shadow: 0 0 0 2px rgba(31,111,235,.18); }
+button.ws-kpi { text-align: left; cursor: pointer; font: inherit; color: inherit; }

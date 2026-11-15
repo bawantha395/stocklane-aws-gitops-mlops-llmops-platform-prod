@@ -966,7 +966,8 @@ def dashboard():
     for j in open_jobs:
         j['age_days'] = age_days(j['created_at'])
         j.pop('parts'), j.pop('labour')
-    return {**out, 'open_jobs': open_jobs[:12], 'open_count': len(open_jobs), 'unpaid_count': len(unpaid),
+    ready = [j for j in open_jobs if j.get('stage') == 'READY']
+    return {**out, 'open_jobs': open_jobs[:12], 'open_count': len(open_jobs), 'ready_jobs': ready[:12], 'ready_count': len(ready), 'unpaid_count': len(unpaid),
             'unpaid_total': sum((i['total'] - i['paid'] for i in unpaid), ZERO),
             'oldest_unpaid_days': max((age_days(i['created_at']) for i in unpaid), default=0), 'due_count': len(service_due()),
             'delete_requests': sorted((public(r) for r in query('WREQ') if r['status'] == 'PENDING'), key=lambda r: r['requested_at'])}

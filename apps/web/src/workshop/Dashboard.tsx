@@ -1,5 +1,5 @@
 import { t } from "../i18n";
-import { AlertTriangle, Banknote, CalendarClock, ClipboardCheck, Receipt, TrendingUp, Wrench } from "lucide-react";
+import { AlertTriangle, Banknote, CalendarClock, ClipboardCheck, PackageCheck, Receipt, TrendingUp, Wrench } from "lucide-react";
 import { JobCard } from "./Cards";
 import { Rows } from "./Rows";
 import { useEffect, useState } from "react";
@@ -8,7 +8,7 @@ import { Num, Empty, Loading, ReasonDialog, dateOnly, useCommand, useDebounced, 
 
 type Dash = {
   today: { date: string; invoices: number; billed: number; received: number }; month: { from: string; invoices: number; billed: number; received: number };
-  open_jobs: Job[]; open_count: number; unpaid_count: number; unpaid_total: number; oldest_unpaid_days: number; due_count: number; delete_requests?: DeleteRequest[];
+  open_jobs: Job[]; open_count: number; ready_jobs?: Job[]; ready_count?: number; unpaid_count: number; unpaid_total: number; oldest_unpaid_days: number; due_count: number; delete_requests?: DeleteRequest[];
 };
 
 export const JobItem = JobCard; // JobItem takes the same props, incl. `inRow`
@@ -16,7 +16,7 @@ export const JobItem = JobCard; // JobItem takes the same props, incl. `inRow`
 export function Dashboard() {
   const { go, owner } = useWs();
   const { data, error, reload } = useLoad<Dash>("/api/workshop/dashboard");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(""), [onlyReady, setOnlyReady] = useState(false);
   const [ask, setAsk] = useState<{ r: DeleteRequest; reject: boolean } | null>(null), [problem, setProblem] = useState("");
   const command = useCommand();
   const [low, setLow] = useState<string[] | null>(null);
@@ -43,6 +43,7 @@ export function Dashboard() {
         <>
           <div className="ws-kpis">
             <button className="ws-kpi" onClick={() => go({ name: "jobs" })}><small><Wrench size={15} /> {t("Open jobs")}</small><b>{data.open_count}</b><span>{t("in the workshop now")}</span></button>
+            <button className={"ws-kpi" + (onlyReady ? " on" : "")} aria-pressed={onlyReady} data-tour="home-ready" onClick={() => setOnlyReady((v) => !v)}><small><PackageCheck size={15} /> {t("Ready for pickup")}</small><b>{data.ready_count || 0}</b><span>{onlyReady ? t("tap to show all open jobs") : t("customers to call")}</span></button>
             <div className="ws-kpi"><small><Receipt size={15} /> {t("Billed today")}</small><b><Num v={data.today.billed} /></b><span>{data.today.invoices} invoice{data.today.invoices === 1 ? "" : "s"}</span></div>
             <div className="ws-kpi"><small><Banknote size={15} /> {t("Received today")}</small><b><Num v={data.today.received} /></b><span>{t("cash, card and bank")}</span></div>
             <button className="ws-kpi warn" onClick={() => go({ name: "invoices" })}><small><ClipboardCheck size={15} /> {t("Customers owe")}</small><b><Num v={data.unpaid_total} /></b><span>{data.unpaid_count} invoice{data.unpaid_count === 1 ? "" : "s"}{data.oldest_unpaid_days > 7 ? ", oldest " + data.oldest_unpaid_days + " days" : ""}</span></button>
@@ -65,9 +66,11 @@ export function Dashboard() {
               ))}
             </section>
           )}
-          {data.open_jobs.length ? (
+          {onlyReady && !(data.ready_jobs || []).length ? (
+            <><div className="ws-section-head"><h3>{t("Ready for pickup")}</h3></div><div className="ws-cards"><Empty>{t("No vehicle is ready for pickup right now.")}</Empty></div></>
+          ) : (onlyReady ? (data.ready_jobs || []) : data.open_jobs).length ? (
             // newest first, side by side like the Jobs tab; the plate stays on each card because these are different vehicles
-            <Rows groups={[{ key: "open", title: t("Open jobs"), items: [...data.open_jobs].sort((a, b) => (b.created_at < a.created_at ? -1 : 1)) }]} idOf={(j) => j.id} latest={undefined}
+            <Rows groups={[{ key: onlyReady ? "ready" : "open", title: onlyReady ? t("Ready for pickup") : t("Open jobs"), items: [...(onlyReady ? (data.ready_jobs || []) : data.open_jobs)].sort((a, b) => (b.created_at < a.created_at ? -1 : 1)) }]} idOf={(j) => j.id} latest={undefined}
               render={(j) => <JobItem j={j} onOpen={() => go({ name: "job", id: j.id })} />} />
           ) : (
             <><div className="ws-section-head"><h3>{t("Open jobs")}</h3></div><div className="ws-cards"><Empty>No open jobs. Press New job when a vehicle comes in.</Empty></div></>

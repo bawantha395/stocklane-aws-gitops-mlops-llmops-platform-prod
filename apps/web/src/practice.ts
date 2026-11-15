@@ -277,7 +277,7 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       const d = now().slice(0, 10);
       const sum = (f: (i: Row) => number) => db.invoices.reduce((s, i) => s + f(i), 0);
       return clone({ today: { date: d, invoices: db.invoices.length, billed: sum((i) => i.total), received: sum((i) => i.paid) }, month: { from: d.slice(0, 8) + "01", invoices: db.invoices.length, billed: sum((i) => i.total), received: sum((i) => i.paid) },
-        open_jobs: rows(open), open_count: open.length, unpaid_count: owing.length, unpaid_total: owing.reduce((s, i) => s + i.total - i.paid, 0), oldest_unpaid_days: 0, due_count: 0, delete_requests: db.requests.filter((r) => r.status === "PENDING") });
+        open_jobs: rows(open), open_count: open.length, ready_jobs: rows(open.filter((j) => j.stage === "READY")), ready_count: open.filter((j) => j.stage === "READY").length, unpaid_count: owing.length, unpaid_total: owing.reduce((s, i) => s + i.total - i.paid, 0), oldest_unpaid_days: 0, due_count: 0, delete_requests: db.requests.filter((r) => r.status === "PENDING") });
     }
     if (a === "vehicles") {
       if (b) {

@@ -200,6 +200,8 @@ def test_stage_warranty_and_brought_in_by(api):
     # a stage change does not touch the revision, so an open job page stays valid
     s = ok(api('POST', '/api/workshop/jobs/%s/stage' % j['id'], {'stage': 'READY'}, role='MECHANIC'))
     assert s['stage'] == 'READY' and s['revision'] == j['revision']
+    dash = ok(api('GET', '/api/workshop/dashboard', role='MECHANIC'))
+    assert dash['ready_count'] == 1 and [r['id'] for r in dash['ready_jobs']] == [j['id']]
     assert api('POST', '/api/workshop/jobs/%s/stage' % j['id'], {'stage': 'NOPE'}, role='MECHANIC')[0] == 400
     got = ok(api('GET', '/api/workshop/jobs/' + j['id'], role='MECHANIC'))
     assert got['stage'] == 'READY'
