@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from . import bills, inventory, photos
-from .core import COLOMBO, bad, batch_get, check, command, conflict, delete, get, missing, now, num, public, put, query, update
+from .core import COLOMBO, bad, batch_get, check, command, conflict, delete, emails, get, missing, now, num, public, put, query, update
 
 LATIN = re.compile(r'[\x20-\x7e]*')
 MONEY, ZERO, HUNDRED = Decimal('0.01'), Decimal('0'), Decimal('100')
@@ -786,7 +786,8 @@ def archive():
         v = view(j, rate)
         v['lines'] = len(v.pop('parts')) + len(v.pop('labour'))
         deleted.append(v)
-    log = [public(a) for a in sorted(query('WAUDIT'), key=lambda a: a['sk'], reverse=True)[:150]]
+    who = emails()
+    log = [dict(public(a), actor_email=who.get(a.get('actor'))) for a in sorted(query('WAUDIT'), key=lambda a: a['sk'], reverse=True)[:150]]
     return {'jobs': deleted, 'log': log}
 
 

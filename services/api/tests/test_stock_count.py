@@ -55,3 +55,12 @@ def test_books_stay_balanced_and_demand_is_untouched(api):
     from stocklane_api.core import query
     days = [d for d in query('DAY') if d['product_id'] == p['id']]
     assert sum(d['added'] - d['taken'] + d.get('adjusted', 0) for d in days) == 6
+
+
+def test_history_shows_email_after_session(api):
+    p = product(api, 10)
+    ok(api('POST', '/api/inventory/movements', {'kind': 'COUNT', 'productId': p['id'], 'quantity': 7}, who='uuid-123'))
+    assert ok(api('GET', '/api/inventory/movements', role='MECHANIC'))[0]['actor_email'] is None
+    ok(api('GET', '/api/inventory/session', role='MECHANIC', who='uuid-123', query={'email': 'Kasun@Example.com'}))
+    ok(api('GET', '/api/inventory/session', role='MECHANIC', who='uuid-123', query={'email': 'not-an-email'}))  # ignored, keeps the good one
+    assert ok(api('GET', '/api/inventory/movements', role='MECHANIC'))[0]['actor_email'] == 'kasun@example.com'

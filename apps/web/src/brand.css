@@ -218,3 +218,34 @@ html[data-theme="dark"] .counter-lowchip { color: #f0b266; }
 .ws-check { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 14px; }
 .ws-check input { width: 20px; height: 20px; }
 .ws-bill-bring { font-size: .85em; }
+
+/* Full-screen photo (both viewers): sits on the page itself (portal), fits the visible screen on small iPhones and can be scrolled / pinched */
+.photo-viewer, .ws-lightbox { position: fixed !important; inset: 0 !important; width: 100% !important; height: 100vh; height: 100dvh !important; overflow: auto !important; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-x pan-y pinch-zoom !important; display: grid !important; place-items: center; box-sizing: border-box; }
+.photo-viewer img { max-height: calc(100dvh - 32px) !important; max-width: 100% !important; margin: auto; }
+.ws-lb-box { max-height: none !important; margin: auto; }
+.ws-lb-box img { max-width: 92vw !important; max-height: calc(100dvh - 90px) !important; width: auto; height: auto; object-fit: contain; }
+
+/* Card photo: show the WHOLE picture on every screen (no cropping) - a 4:3 frame, the photo fits inside it */
+.ws-hero { height: auto !important; aspect-ratio: 4 / 3; max-height: 62vw; background: #15191d; }
+@media (min-width: 760px) { .ws-hero { max-height: 260px; aspect-ratio: 16 / 10; } }
+.ws-hero-img { object-fit: contain !important; background: #15191d; }
+
+/* App confirm box (replaces the browser popup): same look as the other dialogs, always above everything */
+.ui-confirm-back { z-index: 300 !important; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.ui-confirm { width: min(400px, 100%); }
+.ui-confirm h3 { margin: 0 0 6px; font-size: 19px; line-height: 1.25; }
+.ui-confirm p { margin: 0 0 16px; color: var(--muted); }
+.ui-confirm .ws-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.ui-confirm .ws-actions .button { min-height: 44px; flex: 1 1 120px; }
+.ui-confirm .button.danger { background: #b3261e; color: #fff; border-color: transparent; }
+
+/* Owner: the business logo and name in the top bar open Settings */
+.stock-header .biz-link { cursor: pointer; border-radius: 14px; padding: 2px 8px 2px 2px; margin: -2px 0; -webkit-tap-highlight-color: transparent; transition: background .15s; }
+.stock-header .biz-link:hover, .stock-header .biz-link:focus-visible { background: rgba(var(--sh), .06); outline: none; }
+.stock-header .biz-link:active { background: rgba(var(--sh), .1); }
+
+/* Top bar business picture: a rounded, glassy tile (soft edge, light sheen, gentle shadow) instead of a hard box */
+.stock-header .biz-logo { position: relative; border-radius: 16px; overflow: visible; padding: 3px; background: rgba(var(--w), .55); border: 1px solid rgba(var(--w), .8); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); box-shadow: 0 6px 18px rgba(var(--sh0), .14), inset 0 1px 0 rgba(255,255,255,.7); }
+.stock-header .biz-logo img { height: 42px !important; width: 42px !important; max-width: none !important; object-fit: cover !important; border-radius: 13px !important; filter: none !important; display: block; }
+.stock-header .biz-logo::after { content: ""; position: absolute; inset: 3px; border-radius: 13px; pointer-events: none; background: linear-gradient(155deg, rgba(255,255,255,.28), rgba(255,255,255,0) 45%); }
+.stock-header .biz-logo .online-dot { z-index: 1; right: -2px; bottom: -2px; }

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { createPortal } from "react-dom";
 import QRCode from "qrcode";
 import {
   Camera,
@@ -33,6 +34,7 @@ import {
   auth,
   config,
   headers,
+  userEmail,
   shrink,
   signOut,
   type Product,
@@ -46,7 +48,7 @@ import "./stock.css";
 import "./glass.css";
 import "./theme.css";
 import "./tokens.css";
-import { ToastHost, applyTheme, getTheme } from "./ui";
+import { ToastHost, ConfirmHost, askConfirm, applyTheme, getTheme } from "./ui";
 import { getDefaultReorder, setBusinessName, setDefaultReorder, useBusinessName } from "./businessName";
 import { t, useLang, setLang } from "./i18n";
 import { Walkthrough } from "./Walkthrough";
@@ -209,12 +211,11 @@ function Photo({ id, zoom = false }: { id: string; zoom?: boolean }) {
         <button type="button" className="photo-zoom-btn" aria-label="View the photo full screen" onClick={() => setOpen(true)}>
           <img className="item-photo" src={url} alt="Uploaded photo" />
         </button>
-        {open && (
+        {open && createPortal(
           <div className="photo-viewer" role="dialog" aria-modal="true" aria-label="Photo" onClick={() => setOpen(false)}>
             <button type="button" className="photo-viewer-close" aria-label="Close photo" onClick={() => setOpen(false)}><X /></button>
             <img src={url} alt="Uploaded photo, full size" onClick={(e) => e.stopPropagation()} />
-          </div>
-        )}
+          </div>, document.body)}
       </>
     ) : (
       <img className="item-photo" src={url} alt="Approved item reference" />
@@ -355,8 +356,8 @@ function App() {
   });
   const movementDirection = (kind: string) =>
     ["OPENING", "RECEIPT", "RETURN", "COUNT_IN"].includes(kind) ? "IN" : "OUT";
-  const actorEmail = (actor?: string) =>
-    actor?.includes("@") ? actor : "Email unavailable";
+  const actorEmail = (m: Movement) =>
+    m.actor_email || (m.actor?.includes("@") ? m.actor : t("Staff member"));
   const tell = (message: string) => setNotice(message);
   const persist = (next: Record<Direction, StockTask>) => {
     // Persist before submitting: a reload retries with the same command identity.
@@ -380,10 +381,11 @@ function App() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
+      const email = await userEmail();
       const [p, m, s, v] = await Promise.all([
         api<Item[]>("/api/inventory/products"),
         api<Movement[]>("/api/inventory/movements"),
-        api<Session>("/api/inventory/session"),
+        api<Session>("/api/inventory/session" + (email ? "?email=" + encodeURIComponent(email) : "")),
         api("/api/vision/status").catch(() => ({
           modelReady: false,
           bedrockConfigured: false,
@@ -753,7 +755,7 @@ function App() {
       setBusy(false);
     }
   };
-  const discard = () => {
+  const discard = async () => {
     if (task.lines.some((l) => l.attempted && !complete(l))) {
       setError(
         "An attempted line is unfinished. Retry it before starting a new task.",
@@ -762,9 +764,7 @@ function App() {
     }
     if (
       task.lines.some((l) => !complete(l)) &&
-      !confirm(
-        "Discard the unconfirmed draft? Stock has not changed for those lines.",
-      )
+      !(await askConfirm("Stock has not changed for those lines.", { title: "Discard the unconfirmed draft?", confirm: "Discard", danger: true }))
     )
       return;
     persist({ ...taskRef.current, [direction]: emptyTask() });
@@ -788,11 +788,10 @@ function App() {
   };
   const archive = async (p: Item, value: boolean) => {
     if (
-      !confirm(
-        value
-          ? "Archive " + p.name + "? Stock must be zero; history remains."
-          : "Restore " + p.name + "?",
-      )
+      !(await askConfirm(
+        value ? "Stock must be zero. The history stays." : "It comes back to the parts list.",
+        { title: value ? "Archive " + p.name + "?" : "Restore " + p.name + "?", confirm: value ? "Archive" : "Restore", danger: value },
+      ))
     )
       return;
     try {
@@ -971,7 +970,8 @@ function App() {
           <a className="m-brand" href="#" onClick={(e) => { e.preventDefault(); navigate("home"); }}>
             <Logo size={30} /> <b>Lifta<span>.</span></b>
           </a>
-          <div className="biz" aria-label={businessName}>
+          <div className={"biz" + (owner ? " biz-link" : "")} aria-label={businessName}
+            {...(owner ? { role: "button", tabIndex: 0, title: t("Open business settings"), onClick: () => openWorkshop({ name: "settings" }), onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openWorkshop({ name: "settings" }); } } } : {})}>
             <span className="biz-logo">
               <BizLogo name={businessName} size={46} />
               <span className="online-dot" title={t("Connected")} />
@@ -1948,7 +1948,7 @@ function App() {
             </section>
             <DateChips value={activityRange} onChange={setActivityRange} />
             <SummaryBar text={"Movements: " + visibleMoves.length} file="stock-history"
-              rows={visibleMoves.map((m) => ({ Time: when(m.created_at), Item: m.name, SKU: m.sku, Direction: movementDirection(m.kind), Movement: m.kind, Quantity: m.quantity, "Recorded by": actorEmail(m.actor) }))} />
+              rows={visibleMoves.map((m) => ({ Time: when(m.created_at), Item: m.name, SKU: m.sku, Direction: movementDirection(m.kind), Movement: m.kind, Quantity: m.quantity, "Recorded by": actorEmail(m) }))} />
             <section className="stock-panel stock-table-wrap">
               <table className="stock-table">
                 <thead>
@@ -2001,12 +2001,8 @@ function App() {
                       </td>
                       <td>{number(m.quantity)}</td>
                       <td>
-                        <strong>{actorEmail(m.actor)}</strong>
-                        <small>
-                          {m.actor?.includes("@")
-                            ? "Authenticated operator"
-                            : "Email was not supplied by the identity provider"}
-                        </small>
+                        <strong>{actorEmail(m)}</strong>
+                        {!m.actor_email && !m.actor?.includes("@") && <small>{t("Shows the email after this person signs in once")}</small>}
                       </td>
                     </tr>
                   ))}
@@ -2533,4 +2529,4 @@ function ProductEditor({
 }
 
 applyTheme(getTheme());
-createRoot(document.getElementById("root")!).render(<><App /><ToastHost /></>);
+createRoot(document.getElementById("root")!).render(<><App /><ToastHost /><ConfirmHost /></>);

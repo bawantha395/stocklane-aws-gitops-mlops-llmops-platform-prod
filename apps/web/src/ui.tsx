@@ -1,4 +1,5 @@
-import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { t } from "./i18n";
 
 /** Button: variants + built-in "Saving…" state + haptic-like press. */
@@ -43,3 +44,30 @@ export const applyTheme = (m: ThemePref) => {
   try { if (m === "auto") localStorage.removeItem("lifta.theme"); else localStorage.setItem("lifta.theme", m); } catch { /* ignore */ }
 };
 if (typeof window !== "undefined" && window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { if (getTheme() === "auto") applyTheme("auto"); });
+
+/** The app's own "Are you sure?" box (replaces the browser's plain popup). `await askConfirm(...)` gives true or false. */
+type Ask = { message: string; title: string; confirm: string; danger: boolean; done: (ok: boolean) => void };
+let asking: Ask | null = null; const askSubs = new Set<() => void>();
+export function askConfirm(message: string, opts: { title?: string; confirm?: string; danger?: boolean } = {}): Promise<boolean> {
+  return new Promise((done) => {
+    asking?.done(false);
+    asking = { message, title: opts.title ?? "Are you sure?", confirm: opts.confirm ?? "Yes, continue", danger: !!opts.danger, done };
+    askSubs.forEach((f) => f());
+  });
+}
+export function ConfirmHost() {
+  const [, tick] = useState(0), yes = useRef<HTMLButtonElement>(null), no = useRef<HTMLButtonElement>(null);
+  useEffect(() => { const f = () => tick((n) => n + 1); askSubs.add(f); return () => { askSubs.delete(f); }; }, []);
+  const a = asking;
+  useEffect(() => { if (a) (a.danger ? no : yes).current?.focus(); }, [a]);
+  if (!a) return null;
+  const close = (ok: boolean) => { asking = null; askSubs.forEach((f) => f()); a.done(ok); };
+  return createPortal(
+    <div className="ws-dialog-back ui-confirm-back" role="alertdialog" aria-modal="true" aria-label={t(a.title)} onClick={() => close(false)} onKeyDown={(e) => e.key === "Escape" && close(false)}>
+      <div className="ws-dialog ui-confirm" onClick={(e) => e.stopPropagation()}>
+        <h3>{t(a.title)}</h3>
+        <p>{t(a.message)}</p>
+        <div className="ws-actions"><button ref={no} type="button" className="button secondary" onClick={() => close(false)}>{t("Back")}</button><button ref={yes} type="button" className={"button " + (a.danger ? "danger" : "primary")} onClick={() => close(true)}>{t(a.confirm)}</button></div>
+      </div>
+    </div>, document.body);
+}

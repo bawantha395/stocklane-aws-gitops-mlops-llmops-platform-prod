@@ -13,6 +13,8 @@ async function freshUser():Promise<User|null>{
  renewing??=auth.signinSilent().catch(()=>null).finally(()=>{renewing=null;});
  return renewing;
 }
+/** The signed-in person's e-mail (from the ID token). The API only sees the access token, which has none, so the app tells it once. */
+export async function userEmail():Promise<string>{try{const u=await freshUser();return String(u?.profile?.email||'');}catch{return '';}}
 export async function headers(){
  const result:Record<string,string>={};
  if(auth){const user=await freshUser();if(user)result.Authorization='Bearer '+user.access_token;}
@@ -63,7 +65,7 @@ export async function openPdf(path:string,name:string){
 }
 export type Product={id:string;sku:string;name:string;category:string;brand:string;grade:string;capacity:string;barcode:string|null;unit:string;quantity:number;selling_price:number;reorder_level:number;image_id:string|null};
 export type Job={id:string;customer:string;vehicle:string;registration:string;phone:string;summary:string;status:string;created_at:string};
-export type Movement={id:string;product_id:string;sku:string;name:string;unit:string;kind:string;quantity:number;unit_price:number;balance?:number;job_id:string|null;issue_id:string|null;actor:string;receiver_name?:string|null;note:string;created_at:string};
+export type Movement={id:string;product_id:string;sku:string;name:string;unit:string;kind:string;quantity:number;unit_price:number;balance?:number;job_id:string|null;issue_id:string|null;actor:string;actor_email?:string|null;receiver_name?:string|null;note:string;created_at:string};
 export type Draft={id:string;image_id:string;fields:Record<string,string>;suggestions?:Record<string,string>;labelSuggestions?:Record<string,string>;ai?:{status:string;code?:string;message?:string;detail?:string;provider?:string;model?:string};source:string;status:string;created_at:string;product_id:string|null;captureId?:string};
 export type Invoice={id:string;job_id:string;invoice_number:string;labour:number;total:number;created_at:string};
 export type Match={identifiedProductId?:string;qrValue?:string;imageId:string;state:string;modelVersion:string;candidates:{product:Product;imageId:string;similarity:number;sameSkuEstimate?:number|null}[];message:string};

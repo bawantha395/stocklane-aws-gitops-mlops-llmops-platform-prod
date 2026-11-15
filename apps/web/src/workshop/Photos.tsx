@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Camera, Car, X } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
@@ -29,10 +30,11 @@ function Lightbox({ id, onClose, from }: { id: string; onClose: () => void; from
     el.style.transition = "transform .42s cubic-bezier(.22,1,.36,1), opacity .3s ease"; el.style.transform = "none"; el.style.opacity = "1";
   }, [from]);
   return (
-    <div className="ws-lightbox" role="dialog" aria-modal="true" onClick={onClose}>
-      <button className="icon-button" aria-label={t("Close")} onClick={onClose}><X size={20} /></button>
-      <div ref={box} className="ws-lb-box"><Photo id={id} size="full" /></div>
-    </div>
+    createPortal(
+      <div className="ws-lightbox" role="dialog" aria-modal="true" onClick={onClose}>
+        <button className="icon-button" aria-label={t("Close")} onClick={onClose}><X size={20} /></button>
+        <div ref={box} className="ws-lb-box"><Photo id={id} size="full" /></div>
+      </div>, document.body)
   );
 }
 

@@ -191,6 +191,24 @@ def actor(event):
     return c.get('username') or c.get('sub') or 'unknown'
 
 
+EMAIL = re.compile(r'[^@\s]{1,64}@[^@\s]{1,120}')
+
+
+def remember_email(who, address):
+    """The access token carries no e-mail, so the app sends it once at sign-in; kept only to show names in History and the log (display, not identity)."""
+    address = str(address or '').strip().lower()
+    if who == 'unknown' or not EMAIL.fullmatch(address):
+        return
+    row = get('PROFILE', who)
+    if not row or row.get('email') != address:
+        table().put_item(Item={'pk': 'PROFILE', 'sk': who, 'email': address, 'updated_at': now()})
+
+
+def emails():
+    """username -> e-mail for everyone who has signed in since this was added."""
+    return {r['sk']: r['email'] for r in query('PROFILE')}
+
+
 def require(event, *roles):
     if not groups(event).intersection(roles):
         raise ApiError(403, 'You do not have access to this action')

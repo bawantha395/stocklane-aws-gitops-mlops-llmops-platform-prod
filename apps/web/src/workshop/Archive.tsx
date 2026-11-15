@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { askConfirm } from "../ui";
 import { Empty, Loading, dateOnly, lkr, useCommand, useLoad, useWs, type Job } from "./common";
 
-type Entry = { sk: string; action: string; job_id: string; registration: string; customer: string; actor: string; reason?: string };
+type Entry = { sk: string; action: string; job_id: string; registration: string; customer: string; actor: string; actor_email?: string | null; reason?: string };
 const ACTION: Record<string, string> = {
   ARCHIVED: "Deleted", RESTORED: "Restored", UNDONE: "Undone", CANCELLED: "Cancelled", DELETE_REQUESTED: "Delete requested", REQUEST_REJECTED: "Request rejected", INVOICE_VOIDED: "Invoice voided",
 };
@@ -14,7 +15,7 @@ export function Archive() {
   const command = useCommand();
   if (!data) return <Loading error={error} />;
   const restore = async (j: Job) => {
-    if (!confirm("Restore " + j.registration + "? It comes back to the jobs list and the vehicle history.")) return;
+    if (!(await askConfirm("It comes back to the jobs list and the vehicle history.", { title: "Restore " + j.registration + "?", confirm: "Restore" }))) return;
     setBusy(j.id); setProblem("");
     try { await command("/api/workshop/jobs/" + j.id + "/restore", {}); await reload(); } catch (e) { setProblem((e as Error).message); } finally { setBusy(""); }
   };
@@ -41,7 +42,7 @@ export function Archive() {
           <div className="ws-log" key={a.sk}>
             <small>{new Date(a.sk.split("#")[0]).toLocaleString("en-GB", { timeZone: "Asia/Colombo", dateStyle: "medium", timeStyle: "short" })}</small>
             <span><b>{ACTION[a.action] || a.action}</b> {a.registration} <em>{a.customer}</em></span>
-            <small>{a.actor}{a.reason ? ": " + a.reason : ""}</small>
+            <small>{a.actor_email || a.actor}{a.reason ? ": " + a.reason : ""}</small>
           </div>
         ))}
         {!data.log.length && <Empty>No entries yet.</Empty>}

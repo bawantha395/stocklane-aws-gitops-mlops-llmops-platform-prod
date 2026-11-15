@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+import { askConfirm } from "../ui";
 import { InvoiceCard } from "./Cards";
 import { useEffect, useState } from "react";
 import { Bill, autoPrintOn } from "./Bill";
@@ -70,7 +71,7 @@ export function InvoicePage({ id }: { id: string }) {
   const run = async (work: () => Promise<void>) => { setBusy(true); setError(""); try { await work(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
   const pay = (e: React.FormEvent) => { e.preventDefault(); void run(async () => { await command("/api/workshop/invoices/" + id + "/payments", { amount: num(amount || balance), method, note }); setAmount(""); setNote(""); await reload(); if (autoPrintOn()) setTimeout(() => void printNow(), 400); }); };
   const refund = (e: React.FormEvent) => { e.preventDefault(); void run(async () => { await command("/api/workshop/invoices/" + id + "/refund", { amount: num(rAmount || inv.paid), method, reason: rReason }); setRefunding(false); setRAmount(""); setRReason(""); await reload(); }); };
-  const voidIt = () => { if (confirm("Void this invoice? The job opens again so you can correct it.")) void run(async () => { await command("/api/workshop/invoices/" + id + "/void", {}); go({ name: "job", id: inv.job_id }, "Invoice voided. The job is open again."); }); };
+  const voidIt = async () => { if (await askConfirm("The job opens again so you can correct it.", { title: "Void this invoice?", confirm: "Void invoice", danger: true })) void run(async () => { await command("/api/workshop/invoices/" + id + "/void", {}); go({ name: "job", id: inv.job_id }, "Invoice voided. The job is open again."); }); };
   const shop = inv.business ? { ...business, ...inv.business } : business;
   const shareBill = () => void run(async () => {
     const msg = "Hello " + inv.customer + ", your invoice " + inv.invoice_number + " from " + shop.name + " is LKR " + lkr(inv.total) + (balance > 0 ? ", balance LKR " + lkr(balance) : ", paid in full") + ". Thank you.";
@@ -92,7 +93,7 @@ export function InvoicePage({ id }: { id: string }) {
         <button className="button secondary small" onClick={() => go({ name: "job", id: inv.job_id })}>{t("View job")}</button>
         <button className="button secondary small" onClick={() => go({ name: "vehicle", id: inv.registration.replace(/[^A-Za-z0-9]/g, "").toUpperCase() })}>{t("Vehicle file")}</button>
         <button className="button secondary small" disabled={busy} onClick={shareBill}>{t("Share bill")}</button>
-        {owner && inv.status !== "VOID" && num(inv.paid) > 0 && <button className="button secondary small" disabled={busy} onClick={() => { setRAmount(""); setRefunding(!refunding); }}>{t("Refund")}</button>}
+        {owner && inv.status !== "VOID" && num(inv.paid) > 0 && <button data-tour="refund" className="button secondary small" disabled={busy} onClick={() => { setRAmount(""); setRefunding(!refunding); }}>{t("Refund")}</button>}
         {owner && inv.status !== "VOID" && num(inv.paid) === 0 && <button className="button secondary small" disabled={busy} onClick={voidIt}>{t("Void invoice")}</button>}
       </div>
       {error && <p role="alert" className="stock-error">{error}</p>}

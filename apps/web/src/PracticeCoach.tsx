@@ -81,6 +81,26 @@ function missionsFor(owner: boolean): Mission[] {
       steps: [
         { id: "inv-make", title: t("Make the invoice"), body: t("Press Create invoice, then press OK on the question."), target: '[data-tour="create-invoice"]', need: t("Open a job first. Do the Open a job card mission."), done: (c) => c.ev("api:invoice") || c.has(".ws-pay") },
         { id: "inv-pay", title: t("Take the payment"), body: t("The customer pays. Press Save payment."), target: ".ws-pay .ws-actions .button.primary", done: (c) => c.ev("api:pay") },
+        { id: "inv-refund", title: t("Money back (owner only)"), body: t("If a customer must get money back, the owner presses Refund and gives the amount and a reason. After a full refund you can void the invoice and correct the job. Press Next."), target: '[data-tour="refund"]', manual: true },
+      ],
+    },
+    {
+      id: "stage", icon: "📍", title: t("Job stage and ready message"), blurb: t("Show where a job is. Tell the customer it is ready."), minutes: 1,
+      steps: [
+        { id: "st-open", title: t("Open a job"), body: t("Tap a job in the list."), target: ".ws-cards .ws-tile", go: { sel: TAB("jobs"), label: t("Jobs") }, need: t("Open a job first. Do the Open a job card mission."), done: (c) => c.has(".ws-stage") || c.ev("api:stage") },
+        { id: "st-set", title: t("Mark it Ready for pickup"), body: t("Tap Ready for pickup. The mechanic changes this as the work goes on, and it shows on the job card."), target: '[data-tour="job-stage"]', done: (c) => c.ev("api:stage") },
+        { id: "st-tell", title: t("Tell the customer"), body: t("Tap Tell the customer it is ready. WhatsApp opens with the message already written. In practice nothing is sent."), target: ".ws-stage a.button", hit: true },
+        { id: "st-extra", title: t("Warranty and brought in by"), body: t("On the job you can also write who brought the vehicle in, and a warranty on the work. Both print on the bill. Press Next."), target: '[data-tour="job-warranty"]', manual: true },
+      ],
+    },
+    {
+      id: "sold", icon: "🔑", title: t("Vehicle sold: new owner"), blurb: t("The vehicle has a new owner. Old bills keep the old name."), minutes: 1,
+      steps: [
+        { id: "sold-tab", title: t("Open Vehicles"), body: t("Tap Vehicles."), target: TAB("vehicles"), hit: true, done: () => !!document.querySelector(".ws-facts") },
+        { id: "sold-veh", title: t("Open the vehicle"), body: t("Tap the vehicle."), target: ".ws-cards .ws-tile", go: { sel: TAB("vehicles"), label: t("Vehicles") }, need: t("Open a job first. Do the Open a job card mission."), done: (c) => c.has(".ws-facts") },
+        { id: "sold-btn", title: t("Tap New owner"), body: t("Use New owner when the vehicle was sold. Fixing a typo? Use Edit details instead."), target: '[data-tour="vehicle-new-owner"]', hit: true, done: (c) => c.has(".ws-newowner") || c.ev("api:owner") },
+        { id: "sold-save", title: t("Type the new owner"), body: t("Type a name, then press Save new owner. The old owner stays on the old bills."), target: ".ws-newowner", done: (c) => c.ev("api:owner") },
+        { id: "sold-see", title: t("See the history"), body: t("Repair history now shows Owner changed, with the date. Press Next."), target: ".ws-ownerchange", manual: true },
       ],
     },
     {
@@ -92,6 +112,7 @@ function missionsFor(owner: boolean): Mission[] {
         { id: "ex-rep", title: t("Sales report"), body: t("Sales, what is unpaid, best parts and work. Tap Sales report."), target: TAB("report"), go: { sel: NAV("workshop"), label: t("Jobs & Invoices") }, hit: true },
         { id: "ex-arc", title: t("Archive"), body: t("A deleted job is never lost. It waits here and you can restore it. Tap Archive."), target: TAB("archive"), go: { sel: NAV("workshop"), label: t("Jobs & Invoices") }, hit: true },
         { id: "ex-set", title: t("Settings"), body: t("Business name, address and tax, printed on every invoice. Tap Settings."), target: TAB("settings"), go: { sel: NAV("workshop"), label: t("Jobs & Invoices") }, hit: true },
+        { id: "ex-data", title: t("Your data"), body: t("Download all data saves every job, bill, vehicle and stock part in one file. Keep a copy now and then. Press Next."), target: '[data-tour="export-data"]', go: { sel: TAB("settings"), label: t("Settings") }, manual: true },
       ],
     },
   ];
@@ -229,9 +250,9 @@ export function PracticeCoach() {
     }
     return out;
   };
-  const navEl = typeof document !== "undefined" ? document.querySelector(".ws-step-nav") : null;
-  const nr = navEl ? navEl.getBoundingClientRect() : null;
-  const hitsNav = (b: Rect) => !!nr && nr.width > 0 && b.x < nr.right && b.x + b.w > nr.left && b.y < nr.bottom + 4 && b.y + b.h > nr.top - 4;
+  // keep the card off the bars that hold the main buttons (step Back/Next, Save changes)
+  const bars = typeof document !== "undefined" ? Array.from(document.querySelectorAll(".ws-step-nav, .ws-savebar")).map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0) : [];
+  const hitsNav = (b: Rect) => bars.some((nr) => b.x < nr.right && b.x + b.w > nr.left && b.y < nr.bottom + 4 && b.y + b.h > nr.top - 4);
   const touches = (b: Rect) => hitsNav(b) || !!hole && b.x < hole.x + hole.w + 8 && b.x + b.w > hole.x - 8 && b.y < hole.y + hole.h + 8 && b.y + b.h > hole.y - 8;
   const modes: ("full" | "mini" | "pill")[] = small ? ["pill"] : ["full", "mini", "pill"];
   let mode: "full" | "mini" | "pill" = modes[modes.length - 1], spot: Spot = spotsFor(heights[mode])[0].s;

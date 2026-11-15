@@ -1,5 +1,7 @@
+import { createPortal } from "react-dom";
 import { t } from "../i18n";
-import { toast } from "../ui";
+import { toast, askConfirm } from "../ui";
+import { isPractice } from "../practice";
 import { JobPhotos } from "./Photos";
 import { useEffect, useMemo, useState } from "react";
 import { Bill, PrintButton, billTotals, partAmount, type BillData } from "./Bill";
@@ -66,8 +68,8 @@ export function JobPage({ id }: { id: string }) {
     const left = await stockCall(p.product_id!, op === "use" ? 1 : qty, op);
     toast(op === "use" ? p.name + " +1. " + t("In stock") + ": " + left : p.name + " " + t("taken back to stock") + ". " + t("In stock") + ": " + left);
   });
-  const invoice = () => {
-    if (!confirm("Create the invoice for LKR " + lkr(totals.total) + "? The job will be locked.")) return;
+  const invoice = async () => {
+    if (!(await askConfirm("The job will be locked. You can still take payments and, as owner, void the bill.", { title: "Create the invoice for LKR " + lkr(totals.total) + "?", confirm: "Create invoice" }))) return;
     void run(async () => {
       const current = dirty ? await save() : job;
       const made = await command<Invoice>("/api/workshop/jobs/" + id + "/invoice", { revision: current.revision });
@@ -79,8 +81,8 @@ export function JobPage({ id }: { id: string }) {
   const waiting = req?.status === "PENDING";
   const base = "/api/workshop/jobs/" + id;
   const removed = (message: string) => go({ name: owner ? "archive" : "jobs" }, message);
-  const undo = () => { if (confirm("Undo this job? Use this only for a job opened by mistake.")) void run(async () => { await command(base + "/undo", {}); go({ name: "jobs" }, "Job undone."); }); };
-  const cancel = () => { if (confirm("Cancel this job? It stays in the vehicle history as cancelled.")) void run(async () => { await command("/api/workshop/jobs/" + id + "/cancel", {}); await reload(); }); };
+  const undo = async () => { if (await askConfirm("Use this only for a job opened by mistake.", { title: "Undo this job?", confirm: "Undo job", danger: true })) void run(async () => { await command(base + "/undo", {}); go({ name: "jobs" }, "Job undone."); }); };
+  const cancel = async () => { if (await askConfirm("It stays in the vehicle history as cancelled.", { title: "Cancel this job?", confirm: "Cancel job", danger: true })) void run(async () => { await command("/api/workshop/jobs/" + id + "/cancel", {}); await reload(); }); };
 
   const part = (i: number, patch: Partial<PartRow>) => { setParts(parts.map((x, k) => (k === i ? { ...x, ...patch } : x))); setDirty(true); };
   const work = (i: number, patch: Partial<LabourRow>) => { setLabour(labour.map((x, k) => (k === i ? { ...x, ...patch } : x))); setDirty(true); };
@@ -128,13 +130,13 @@ export function JobPage({ id }: { id: string }) {
       {req?.status === "REJECTED" && <div className="ws-note" role="status">The owner did not approve the earlier delete request{req.note ? ": " + req.note : ""}.</div>}
 
       {!locked && (
-        <section className="ws-card ws-stage" aria-label={t("Where is this job?")}>
+        <section className="ws-card ws-stage" data-tour="job-stage" aria-label={t("Where is this job?")}>
           <h3>{t("Where is this job?")}</h3>
           <div className="ws-stage-chips" role="group">
             {STAGES.map((s2) => <button key={s2} type="button" className={"ws-quick" + (stage === s2 ? " on" : "")} aria-pressed={stage === s2} disabled={busy} onClick={() => stage !== s2 && setStage(s2)}>{t(STAGE_LABEL[s2])}</button>)}
           </div>
           {stage === "READY" && (readyTo
-            ? <a className="button primary small" href={waLink(readyTo, readyMsg)} target="_blank" rel="noopener noreferrer">{t("Tell the customer it is ready")}</a>
+            ? <a className="button primary small" href={waLink(readyTo, readyMsg)} target="_blank" rel="noopener noreferrer" onClick={(e) => { if (isPractice()) { e.preventDefault(); toast(t("Practice: WhatsApp would open here with the message ready.")); } }}>{t("Tell the customer it is ready")}</a>
             : <small className="muted">{t("Add a contact number to send the ready message.")}</small>)}
         </section>
       )}
@@ -222,7 +224,7 @@ export function JobPage({ id }: { id: string }) {
         </dl>
       </section>
 
-      <section className="ws-card">
+      <section className="ws-card" data-tour="job-warranty">
         <h3>{t("Warranty on this work (optional)")}</h3>
         <div className="ws-grid2">
           <label className="ws-field">{t("Covered until")}<input disabled={locked} type="date" value={f.warranty_until || ""} onChange={(e) => set("warranty_until", e.target.value)} /></label>
@@ -268,12 +270,11 @@ export function JobPage({ id }: { id: string }) {
         onDone={async (reason) => { await command(base + "/delete-request", { reason }); setDialog(""); setSaved("Sent to the owner."); await reload(); }} onClose={() => setDialog("")} />}
       {dialog === "reject" && <ReasonDialog title="Reject the delete request" label="Note for the mechanic (optional)" confirm="Reject" required={false}
         onDone={async (note) => { await command(base + "/delete-request/reject", { note }); setDialog(""); setSaved("Request rejected."); await reload(); }} onClose={() => setDialog("")} />}
-      {preview && (
+      {preview && createPortal(
         <div className="ws-modal" role="dialog" aria-modal="true" aria-label="Bill preview">
           <div className="ws-modal-bar"><b>{locked ? "Bill" : "Draft bill (not issued yet)"}</b><span><PrintButton /> <button className="button primary small" onClick={() => setPreview(false)}>Close</button></span></div>
           <div className="ws-print"><Bill d={bill} /></div>
-        </div>
-      )}
+        </div>, document.body)}
     </div>
   );
 }

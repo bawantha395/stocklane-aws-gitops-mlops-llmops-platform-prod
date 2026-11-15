@@ -397,6 +397,9 @@ export async function demoApi(path: string, options: RequestInit = {}): Promise<
     else if (p.endsWith("/archive")) mark("api:archive");
     else if (p.endsWith("/restore")) mark("api:restore");
     else if (p.endsWith("/void")) mark("api:void");
+    else if (p.endsWith("/owner")) mark("api:owner");
+    else if (p.endsWith("/stage")) mark("api:stage");
+    else if (p.endsWith("/refund")) mark("api:refund");
   }
   return out;
 }

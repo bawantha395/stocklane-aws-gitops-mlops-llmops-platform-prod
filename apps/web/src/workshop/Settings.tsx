@@ -1,5 +1,5 @@
 import { t } from "../i18n";
-import { toast } from "../ui";
+import { toast, askConfirm } from "../ui";
 import { api } from "../api";
 import { useState, useEffect, useRef } from "react";
 import { logoFromFile, resetLogo } from "../logoStore";
@@ -45,7 +45,7 @@ export function Settings() {
     catch (err) { setError((err as Error).message); toast((err as Error).message, { bad: true }); } finally { setLogoBusy(false); }
   };
   const removeLogo = async () => {
-    if (!confirm(t("Remove the logo? Bills go back to the initials."))) return;
+    if (!(await askConfirm("Bills go back to the initials.", { title: "Remove the logo?", confirm: "Remove logo", danger: true }))) return;
     setLogoBusy(true); setError("");
     try { await command("/api/workshop/logo", {}, "DELETE"); resetLogo(); reloadBusiness(); setMsg(t("Logo removed.")); }
     catch (err) { setError((err as Error).message); } finally { setLogoBusy(false); }
@@ -150,7 +150,7 @@ export function Settings() {
             <small className="ws-hint">{t("Shows on the bill: the last line, for example a thank you.")}</small>
           </section>
           {owner && (
-            <section className="ws-sec">
+            <section className="ws-sec" data-tour="export-data">
               <h3>{t("Your data")}</h3>
               <p className="muted">{t("One file with every job, bill, vehicle, stock part and movement. Keep a copy somewhere safe now and then. Photos are not in it.")}</p>
               <button type="button" className="button secondary" disabled={busy} onClick={() => void exportAll()}>{t("Download all data")}</button>

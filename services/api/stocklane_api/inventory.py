@@ -19,7 +19,7 @@ from decimal import Decimal
 
 import boto3
 
-from .core import (COLOMBO, ApiError, bad, batch_get, check, command, conflict, delete, get, missing, now, num,
+from .core import (COLOMBO, ApiError, bad, batch_get, check, command, conflict, delete, emails, get, missing, now, num,
                    public, put, query, unique, update, dumps)
 
 ZERO = Decimal(0)
@@ -99,7 +99,8 @@ def catalogue():
 
 
 def movements():
-    return [public(m) for m in query('MOVE', forward=False, limit=200)]
+    who = emails()
+    return [dict(public(m), actor_email=who.get(m.get('actor'))) for m in query('MOVE', forward=False, limit=200)]
 
 
 def job_movements(job_id):

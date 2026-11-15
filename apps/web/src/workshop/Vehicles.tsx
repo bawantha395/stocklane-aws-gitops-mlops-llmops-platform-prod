@@ -1,4 +1,6 @@
 import { t } from "../i18n";
+import { toast } from "../ui";
+import { isPractice } from "../practice";
 import { DueCard, VehicleCard } from "./Cards";
 import { Face, Photo } from "./Photos";
 import { useState } from "react";
@@ -98,7 +100,7 @@ export function VehiclePage({ id }: { id: string }) {
         <button className="button primary small" onClick={() => go({ name: "new", reg: v.registration })}>+ New job</button>
         <button className="button secondary small" onClick={() => void download("/api/workshop/vehicles/" + id + "/history.pdf", "history-" + id + ".pdf").catch((e) => setMsg(e.message))}>History PDF</button>
         <button className="button secondary small" onClick={startEdit}>{t("Edit details")}</button>
-        <button className="button secondary small" onClick={() => { setNw({ owner: "", phone: "" }); setSold(true); setEdit(false); setMsg(""); }}>{t("New owner")}</button>
+        <button data-tour="vehicle-new-owner" className="button secondary small" onClick={() => { setNw({ owner: "", phone: "" }); setSold(true); setEdit(false); setMsg(""); }}>{t("New owner")}</button>
       </div>
       <section className="ws-card">
         <div className="ws-card-head">
@@ -166,7 +168,7 @@ export function Due() {
           <DueCard key={v.id} v={v} why={why[v.reason || ""]}>
             <span className="ws-contact">
                 {v.phone && <a className="button secondary small" href={"tel:" + v.phone}>{t("Call")}</a>}
-                {v.phone && <a className="button secondary small" target="_blank" rel="noreferrer" href={waLink(v.phone, "Hello " + (v.owner || "") + ", " + business.name + " here. Your " + v.registration + " is due for service" + (v.next_service_date ? " on " + v.next_service_date : "") + (v.next_service_km ? (v.next_service_date ? " or at " : " at ") + kmText(v.next_service_km) : "") + ". Would you like to book a time?")}>{t("Send reminder")}</a>}
+                {v.phone && <a className="button secondary small" target="_blank" rel="noreferrer" onClick={(e) => { if (isPractice()) { e.preventDefault(); toast(t("Practice: WhatsApp would open here with the message ready.")); } }} href={waLink(v.phone, "Hello " + (v.owner || "") + ", " + business.name + " here. Your " + v.registration + " is due for service" + (v.next_service_date ? " on " + v.next_service_date : "") + (v.next_service_km ? (v.next_service_date ? " or at " : " at ") + kmText(v.next_service_km) : "") + ". Would you like to book a time?")}>{t("Send reminder")}</a>}
                 <button className="button primary small" onClick={() => go({ name: "new", reg: v.registration })}>{t("New job")}</button>
               </span>
           </DueCard>

@@ -9,7 +9,7 @@ import re
 import traceback
 
 from . import forecast, inventory, photos, workshop
-from .core import ApiError, actor, bad, dumps, groups, require
+from .core import ApiError, actor, bad, dumps, groups, remember_email, require
 
 OWNER, STAFF = ('OWNER',), ('OWNER', 'MECHANIC')
 ROUTES = []
@@ -23,7 +23,12 @@ def q(event, name, default=''):
     return (event.get('queryStringParameters') or {}).get(name, default)
 
 
-route('GET', '/api/inventory/session', None, lambda e, p, b, k: {'name': actor(e), 'roles': ['ROLE_' + g for g in sorted(groups(e))]})
+def session(e, p, b, k):
+    remember_email(actor(e), q(e, 'email'))
+    return {'name': actor(e), 'roles': ['ROLE_' + g for g in sorted(groups(e))]}
+
+
+route('GET', '/api/inventory/session', None, session)
 route('GET', '/api/inventory/products', STAFF, lambda e, p, b, k: inventory.products())
 route('GET', '/api/inventory/products/archived', OWNER, lambda e, p, b, k: inventory.archived_products())
 route('GET', '/api/inventory/catalogue', STAFF, lambda e, p, b, k: inventory.catalogue())
