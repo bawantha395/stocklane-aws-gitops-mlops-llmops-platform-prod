@@ -87,7 +87,7 @@ function missionsFor(owner: boolean): Mission[] {
     {
       id: "stage", icon: "📍", title: t("Job stage and ready message"), blurb: t("Show where a job is. Tell the customer it is ready."), minutes: 1,
       steps: [
-        { id: "st-open", title: t("Open a job"), body: t("Tap a job in the list."), target: ".ws-cards .ws-tile", go: { sel: TAB("jobs"), label: t("Jobs") }, need: t("Open a job first. Do the Open a job card mission."), done: (c) => c.has(".ws-stage") || c.ev("api:stage") },
+        { id: "st-open", title: t("Open a job"), body: t("Tap a job in the list."), target: ".ws-rows .ws-tile, .ws-cards .ws-tile", go: { sel: TAB("jobs"), label: t("Jobs") }, need: t("Open a job first. Do the Open a job card mission."), done: (c) => c.has(".ws-stage") || c.ev("api:stage") },
         { id: "st-set", title: t("Mark it Ready for pickup"), body: t("Tap Ready for pickup. The mechanic changes this as the work goes on, and it shows on the job card."), target: '[data-tour="job-stage"]', done: (c) => c.ev("api:stage") },
         { id: "st-tell", title: t("Tell the customer"), body: t("Tap Tell the customer it is ready. WhatsApp opens with the message already written. In practice nothing is sent."), target: ".ws-stage a.button", hit: true },
         { id: "st-extra", title: t("Warranty and brought in by"), body: t("On the job you can also write who brought the vehicle in, and a warranty on the work. Both print on the bill. Press Next."), target: '[data-tour="job-warranty"]', manual: true },
@@ -97,7 +97,7 @@ function missionsFor(owner: boolean): Mission[] {
       id: "sold", icon: "🔑", title: t("Vehicle sold: new owner"), blurb: t("The vehicle has a new owner. Old bills keep the old name."), minutes: 1,
       steps: [
         { id: "sold-tab", title: t("Open Vehicles"), body: t("Tap Vehicles."), target: TAB("vehicles"), hit: true, done: () => !!document.querySelector(".ws-facts") },
-        { id: "sold-veh", title: t("Open the vehicle"), body: t("Tap the vehicle."), target: ".ws-cards .ws-tile", go: { sel: TAB("vehicles"), label: t("Vehicles") }, need: t("Open a job first. Do the Open a job card mission."), done: (c) => c.has(".ws-facts") },
+        { id: "sold-veh", title: t("Open the vehicle"), body: t("Tap the vehicle."), target: ".ws-rows .ws-tile, .ws-cards .ws-tile", go: { sel: TAB("vehicles"), label: t("Vehicles") }, need: t("Open a job first. Do the Open a job card mission."), done: (c) => c.has(".ws-facts") },
         { id: "sold-btn", title: t("Tap New owner"), body: t("Use New owner when the vehicle was sold. Fixing a typo? Use Edit details instead."), target: '[data-tour="vehicle-new-owner"]', hit: true, done: (c) => c.has(".ws-newowner") || c.ev("api:owner") },
         { id: "sold-save", title: t("Type the new owner"), body: t("Type a name, then press Save new owner. The old owner stays on the old bills."), target: ".ws-newowner", done: (c) => c.ev("api:owner") },
         { id: "sold-see", title: t("See the history"), body: t("Repair history now shows Owner changed, with the date. Press Next."), target: ".ws-ownerchange", manual: true },
