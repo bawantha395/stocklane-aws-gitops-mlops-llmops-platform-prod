@@ -155,6 +155,8 @@ const SI: Record<string, string> = {
   "Show all": "සියල්ල පෙන්වන්න",
   "No vehicle number": "වාහන අංකයක් නැත",
   "Show more": "තව පෙන්වන්න",
+  "or tap to see all parts": "හෝ සියලු කොටස් බැලීමට තට්ටු කරන්න",
+  "Share on WhatsApp": "WhatsApp මගින් බෙදාගන්න",
   "Quotations": "මිල ගණන්",
   "Quotation": "මිල ගණන් පත්‍රය",
   "New quotation": "නව මිල ගණන් පත්‍රය",

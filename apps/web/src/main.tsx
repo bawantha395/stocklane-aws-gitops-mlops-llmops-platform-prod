@@ -181,7 +181,7 @@ async function printLabel(item: Item) {
     throw error;
   }
 }
-function Photo({ id, zoom = false }: { id: string; zoom?: boolean }) {
+function Photo({ id, zoom = false, peek = false, caption = "" }: { id: string; zoom?: boolean; peek?: boolean; caption?: string }) {
   const [url, setUrl] = useState("");
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -206,7 +206,21 @@ function Photo({ id, zoom = false }: { id: string; zoom?: boolean }) {
     };
   }, [id]);
   return url ? (
-    zoom ? (
+    peek ? (
+      <>
+        {/* quick look from inside a list row: a tap on the picture opens it large; a tap anywhere else still picks the row */}
+        <span role="button" tabIndex={0} className="photo-peek" aria-label={t("Quick look")} onClick={(e) => { e.stopPropagation(); e.preventDefault(); setOpen(true); }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); setOpen(true); } }}>
+          <img className="item-photo" src={url} alt="" />
+        </span>
+        {open && createPortal(
+          <div className="photo-viewer" role="dialog" aria-modal="true" aria-label={caption || "Photo"} onClick={(e) => { e.stopPropagation(); setOpen(false); }}>
+            <button type="button" className="photo-viewer-close" aria-label="Close photo" onClick={(e) => { e.stopPropagation(); setOpen(false); }}><X /></button>
+            <img src={url} alt={caption} onClick={(e) => e.stopPropagation()} />
+            {caption && <p className="photo-viewer-cap">{caption}</p>}
+          </div>, document.body)}
+      </>
+    ) : zoom ? (
       <>
         <button type="button" className="photo-zoom-btn" aria-label="View the photo full screen" onClick={() => setOpen(true)}>
           <img className="item-photo" src={url} alt="Uploaded photo" />
@@ -835,7 +849,7 @@ function App() {
           setError("");
         }}
       >
-        <ItemPhoto item={p} />
+        <ItemPhoto item={p} peek />
         <span>
           <strong>{p.name}</strong>
           <small>
@@ -1813,7 +1827,7 @@ function App() {
               <div className="catalogue-list">
                 {filtered(showArchived ? archived : items, query).map((p) => (
                   <article className="catalogue-row" key={p.id}>
-                    <ItemPhoto item={p} />
+                    <ItemPhoto item={p} peek />
                     <div className="catalogue-description">
                       <strong>{p.name}</strong>
                       <small>
@@ -1902,7 +1916,7 @@ function App() {
               </div>
             </div>
             <CountStock items={items} countId={countId} setCountId={setCountId} find={(q) => filtered(items, q)} openScanner={() => setScanner(true)}
-              owner={owner} photo={(p) => <ItemPhoto item={p as Item} />} onChanged={() => void refresh()} />
+              owner={owner} photo={(p) => <ItemPhoto item={p as Item} peek />} onChanged={() => void refresh()} />
           </>
         )}
         {view === "analysis" && owner && <StockReport />}
@@ -1912,7 +1926,7 @@ function App() {
             key={counterKey}
             items={items}
             moves={moves}
-            photo={(p) => <ItemPhoto item={p} />}
+            photo={(p) => <ItemPhoto item={p} peek />}
             initialMode={counterMode}
             picked={counterPick}
             onNewItem={newItemFromCounter}
@@ -2073,9 +2087,9 @@ function App() {
     </div>
   );
 }
-function ItemPhoto({ item }: { item: Item }) {
+function ItemPhoto({ item, peek = false }: { item: Item; peek?: boolean }) {
   return item.image_id ? (
-    <Photo id={item.image_id} />
+    <Photo id={item.image_id} peek={peek} caption={item.name} />
   ) : (
     <span className="photo-placeholder">
       <Package size={28} />

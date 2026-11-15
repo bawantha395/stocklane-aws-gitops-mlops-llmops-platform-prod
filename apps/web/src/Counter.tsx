@@ -25,7 +25,13 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
   const [candidates, setCandidates] = useState<Item[]>([]);
   const [photoId, setPhotoId] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(""), [listOpen, setListOpen] = useState(false);
+  const comboRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!listOpen) return;
+    const away = (e: PointerEvent) => { if (!comboRef.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest?.(".photo-viewer")) setListOpen(false); };
+    document.addEventListener("pointerdown", away); return () => document.removeEventListener("pointerdown", away);
+  }, [listOpen]);
   const [camera, setCamera] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [done, setDone] = useState("");
   const commandKey = useRef(key());
@@ -131,7 +137,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
     } catch (e) { setError((e as Error).message); commandKey.current = key(); }
     finally { setBusy(false); }
   };
-  const matches = search.trim().length >= 2 ? items.filter((i) => (i.name + " " + i.sku + " " + i.brand + " " + (i.part_number || "")).toLowerCase().includes(search.trim().toLowerCase())).slice(0, 8) : [];
+  const matches = search.trim().length >= 2 ? items.filter((i) => (i.name + " " + i.sku + " " + i.brand + " " + (i.part_number || "")).toLowerCase().includes(search.trim().toLowerCase())).slice(0, 20) : [];
   // Parts that moved lately in this direction, newest first: the quickest way back to what the shop handles every day.
   const recent = (() => {
     const kinds = mode === "receive" ? ["RECEIPT", "RETURN", "OPENING"] : ["ISSUE", "STOCK_OUT"];
@@ -145,7 +151,14 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
     }
     return out;
   })();
-  const choosePart = (item: Item) => { setPart(item); setCandidates([]); setPhotoId(""); setError(""); };
+  // With nothing typed, the dropdown lists the parts that moved lately first, then the rest A to Z, each with its photo.
+  const browse = (() => {
+    const first = recent.map((r) => r.item), seen = new Set(first.map((i) => i.id));
+    const rest = items.filter((i) => !i.archived && !seen.has(i.id) && (mode === "receive" || Number(i.quantity) > 0)).sort((a, b) => a.name.localeCompare(b.name));
+    return [...first, ...rest].slice(0, 30);
+  })();
+  const shownList = search.trim().length >= 2 ? matches : listOpen ? browse : [];
+  const choosePart = (item: Item) => { setListOpen(false); setSearch(""); setPart(item); setCandidates([]); setPhotoId(""); setError(""); };
   return (
     <section className="counter-screen" aria-label={t("Parts counter")}>
       <div className="counter-modes" role="tablist">
@@ -193,8 +206,12 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
                     </div>
                   </div>
                 )}
-                <label data-tour="counter-search" className="stock-field counter-search">{t("Or search")}<input value={search} placeholder="Oil filter" onChange={(e) => setSearch(e.target.value)} /></label>
-                {matches.map((m) => <button key={m.id} className="counter-result" onClick={() => choosePart(m)}>{photo && <span className="counter-result-photo">{photo(m)}</span>}<span className="counter-result-text">{m.name} <small>{t("Part no.")} {m.part_number || t("Not set")} · {t("System no.")} {m.sku}</small></span></button>)}
+                <div className="counter-combo" ref={comboRef}>
+                <label data-tour="counter-search" className="stock-field counter-search">{t("Or search")}<input value={search} placeholder={t("Oil filter") + " (" + t("or tap to see all parts") + ")"} onFocus={() => setListOpen(true)} onChange={(e) => { setSearch(e.target.value); setListOpen(true); }} /></label>
+                <div className="counter-list">
+                  {shownList.map((m) => <button key={m.id} className="counter-result" onClick={() => choosePart(m)}>{photo && <span className="counter-result-photo">{photo(m)}</span>}<span className="counter-result-text">{m.name} <small>{t("Part no.")} {m.part_number || t("Not set")} · {t("In stock")} {amount(Number(m.quantity))}</small></span></button>)}
+                </div>
+                </div>
                 {search.trim().length >= 2 && !matches.length && <p className="stock-help">{t("No part matches \"{q}\".", { q: search.trim() })}</p>}
               </>
             )}

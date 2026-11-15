@@ -24,7 +24,7 @@ export function quotePdf(q: Quote, shop: Business): Blob {
   }
   d.text(nameX, top + 24, b.name || "Workshop", 18, true, "l", ACCENT);
   let y = top + 44;
-  for (const part of [b.address, [b.phone, b.email].filter(Boolean).join(" | "), b.reg_no]) if (part) for (const row of wrap(part, 300, 9)) { d.text(MARGIN, y + 8, row, 9, false, "l", MUTED); y += 12; }
+  for (const part of [b.address, b.phone ? "Tel: " + b.phone : "", b.email ? "Email: " + b.email : "", b.reg_no]) if (part) for (const row of wrap(part, 300, 9)) { d.text(MARGIN, y + 8, row, 9, false, "l", MUTED); y += 12; }
   d.text(R, top + 20, "QUOTATION", 20, true, "r");
   let ry = top + 36;
   const meta: [string, boolean][] = [[q.number + (q.rev_no > 1 ? "  (version " + q.rev_no + ")" : ""), true], ["Date: " + dateOnly(q.updated_at || q.created_at), false]];

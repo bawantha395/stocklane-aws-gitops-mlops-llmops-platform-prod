@@ -405,3 +405,13 @@ html[data-theme="dark"] .ws-actionbar { background: var(--surface, #1c1e21) !imp
 .ws-send .ws-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .ws-job.ws-quote .ws-line:not(.labour) { grid-template-columns: minmax(0, .9fr) minmax(0, 1.3fr) minmax(72px, auto) 44px; grid-template-areas: "name name name del" "qty price total total"; }
 .ws-job.ws-quote .ws-line.labour { grid-template-columns: minmax(0, 1fr) 120px 44px; }
+
+/* parts counter: the dropdown of parts with photos, open before anything is typed */
+.counter-combo { position: relative; }
+.counter-list { max-height: 360px; overflow-y: auto; overscroll-behavior: contain; }
+.counter-list:empty { display: none; }
+.counter-list .counter-result { margin-top: 6px; }
+
+/* quick look: tap the picture in a parts list to see it large, without picking the row */
+.photo-peek { display: contents; cursor: zoom-in; }
+.photo-viewer-cap { position: absolute; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: 86vw; margin: 0; padding: 8px 14px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; font-weight: 600; text-align: center; }

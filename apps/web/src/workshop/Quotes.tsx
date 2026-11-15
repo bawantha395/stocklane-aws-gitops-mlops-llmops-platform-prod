@@ -3,7 +3,7 @@ import { toast, askConfirm } from "../ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PhotoStrip } from "./Photos";
 import { downloadQuotePdf, shareQuotePdf } from "./quotePdf";
-import { Empty, Loading, Pill, dateOnly, lkr, num, regKey, useCommand, useDebounced, useLoad, useWs, type Quote, type QuoteWork, type Vehicle } from "./common";
+import { Empty, Loading, Pill, dateOnly, lkr, num, regKey, useCommand, waLink, useDebounced, useLoad, useWs, type Quote, type QuoteWork, type Vehicle } from "./common";
 
 const SECTIONS: QuoteWork["section"][] = ["Rem/Refit", "Repaint", "Other"];
 const SECTION_LABEL: Record<string, string> = { "Rem/Refit": "Rem / Refit", Repaint: "Repaint", Other: "Other work" };
@@ -121,7 +121,8 @@ function QuoteForm({ start }: { start?: Quote | null }) {
   const download = () => void withSaved((q) => downloadQuotePdf(q, business));
   const share = () => void withSaved(async (q) => {
     const text = (business.name || "") + " - " + t("Quotation") + " " + q.number + (q.insurer ? " - " + q.insurer : "") + " - " + q.registration;
-    if (!(await shareQuotePdf(q, business, text))) { downloadQuotePdf(q, business); toast(t("PDF saved. Send it from your files.")); }
+    // Phones with a share sheet send the PDF itself (pick WhatsApp there); otherwise WhatsApp opens with the message and the PDF is saved to attach.
+    if (!(await shareQuotePdf(q, business, text))) { downloadQuotePdf(q, business); toast(t("PDF saved. Send it from your files.")); window.open(waLink(q.phone || "", text), "_blank", "noopener"); }
   });
 
   const part = (i: number, p: Partial<PartRow>) => { setParts(parts.map((x, k) => (k === i ? { ...x, ...p } : x))); setDirty(true); };
@@ -207,7 +208,7 @@ function QuoteForm({ start }: { start?: Quote | null }) {
         <h3>{t("Send to the insurer")}</h3>
         <div className="ws-actions">
           <button className="button secondary" disabled={busy} onClick={download}>{t("Download PDF")}</button>
-          <button className="button secondary" disabled={busy} onClick={share}>{t("Share")}</button>
+          <button className="button secondary" disabled={busy} onClick={share}>{t("Share on WhatsApp")}</button>
         </div>
       </section>
       {error && <p role="alert" className="stock-error">{error}</p>}
