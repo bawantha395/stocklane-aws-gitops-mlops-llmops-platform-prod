@@ -1,15 +1,18 @@
 import { t } from "../i18n";
-import { useRef, useState, type ReactNode } from "react";
+import { useContext, useRef, useState, type ReactNode } from "react";
 import { Car } from "lucide-react";
 import { Photo } from "./Photos";
+import { RailCtx } from "./Rows";
 import { Pill, STAGE_LABEL, dateOnly, kmText, lkr, type Invoice, type Job, type Vehicle } from "./common";
 
 /** Swipe a card left to reveal Call and Open. Vertical scrolling still works; a tap still opens the card. */
 function Swipe({ phone, onOpen, children }: { phone?: string; onOpen: () => void; children: ReactNode }) {
+  const inRail = useContext(RailCtx);
   const [dx, setDx] = useState(0), start = useRef<{ x: number; y: number; base: number } | null>(null), moved = useRef(false), W = 150;
   const down = (e: React.PointerEvent) => { if (e.pointerType === "mouse") return; start.current = { x: e.clientX, y: e.clientY, base: dx }; moved.current = false; };
   const move = (e: React.PointerEvent) => { const s = start.current; if (!s) return; const mx = e.clientX - s.x, my = e.clientY - s.y; if (!moved.current && Math.abs(mx) < 10) { if (Math.abs(my) > 10) start.current = null; return; } moved.current = true; setDx(Math.max(-W, Math.min(0, s.base + mx))); };
   const up = () => { if (!start.current) return; start.current = null; setDx((d) => (d < -W / 2 ? -W : 0)); };
+  if (inRail) return <>{children}</>; // inside a swiped row the sideways swipe belongs to the row
   return (
     <div className="ws-swipe">
       <div className="ws-swipe-acts" aria-hidden={dx === 0}>
@@ -30,6 +33,7 @@ function Hero({ photo, reg, children }: { photo?: string; reg: string; children?
   if (!photo) return <span className="ws-slim" style={{ ["--h" as string]: hue(reg || "x") }}><Car size={22} strokeWidth={1.7} aria-hidden="true" />{children}</span>;
   return (
     <span className="ws-hero" style={{ ["--h" as string]: hue(reg || "x") }}>
+      <Photo id={photo} className="ws-hero-bg" />
       <Photo id={photo} className="ws-hero-img" />
       {children}
     </span>

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { JobItem } from "./Dashboard";
 import { PastRepairs } from "./Vehicles";
 import { PhotoSlot, PhotoStrip } from "./Photos";
+import { Rows, groupByPeriod } from "./Rows";
 import { DateChips, SummaryBar, cap, ALL, inRange, useSaved, type Range } from "./DateRange";
 import { Empty, Loading, dateOnly, kmText, lkr, regKey, useCommand, useDebounced, useLoad, useWs, type Job, type Vehicle } from "./common";
 
@@ -14,6 +15,11 @@ export function Jobs() {
   const needle = q.trim().toLowerCase();
   const shown = data.filter((j) => (filter === "ALL" || j.status === filter) && inRange(j.created_at, range) && (!needle || (j.registration + " " + j.customer + " " + j.phone + " " + j.summary).toLowerCase().includes(needle)));
   const count = (s: string) => data.filter((j) => j.status === s).length;
+  // rows by period (newest first); a search or a date filter shows a plain list instead
+  const rows = !needle && range.k === "all" && shown.length > 0;
+  const newest = [...data].sort((a, b) => (b.created_at < a.created_at ? -1 : 1))[0];
+  const openNow = filter === "ALL" ? shown.filter((j) => j.status === "OPEN") : [];
+  const groups = [...(openNow.length ? [{ key: "open", title: t("Open now"), items: [...openNow].sort((a, b) => (b.created_at < a.created_at ? -1 : 1)) }] : []), ...groupByPeriod(filter === "ALL" ? shown.filter((j) => j.status !== "OPEN") : shown, (j) => j.created_at, true)];
   return (
     <>
       <div className="ws-toolbar">
@@ -27,10 +33,12 @@ export function Jobs() {
       <DateChips value={range} onChange={setRange} />
       <SummaryBar text={cap(t("jobs")) + ": " + shown.length + " · LKR " + lkr(shown.reduce((s, j) => s + (j.total || 0), 0))} file="jobs"
         rows={shown.map((j) => ({ Date: dateOnly(j.created_at), "Vehicle no.": j.registration, Customer: j.customer, Phone: j.phone, Work: j.summary, Status: j.status, Invoice: j.invoice_number || "", "Total (LKR)": j.total }))} />
-      <div className="ws-cards">
-        {shown.map((j) => <JobItem key={j.id} j={j} onOpen={() => go({ name: "job", id: j.id })} />)}
-        {!shown.length && <Empty>{data.length ? "No jobs match." : "No jobs yet. Start the first one when a vehicle comes in."}</Empty>}
-      </div>
+      {rows ? (
+        <Rows groups={groups} idOf={(j) => j.id} latest={newest?.id} render={(j) => <JobItem j={j} onOpen={() => go({ name: "job", id: j.id })} />} />
+      ) : (
+        <div className="ws-cards">{shown.map((j) => <JobItem key={j.id} j={j} onOpen={() => go({ name: "job", id: j.id })} />)}</div>
+      )}
+      {!shown.length && <div className="ws-cards"><Empty>{data.length ? "No jobs match." : "No jobs yet. Start the first one when a vehicle comes in."}</Empty></div>}
     </>
   );
 }

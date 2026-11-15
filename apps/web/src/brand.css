@@ -246,6 +246,58 @@ html[data-theme="dark"] .counter-lowchip { color: #f0b266; }
 
 /* Top bar business picture: a rounded, glassy tile (soft edge, light sheen, gentle shadow) instead of a hard box */
 .stock-header .biz-logo { position: relative; border-radius: 16px; overflow: visible; padding: 3px; background: rgba(var(--w), .55); border: 1px solid rgba(var(--w), .8); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); box-shadow: 0 6px 18px rgba(var(--sh0), .14), inset 0 1px 0 rgba(255,255,255,.7); }
-.stock-header .biz-logo img { height: 42px !important; width: 42px !important; max-width: none !important; object-fit: cover !important; border-radius: 13px !important; filter: none !important; display: block; }
+.stock-header .biz-logo img { height: 42px !important; width: auto !important; min-width: 42px; max-width: 84px !important; object-fit: contain !important; border-radius: 13px !important; filter: none !important; display: block; background: #0d0d0f; }
 .stock-header .biz-logo::after { content: ""; position: absolute; inset: 3px; border-radius: 13px; pointer-events: none; background: linear-gradient(155deg, rgba(255,255,255,.28), rgba(255,255,255,0) 45%); }
 .stock-header .biz-logo .online-dot { z-index: 1; right: -2px; bottom: -2px; }
+
+/* ===== Rows: one swiped row per period (Apple style) ===== */
+.ws-rows { display: flex; flex-direction: column; gap: 10px; }
+.ws-row-head { display: flex; align-items: baseline; gap: 8px; margin: 14px 2px 4px; }
+.ws-row-head h3 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
+.ws-row-head small { color: var(--muted); font-weight: 600; }
+.ws-rail-wrap { position: relative; }
+.ws-rail { display: flex; gap: 14px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scroll-padding: 0 4px; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 6px 4px 22px; }
+.ws-rail::-webkit-scrollbar { display: none; }
+.ws-rail-item { position: relative; flex: 0 0 min(82vw, 340px); scroll-snap-align: start; display: flex; min-width: 0; }
+.ws-rail-item > * { width: 100%; }
+.ws-rail-item .ws-tile { height: 100%; }
+.ws-rail-more { align-items: center; justify-content: center; flex-basis: 160px; }
+.ws-rail-more .button { width: auto; }
+.ws-rail-arrow { position: absolute; top: 40%; z-index: 4; width: 40px; height: 40px; display: none; place-items: center; border: 1px solid rgba(var(--w), .8); border-radius: 50%; background: rgba(var(--w), .86); color: var(--ink, #111); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 6px 18px rgba(var(--sh0), .18); cursor: pointer; }
+.ws-rail-arrow.left { left: -6px; } .ws-rail-arrow.right { right: -6px; }
+@media (hover: hover) and (pointer: fine) { .ws-rail-arrow { display: grid; } }
+/* Latest: a small yellow dot and label on the newest card (top left of the picture) */
+.ws-latest { position: absolute; z-index: 3; top: 12px; left: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 99px; background: rgba(var(--w), .92); color: var(--t-26332f, #26332f); font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px rgba(var(--sh), .14); pointer-events: none; }
+.ws-latest i { width: 9px; height: 9px; border-radius: 50%; background: #f5b400; box-shadow: 0 0 0 3px rgba(245, 180, 0, .28); }
+
+/* Card photo: a fixed frame; the whole picture sits inside it over a soft blurred copy of itself (no black bars, nothing cut off) */
+.ws-hero { height: 190px !important; aspect-ratio: auto !important; max-height: none !important; background: #1b1f24; }
+@media (min-width: 760px) { .ws-hero { height: 200px !important; } }
+.ws-hero-bg { position: absolute !important; inset: -14px; width: calc(100% + 28px) !important; height: calc(100% + 28px) !important; object-fit: cover; filter: blur(16px) saturate(1.15) brightness(.82); pointer-events: none; }
+.ws-hero-img { position: relative; z-index: 1; object-fit: contain !important; background: none !important; }
+.ws-hero-top, .ws-hero-count { z-index: 2; }
+.ws-rail-item > .ws-latest { width: auto; }
+
+/* ===== Cards in the rows: inset rounded picture, big plate, soft text, pill footer (light and dark) ===== */
+.ws-rail-item .ws-tile { padding: 12px 12px 14px; border-radius: 28px; gap: 4px; background: var(--surface); border: 1px solid rgba(var(--sh), .08); box-shadow: 0 1px 2px rgba(var(--sh), .05), 0 18px 40px -22px rgba(var(--sh), .38); }
+.ws-rail-item .ws-hero, .ws-rail-item .ws-slim { border-radius: 20px; width: 100%; margin: 0; }
+.ws-rail-item .ws-hero { height: 200px !important; }
+.ws-rail-item .ws-slim { min-height: 52px; }
+.ws-rail-item .ws-c-body { padding: 14px 8px 6px; gap: 6px; }
+.ws-rail-item .ws-c-make { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.ws-rail-item .ws-c-rows, .ws-rail-item .ws-c-work { color: var(--muted); }
+.ws-rail-item .ws-c-stats { margin: 6px 0 0; border-radius: 18px; border: 1px solid rgba(var(--sh), .07); background: rgba(var(--sh), .04); }
+/* the pill that says "open" like the Read more button */
+.ws-rail-item .ws-tile:not(.static)::after { content: "Open \2192"; align-self: flex-start; margin: 8px 8px 2px; padding: 9px 18px; border-radius: 14px; font-weight: 700; font-size: 14px; background: var(--brand, #0f4d38); color: #fff; box-shadow: 0 8px 18px -10px rgba(var(--sh0), .6); }
+.ws-rail-item .ws-tile.ws-invc:not(.static)::after, .ws-rail-item .ws-tile.ws-jobc:not(.static)::after { content: "Open \2192"; }
+/* arrows: rounded squares at the sides; dots underneath */
+.ws-rail-arrow { width: 44px; height: 44px; border-radius: 16px; top: 45%; background: rgba(var(--sh), .72); color: #fff; border: 1px solid rgba(255,255,255,.12); }
+.ws-rail-arrow.left { left: 6px; } .ws-rail-arrow.right { right: 6px; }
+.ws-dots { display: flex; justify-content: center; gap: 10px; margin: -6px 0 6px; }
+.ws-dots button { width: 10px; height: 10px; padding: 0; border: 0; border-radius: 50%; background: rgba(var(--sh), .18); cursor: pointer; transition: width .25s var(--lf-ease, ease), background .25s; }
+.ws-dots button.on { width: 26px; border-radius: 99px; background: var(--brand, #0f4d38); }
+.ws-latest { top: 22px; left: 22px; }
+.ws-hero-top { top: 10px !important; right: 10px !important; }
+.ws-hero-count { bottom: 8px !important; right: 10px !important; }
+html[data-theme="dark"] .ws-stage-pill { background: rgba(255,255,255,.18) !important; color: #f4f4f6 !important; }
+html[data-theme="dark"] .ws-latest { background: rgba(30,32,36,.9); color: #f4f4f6; }

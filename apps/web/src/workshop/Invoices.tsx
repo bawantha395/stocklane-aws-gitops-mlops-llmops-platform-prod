@@ -1,5 +1,6 @@
 import { t } from "../i18n";
 import { askConfirm } from "../ui";
+import { Rows, groupByPeriod } from "./Rows";
 import { InvoiceCard } from "./Cards";
 import { useEffect, useState } from "react";
 import { Bill, autoPrintOn } from "./Bill";
@@ -21,6 +22,11 @@ export function Invoices() {
   const needle = q.trim().toLowerCase();
   const base = filter === "UNPAID" ? owing : filter === "PAID" ? data.filter((i) => i.status === "PAID") : data;
   const shown = base.filter((i) => inRange(i.created_at, range) && (!needle || (i.invoice_number + " " + i.registration + " " + i.customer + " " + (i.phone || "")).toLowerCase().includes(needle)));
+  // rows: money still owed first, then one row per month (newest first); a search or a date filter shows a plain list
+  const rows = !needle && range.k === "all" && shown.length > 0;
+  const newest = [...data].sort((a, b) => (b.created_at < a.created_at ? -1 : 1))[0];
+  const owingShown = filter === "ALL" ? shown.filter((i) => i.status === "UNPAID" || i.status === "PARTIAL") : [];
+  const groups = [...(owingShown.length ? [{ key: "owing", title: t("Not fully paid"), items: [...owingShown].sort((a, b) => (b.created_at < a.created_at ? -1 : 1)) }] : []), ...groupByPeriod(filter === "ALL" ? shown.filter((i) => !(i.status === "UNPAID" || i.status === "PARTIAL")) : shown, (i) => i.created_at, false)];
   return (
     <>
       <div className="ws-toolbar">
@@ -35,8 +41,12 @@ export function Invoices() {
       <DateChips value={range} onChange={setRange} />
       <SummaryBar text={cap(t("bills")) + ": " + shown.length + " · LKR " + lkr(shown.reduce((s, i) => s + (i.status === "VOID" ? 0 : i.total), 0))} file="bills"
         rows={shown.map((i) => ({ Date: dateOnly(i.created_at), Invoice: i.invoice_number, "Vehicle no.": i.registration, Customer: i.customer, Status: i.status, "Total (LKR)": i.total, "Paid (LKR)": i.paid, "Owing (LKR)": i.status === "VOID" ? 0 : i.total - i.paid }))} />
+      {rows ? (
+        <Rows groups={groups} idOf={(i) => i.id} latest={newest?.id} render={(i) => <InvoiceCard i={i} age={days(i.created_at)} onOpen={() => go({ name: "invoice", id: i.id })} />} />
+      ) : (
+        <div className="ws-cards">{shown.map((i) => <InvoiceCard key={i.id} i={i} age={days(i.created_at)} onOpen={() => go({ name: "invoice", id: i.id })} />)}</div>
+      )}
       <div className="ws-cards">
-        {shown.map((i) => <InvoiceCard key={i.id} i={i} age={days(i.created_at)} onOpen={() => go({ name: "invoice", id: i.id })} />)}
         {!shown.length && <Empty action={filter === "UNPAID" ? undefined : { label: t("Jobs"), onClick: () => go({ name: "jobs" }) }}>{filter === "UNPAID" ? "Everything is paid." : "No invoices yet. Open a job and press Create invoice. It will appear here."}</Empty>}
       </div>
     </>
