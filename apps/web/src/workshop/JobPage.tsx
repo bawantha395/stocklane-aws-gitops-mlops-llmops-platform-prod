@@ -1,5 +1,6 @@
 import { t } from "../i18n";
 import { toast, askConfirm } from "../ui";
+import { AlertTriangle } from "lucide-react";
 import { isPractice } from "../practice";
 import { JobPhotos } from "./Photos";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -79,7 +80,27 @@ export function JobPage({ id }: { id: string }) {
     toast(op === "use" ? p.name + " +1. " + t("In stock") + ": " + left : p.name + " " + t("taken back to stock") + ". " + t("In stock") + ": " + left);
   });
   const invoice = async () => {
-    if (!(await askConfirm("The job will be locked. You can still take payments and, as owner, void the bill.", { title: "Create the invoice for LKR " + lkr(totals.total) + "?", confirm: "Create invoice" }))) return;
+    // One review box before the bill is made: what will be billed, and a warning when a part has no price.
+    const unpriced = lines.parts.filter((p) => num(p.unit_price) <= 0 && num(p.quantity) > 0);
+    const body = (
+      <div className="ui-review">
+        <p className="ui-review-who"><b>{job.registration}</b>{job.customer ? " · " + job.customer : ""}</p>
+        {unpriced.length > 0 && <p className="ui-review-warn" role="alert"><AlertTriangle size={16} aria-hidden="true" /> {t("No price on")}: {unpriced.map((p) => p.name).join(", ")}. {t("They will be billed at LKR 0.00.")}</p>}
+        <table>
+          <tbody>
+            {lines.parts.map((p, i) => <tr key={"p" + i} className={num(p.unit_price) <= 0 ? "nop" : ""}><td>{num(p.quantity)} × {p.name}</td><td>{lkr(partAmount(p))}</td></tr>)}
+            {lines.labour.map((l, i) => <tr key={"l" + i}><td>{l.description}</td><td>{lkr(num(l.amount))}</td></tr>)}
+            {num(f.discount) > 0 && <tr><td>{t("Discount")}</td><td>-{lkr(num(f.discount))}</td></tr>}
+            {totals.tax > 0 && <tr><td>{t("Tax")}</td><td>{lkr(totals.tax)}</td></tr>}
+            <tr className="sum"><td>{t("Total")} (LKR)</td><td>{lkr(totals.total)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    );
+    if (!(await askConfirm("The job will be locked. You can still take payments and, as owner, void the bill.", { title: unpriced.length ? t("Some parts have no price") : t("Review the invoice"), confirm: unpriced.length ? t("Create anyway") : t("Create invoice"), danger: unpriced.length > 0, body }))) {
+      if (unpriced.length) toast(t("Set the price of") + " " + unpriced[0].name, { bad: true });
+      return;
+    }
     void run(async () => {
       const current = dirty ? await save() : job;
       const made = await command<Invoice>("/api/workshop/jobs/" + id + "/invoice", { revision: current.revision });
@@ -124,7 +145,7 @@ export function JobPage({ id }: { id: string }) {
   return (
     <div className="ws-job">
       <div className="ws-job-head">
-        <div><h2>{job.registration}</h2><p>{job.job_no && <b className="ws-jobno">{job.job_no}</b>} {dateOnly(job.created_at)} <Pill s={job.status} /></p>{job.quote_id && <p className="ws-fromquote muted">{t("From")} <button type="button" className="linklike" onClick={() => go({ name: "quote", id: job.quote_id })}>{job.quote_number || t("estimate")}</button></p>}</div>
+        <div><h2>{job.registration}</h2><p>{job.job_no && <b className="ws-jobno">{job.job_no}</b>} {dateOnly(job.created_at)} <Pill s={job.status} /></p>{job.status === "OPEN" && !!job.voids?.length && <p className="ws-fromquote muted">{t("Invoice")} {job.voids[job.voids.length - 1].invoice_number} {t("was voided on")} {dateOnly(job.voids[job.voids.length - 1].at)}. {t("The parts are still on this job; change them here and make a new invoice.")}</p>}{job.quote_id && <p className="ws-fromquote muted">{t("From")} <button type="button" className="linklike" onClick={() => go({ name: "quote", id: job.quote_id })}>{job.quote_number || t("estimate")}</button></p>}</div>
         <div className="ws-bar">
           {!locked && f.phone && <button className="button secondary small" data-tour="cost-so-far" onClick={() => costSoFar()}>{t("Cost so far")}</button>}
           {!madeNow && <button className="button secondary small" data-tour="print-jobcard" onClick={() => printJobCard(dirty ? { ...job, customer: f.customer, address: f.address, phone: f.phone, vehicle: f.vehicle, chassis: f.chassis, invoice_type: f.invoice_type as Job["invoice_type"], odometer: f.odometer === "" ? undefined : Number(f.odometer), summary: f.summary, mechanic: f.mechanic } : job, business)}>{t("Print job card")}</button>}

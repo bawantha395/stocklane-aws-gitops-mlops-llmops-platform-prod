@@ -368,7 +368,12 @@ function App() {
     const matchesKind =
       activityKind === "ALL" ||
       (activityKind === "IN" && incoming) ||
-      (activityKind === "OUT" && outgoing);
+      (activityKind === "OUT" && outgoing) ||
+      (activityKind === "RECEIVED" && ["RECEIPT", "OPENING"].includes(movement.kind)) ||
+      (activityKind === "ISSUED" && movement.kind === "ISSUE") ||
+      (activityKind === "RETURNED" && movement.kind === "RETURN") ||
+      (activityKind === "GIVEN" && movement.kind === "STOCK_OUT") ||
+      (activityKind === "COUNTED" && ["COUNT_IN", "COUNT_OUT"].includes(movement.kind));
     const matchesText =
       !query ||
       [movement.name, movement.sku, movement.actor, movement.receiver_name]
@@ -1965,9 +1970,14 @@ function App() {
               <label className="stock-field">
                 Movement
                 <select value={activityKind} onChange={(event) => setActivityKind(event.target.value)}>
-                  <option value="ALL">All movements</option>
-                  <option value="IN">In</option>
-                  <option value="OUT">Out</option>
+                  <option value="ALL">{t("All movements")}</option>
+                  <option value="RECEIVED">{t("Received")}</option>
+                  <option value="ISSUED">{t("Issued to workshop")}</option>
+                  <option value="RETURNED">{t("Returned from job")}</option>
+                  <option value="GIVEN">{t("Given out")}</option>
+                  <option value="COUNTED">{t("Counted")}</option>
+                  <option value="IN">{t("All coming in")}</option>
+                  <option value="OUT">{t("All going out")}</option>
                 </select>
               </label>
               <button className="button secondary small" onClick={() => { setActivitySearch(""); setActivityKind("ALL"); setActivityRange(ALL); }}>Clear filters</button>
@@ -2029,6 +2039,7 @@ function App() {
                           <button type="button" className="doc-link" title={t("Print this note")} onClick={() => void openPdf("/api/inventory/movements/" + m.id + "/note.pdf", m.doc_no + ".pdf").catch((e) => toast((e as Error).message, { bad: true }))}>{m.doc_no}</button>
                         )}
                         {m.kind === "RECEIPT" && (m.supplier || m.reference) && <small>{[m.supplier, m.reference].filter(Boolean).join(" · ")}</small>}
+                        {(m.kind === "RETURN" || m.kind === "ISSUE") && (m.reference || (m.note && !m.note.startsWith("Undo"))) && <small>{m.reference || m.note}</small>}
                         {owner && m.kind === "RECEIPT" && !(m.note || "").startsWith("Undo") && (costEdit?.id === m.id ? (
                           <small className="cost-edit">
                             <input aria-label={t("Cost price per unit (LKR)")} inputMode="decimal" maxLength={12} autoFocus value={costEdit.value} disabled={costEdit.busy} onChange={(e) => setCostEdit({ id: m.id, value: e.target.value.replace(/[^0-9.]/g, "") })} />

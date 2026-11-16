@@ -17,7 +17,7 @@ export type Job = {
   parts: Part[]; labour: Labour[]; discount: number; tax_rate?: number; parts_total: number; labour_total: number; subtotal: number; tax: number; total: number;
   next_service_date?: string; next_service_km?: number; created_at: string; lines?: number; age_days?: number;
   front_photo?: string; plate_photo?: string; before_photos?: string[]; photo_count?: number;
-  job_no?: string; chassis?: string; invoice_type?: "CASH" | "CREDIT" | "INSURANCE" | "WARRANTY"; out_at?: string; quote_number?: string; quote_id?: string;
+  job_no?: string; chassis?: string; invoice_type?: "CASH" | "CREDIT" | "INSURANCE" | "WARRANTY"; out_at?: string; quote_number?: string; quote_id?: string; voids?: { invoice_number: string; at: string }[];
   stage?: Stage; brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean;
   delete_requested?: boolean; delete_request?: DeleteRequest; undo_seconds_left?: number; archive_reason?: string; archived_by?: string; archived_at?: string;
 };

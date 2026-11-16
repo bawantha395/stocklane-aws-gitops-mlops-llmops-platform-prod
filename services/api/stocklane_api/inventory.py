@@ -444,7 +444,7 @@ def record_movement(key, who, body):
 
 
 # ---------- stock used on a workshop job ----------
-def job_stock_ops(product, kind, quantity, job_id, who, note, price=None):
+def job_stock_ops(product, kind, quantity, job_id, who, note, price=None, ref=None):
     """Operations that take a part for a workshop job (ISSUE) or put it back (RETURN). The workshop adds them to its own
     transaction, so the job line and the stock always change together. Returns (operations, balance after)."""
     if kind not in ('ISSUE', 'RETURN'):
@@ -466,7 +466,7 @@ def job_stock_ops(product, kind, quantity, job_id, who, note, price=None):
         values[':nf'] = False
     ops = [update('PRODUCT', product['id'], 'SET quantity = :new', values, condition=cond)]
     rows, _ = movement_items(product, kind, quantity, product['selling_price'] if price is None else price, job_id, None, who, note,
-                             None, None, created)
+                             None, None, created, {'reference': ref} if ref else None)
     return ops + rows, balance
 
 

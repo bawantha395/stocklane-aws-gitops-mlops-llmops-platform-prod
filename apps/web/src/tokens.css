@@ -43,12 +43,14 @@ button:not(:disabled):active, .button:not(:disabled):active, a.button:active { t
 @media (min-width: 761px) { .ui-sheet-back { align-items: center; } .ui-sheet { border-radius: var(--lf-r-lg); } }
 @keyframes ui-up { from { transform: translateY(40px); opacity: 0; } }
 /* Toasts */
-.ui-toasts { position: fixed; left: 0; right: 0; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 120; display: grid; gap: 8px; justify-items: center; pointer-events: none; }
-.ui-toast { pointer-events: auto; max-width: min(92vw, 440px); padding: 12px 18px; border-radius: 16px; background: #1c1c1e; color: #fff; font-size: 15px; box-shadow: var(--lf-shadow-2); display: flex; gap: 12px; align-items: center; animation: ui-toast .35s var(--lf-ease) both; }
-.ui-toast.bad { background: #7f1d1d; }
-.ui-toast button { background: none; border: 0; color: #9fd0ff; font-weight: 700; font-size: 15px; }
-@keyframes ui-toast { from { transform: translateY(24px) scale(.96); opacity: 0; } }
-@media (min-width: 761px) { .ui-toasts { bottom: 24px; } }
+.ui-toasts { position: fixed; left: 0; right: 0; top: calc(12px + env(safe-area-inset-top)); z-index: 120; display: grid; gap: 8px; justify-items: center; pointer-events: none; }
+.ui-toast { pointer-events: auto; max-width: min(92vw, 420px); padding: 12px 16px; border-radius: 16px; background: var(--surface, #fff); color: var(--ink, #14231f); border: 1px solid var(--lf-line, #e5e5ea); border-left: 5px solid var(--lf-green, #0f5a43); font-size: 14.5px; line-height: 1.35; box-shadow: 0 10px 30px rgba(0,0,0,.14), 0 2px 6px rgba(0,0,0,.06); display: flex; gap: 10px; align-items: center; animation: ui-toast .35s var(--lf-ease) both; }
+.ui-toast > svg { flex: none; color: var(--lf-green, #0f5a43); }
+.ui-toast.bad { border-left-color: #b91c1c; background: var(--st-warn-bg, #fde4e4); color: #7f1d1d; }
+.ui-toast.bad > svg { color: #b91c1c; }
+.ui-toast button { background: none; border: 0; color: var(--lf-green, #0f5a43); font-weight: 700; font-size: 14.5px; margin-left: 4px; }
+@keyframes ui-toast { from { transform: translateY(-16px) scale(.97); opacity: 0; } }
+@media (min-width: 761px) { .ui-toasts { top: 84px; } }
 .theme-toggle { min-width: 44px; min-height: 40px; border-radius: 999px; border: 1px solid var(--lf-line); background: var(--surface); font-size: 18px; }
 @media (prefers-reduced-motion: reduce) { .ui-toast, .ui-sheet, .ui-sheet-back { animation: none; } button:active { transform: none !important; } }
 .cmd-input { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 14px; border: 1px solid var(--lf-line); border-radius: 16px; background: var(--surface); }

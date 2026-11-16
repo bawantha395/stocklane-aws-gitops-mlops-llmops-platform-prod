@@ -91,7 +91,11 @@ function ReturnParts({ inv, onClose, onDone }: { inv: Invoice; onClose: () => vo
       )}
       <label className="ws-field">{t("Reason")} *<input required value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Wrong part, customer cancelled" /></label>
       <label className="ws-field">{t("Given back by")}<select value={method} onChange={(e) => setMethod(e.target.value)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK">Bank transfer</option><option value="OTHER">Other</option></select></label>
-      {credit > 0 && <p className="ws-return-sum">{t("Bill goes down by about")} <b>LKR {lkr(credit)}</b></p>}
+      {credit > 0 && (() => {
+        const newTotal = Math.max(num(inv.total) - credit, 0), giveBack = Math.max(paid - newTotal, 0);
+        return <p className="ws-return-sum">{t("Bill goes down by about")} <b>LKR {lkr(credit)}</b><br />
+          {giveBack > 0.005 ? <>{t("Money you give back")}: <b>LKR {lkr(giveBack)}</b></> : <>{t("No money to give back. The customer still owes")} <b>LKR {lkr(newTotal - paid)}</b></>}</p>;
+      })()}
       {err && <p role="alert" className="stock-error">{err}</p>}
       <div className="ws-actions"><button type="button" className="button secondary" disabled={busy} onClick={onClose}>{t("Cancel")}</button><button className="button primary" disabled={busy || (!picked.length && paid <= 0)}>{picked.length ? t("Return to stock and refund") : t("Save refund")}</button></div>
     </form>

@@ -173,7 +173,7 @@ html[data-theme="dark"] .counter-lowchip { color: #f0b266; }
 
 /* Toasts live outside the app shell: give them the app font, and keep them clear of the page's main buttons on desktop */
 .ui-toasts { font-family: "Inter", "SF Pro Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-@media (min-width: 761px) { .ui-toasts { left: auto; right: 24px; bottom: 24px; justify-items: end; } }
+@media (min-width: 761px) { .ui-toasts { left: auto; right: 24px; top: 84px; bottom: auto; justify-items: end; } }
 
 /* Language switch: a comfortable tap target on phones */
 @media (max-width: 760px) { .lang-toggle button { min-height: 36px; } }
@@ -426,3 +426,14 @@ html[data-theme="dark"] .ws-actionbar { background: var(--surface, #1c1e21) !imp
 .ws-newq-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .cost-edit { display: flex; gap: 6px; align-items: center; }
 .cost-edit input { width: 96px; padding: 4px 6px; font: inherit; font-size: 12px; border: 1px solid #c9c5bb; border-radius: 6px; }
+
+/* invoice review box */
+.ui-review { margin: 0 0 14px; max-height: 46vh; overflow: auto; }
+.ui-review-who { margin: 0 0 8px !important; color: var(--ink, #14231f) !important; }
+.ui-review-warn { display: flex; gap: 6px; align-items: flex-start; margin: 0 0 10px !important; padding: 8px 10px; border-radius: 12px; background: var(--st-warn-bg, #fde4e4); color: #7f1d1d !important; font-size: 14px; }
+.ui-review-warn svg { flex: none; margin-top: 2px; }
+.ui-review table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.ui-review td { padding: 6px 0; border-bottom: 1px solid var(--lf-line, #e5e5ea); vertical-align: top; }
+.ui-review td:last-child { text-align: right; white-space: nowrap; padding-left: 12px; font-variant-numeric: tabular-nums; }
+.ui-review tr.nop td { color: #b91c1c; font-weight: 600; }
+.ui-review tr.sum td { border-bottom: 0; border-top: 2px solid var(--lf-ink, #14231f); font-weight: 800; font-size: 16px; padding-top: 9px; }

@@ -662,7 +662,8 @@ button.ws-kpi:hover { transform: translateY(-4px); box-shadow: 0 22px 40px -20px
 /* PAID / VOID: a large diagonal watermark across the middle of the bill - outlined letters inside a rounded border, soft purple-blue */
 .ws-bill-stamp { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%) rotate(-18deg); font-weight: 800; font-size: 130px; line-height: 1.05; letter-spacing: .06em; font-family: inherit; color: transparent; -webkit-text-stroke: 3px #7a6fd0; padding: 0 34px; border: 10px solid #7a6fd0; border-radius: 40px; opacity: .38; pointer-events: none; user-select: none; white-space: nowrap; z-index: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .ws-bill-stamp.void { -webkit-text-stroke-color: #73737a; border-color: #73737a; }
-@media (max-width: 700px) { .ws-bill-stamp { font-size: 72px; -webkit-text-stroke-width: 2px; border-width: 6px; border-radius: 22px; padding: 0 18px; } }
+.ws-bill-stamp.refunded { -webkit-text-stroke-color: #c0784a; border-color: #c0784a; font-size: 76px; }
+@media (max-width: 700px) { .ws-bill-stamp.refunded { font-size: 40px; } .ws-bill-stamp { font-size: 72px; -webkit-text-stroke-width: 2px; border-width: 6px; border-radius: 22px; padding: 0 18px; } }
 /* ===== Phase 1: scroll feel + type scale + tidy-up ===== */
 .ws h1.ws-large { font-weight: 700; font-size: clamp(30px, 5vw, 40px); line-height: 1.1; font-family: inherit; letter-spacing: -.02em; margin: 2px 0 14px; }
 .ws .eyebrow { font-size: 13px; letter-spacing: .12em; }

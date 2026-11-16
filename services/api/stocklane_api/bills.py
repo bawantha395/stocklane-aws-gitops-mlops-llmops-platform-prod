@@ -229,9 +229,12 @@ def invoice(i):
     d.y = max(d.y + 24, H - MARGIN - 50) if len(d.pages) == 1 and d.y < H - MARGIN - 80 else d.y + 24
     d.line(R - 170, d.y, R, d.y)
     d.text(R, d.y + 12, 'Authorised signature', 8.5, align='r', color=MUTED)
-    if status in ('PAID', 'VOID'):
+    if status in ('PAID', 'VOID', 'REFUNDED'):
         for n in range(len(d.pages)):
-            d.watermark('PAID' if status == 'PAID' else 'VOID', (0.77, 0.75, 0.92) if status == 'PAID' else (0.8, 0.8, 0.82), n)
+            if status == 'REFUNDED':
+                d.watermark('REFUNDED', (0.9, 0.78, 0.7), n, size=70)
+            else:
+                d.watermark('PAID' if status == 'PAID' else 'VOID', (0.77, 0.75, 0.92) if status == 'PAID' else (0.8, 0.8, 0.82), n)
     return d.render()
 
 

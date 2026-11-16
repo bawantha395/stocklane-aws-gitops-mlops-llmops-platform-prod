@@ -215,7 +215,7 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   d.y = d.pages.length === 1 && d.y < H - MARGIN - 80 ? Math.max(d.y + 24, H - MARGIN - 50) : d.y + 24;
   d.line(R - 170, d.y, R, d.y);
   d.text(R, d.y + 12, "Authorised signature", 8.5, false, "r", MUTED);
-  if (status === "PAID" || status === "VOID") for (let n = 0; n < d.pages.length; n++) d.watermark(status === "PAID" ? "PAID" : "VOID", status === "PAID" ? [0.77, 0.75, 0.92] : [0.8, 0.8, 0.82], n);
+  if (status === "PAID" || status === "VOID" || status === "REFUNDED") for (let n = 0; n < d.pages.length; n++) { if (status === "REFUNDED") d.watermark("REFUNDED", [0.9, 0.78, 0.7], n, 70); else d.watermark(status === "PAID" ? "PAID" : "VOID", status === "PAID" ? [0.77, 0.75, 0.92] : [0.8, 0.8, 0.82], n); }
   return d.render();
 }
 

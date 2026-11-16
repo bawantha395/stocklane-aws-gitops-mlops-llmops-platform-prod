@@ -315,6 +315,11 @@ def chassis_no(value):
     return text(value, 'Chassis number', 30).upper().replace(' ', '')
 
 
+def job_ref(j, inv_no=None):
+    """What a stock movement points back to: the bill (when there is one), the job number and the vehicle."""
+    return ' · '.join(x for x in (inv_no, j.get('job_no'), j.get('registration')) if x)
+
+
 def next_job_no():
     """The next paper job card number (JOB-0001...). The counter row changes in the same transaction as the job, and only if nobody
     took that number first, so two people saving at once never get the same number (the loser is retried by command())."""
@@ -725,7 +730,7 @@ def use_stock(job_id, key, who, body):
                 raise bad('At most %d stock parts on one job' % MAX_STOCK_LINES)
             if line is None and len(parts) >= 60:
                 raise bad('Too many part lines on this job')
-            stock_ops, balance = inventory.job_stock_ops(product, 'ISSUE', qty, job_id, who, 'Used on ' + current['registration'])
+            stock_ops, balance = inventory.job_stock_ops(product, 'ISSUE', qty, job_id, who, 'Used on ' + current['registration'], ref=job_ref(current))
             if line:
                 line['quantity'] += qty
             else:
@@ -736,7 +741,7 @@ def use_stock(job_id, key, who, body):
                 raise conflict('This part was not taken from stock for this job')
             if qty > line['quantity']:
                 raise conflict('Only %s of this part are on the job' % line['quantity'].normalize())
-            stock_ops, balance = inventory.job_stock_ops(product, 'RETURN', qty, job_id, who, 'Taken back from ' + current['registration'], line['unit_price'])
+            stock_ops, balance = inventory.job_stock_ops(product, 'RETURN', qty, job_id, who, 'Taken back from ' + current['registration'], line['unit_price'], ref=job_ref(current))
             line['quantity'] -= qty
             if line['quantity'] == 0:
                 parts.remove(line)
@@ -763,7 +768,7 @@ def release_stock(current, who, why):
             parts.append(p)
             continue
         product = inventory.load_product(pid)
-        stock_ops, _ = inventory.job_stock_ops(product, 'RETURN', p['quantity'], current['id'], who, why, p['unit_price'])
+        stock_ops, _ = inventory.job_stock_ops(product, 'RETURN', p['quantity'], current['id'], who, why, p['unit_price'], ref=job_ref(current))
         ops += stock_ops
         parts.append({k: v for k, v in p.items() if k != 'product_id'})
     return ops, parts
@@ -885,7 +890,8 @@ def invoice_status(total, paid, payments=()):
     """PAID, PARTIAL or UNPAID. A bill whose money all went back to the customer is REFUNDED, not 'unpaid': nothing is chased for it
     (void it to correct the job, or take a new payment and it becomes part paid or paid again)."""
     if paid >= total:
-        return 'PAID'
+        # every part came back and the money went back too: the bill is 0.00 with 0.00 paid, which is REFUNDED, not 'paid'
+        return 'REFUNDED' if total <= 0 and paid <= 0 and any(p.get('refund') for p in payments) else 'PAID'
     if paid > 0:
         return 'PARTIAL'
     return 'REFUNDED' if any(p.get('refund') for p in payments) else 'UNPAID'
@@ -915,8 +921,9 @@ def overdue_days(i, terms=None):
 
 def settled(i):
     """Old bills saved before the REFUNDED status: all money given back and nothing left paid, so show REFUNDED, not 'unpaid'."""
-    if i.get('status') == 'UNPAID' and not i.get('paid') and any(p.get('refund') for p in i.get('payments') or ()):
-        return dict(i, status='REFUNDED')
+    if not i.get('paid') and any(p.get('refund') for p in i.get('payments') or ()):
+        if i.get('status') == 'UNPAID' or (i.get('status') == 'PAID' and not i.get('total')):  # a 0.00 bill saved as PAID after every part came back
+            return dict(i, status='REFUNDED')
     return i
 
 
@@ -1051,6 +1058,8 @@ def void_invoice(invoice_id, key, who, body):
         new = dict(current, status='VOID', revision=int(current['revision']) + 1, voided_by=who, voided_at=now())
         reopened = clean({k: v for k, v in j.items() if k not in ('invoice_id', 'invoice_number', 'tax_rate')})
         reopened.update(status='OPEN', revision=int(j['revision']) + 1, updated_at=now())
+        # a note on the job itself: the bill was voided and the parts are still on the job (stock did not move)
+        reopened['voids'] = list(j.get('voids') or []) + [{'invoice_number': current['invoice_number'], 'at': now(), 'by': who}]
         # parts that already came back into stock after the bill are not on the reopened job any more, or cancelling it would return them twice
         if len(j.get('parts', [])) == len(current['parts']):
             kept = []
@@ -1128,7 +1137,7 @@ def return_parts(invoice_id, key, who, body):
         j = job(current['job_id'])
         for pid, (qty, price) in per_product.items():
             stock_ops, _ = inventory.job_stock_ops(inventory.load_product(pid), 'RETURN', qty, current['job_id'], who,
-                                                   'Returned after invoice ' + current['invoice_number'] + ': ' + reason, price)
+                                                   'Returned after invoice ' + current['invoice_number'] + ': ' + reason, price, ref=job_ref(j, current['invoice_number']))
             ops += stock_ops
         ops.append(audit('INVOICE_RETURN', j, who, current['invoice_number'] + ' LKR ' + format(credit, ',.2f') + ': ' + reason))
         return ops, [CHANGED] + [None] * (len(ops) - 1), public(new)

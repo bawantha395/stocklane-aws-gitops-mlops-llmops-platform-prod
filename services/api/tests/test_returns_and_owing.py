@@ -287,3 +287,46 @@ def test_void_after_parts_came_back_does_not_return_them_to_stock_twice(api):
     assert job['status'] == 'OPEN' and job['parts'][0]['quantity'] == 2 and 'returned' not in job['parts'][0]
     ok(api('POST', '/api/workshop/jobs/%s/cancel' % inv['job_id'], {'revision': job['revision']}))
     assert stock(api, p['id']) == 10
+
+
+def test_all_parts_returned_and_refunded_makes_a_refunded_bill_not_a_zero_paid_bill(api):
+    from stocklane_api import core
+    p, inv = invoiced(api, 3, 'CAB-6001')
+    ok(api('POST', '/api/workshop/invoices/%s/payments' % inv['id'], {'amount': inv['total'], 'method': 'CASH'}, role='MECHANIC'))
+    done = ok(api('POST', '/api/workshop/invoices/%s/return' % inv['id'], {'lines': [{'index': 0, 'quantity': 3}], 'reason': 'Wrong part', 'refundMethod': 'CASH'}))
+    one = ok(api('GET', '/api/workshop/invoices/%s' % inv['id']))
+    assert one['total'] == 0 and one['paid'] == 0 and one['status'] == 'REFUNDED'
+    assert [i['status'] for i in ok(api('GET', '/api/workshop/invoices')) if i['id'] == inv['id']] == ['REFUNDED']
+    assert ok(api('GET', '/api/workshop/vehicles/CAB-6001'))['history'][0]['pay_status'] == 'REFUNDED'
+    import base64
+    pdf = base64.b64decode(ok(api('GET', '/api/workshop/invoices/%s/pdf' % inv['id'], role='MECHANIC'))['pdf'])
+    assert pdf.startswith(b'%PDF') and b'Refunded' in pdf  # the bill PDF is made for a refunded bill (and says Refunded)
+    # a bill saved as PAID with 0.00 before this fix reads as REFUNDED too
+    core.transact([core.update('WINV', inv['id'], 'SET #s = :s', {':s': 'PAID'}, names={'#s': 'status'})], [None])
+    assert ok(api('GET', '/api/workshop/invoices/%s' % inv['id']))['status'] == 'REFUNDED'
+
+
+def test_stock_movements_point_back_to_the_job_and_bill(api):
+    p, inv = invoiced(api, 3, 'CAB-6101')
+    ok(api('POST', '/api/workshop/invoices/%s/return' % inv['id'], {'lines': [{'index': 0, 'quantity': 1}], 'reason': 'Wrong part', 'refundMethod': 'CASH'}))
+    rows = [m for m in ok(api('GET', '/api/inventory/movements', role='MECHANIC')) if m['product_id'] == p['id']]
+    back = [m for m in rows if m['kind'] == 'RETURN'][0]
+    used = [m for m in rows if m['kind'] == 'ISSUE'][0]
+    assert inv['invoice_number'] in back['reference'] and 'CAB-6101' in back['reference'] and 'JOB-' in back['reference']
+    assert 'JOB-' in used['reference'] and 'CAB-6101' in used['reference']
+
+
+def test_void_a_bill_then_use_and_take_back_parts_keeps_stock_exact(api):
+    p, inv = invoiced(api, 3, 'CAB-6201')            # 10 in stock, 3 on the bill -> 7
+    assert stock(api, p['id']) == 7
+    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {}))
+    assert stock(api, p['id']) == 7                  # voiding only reopens the job: the 3 parts are still on it
+    job = ok(api('GET', '/api/workshop/jobs/%s' % inv['job_id']))
+    assert job['status'] == 'OPEN' and job['parts'][0]['quantity'] == 3
+    assert job['voids'][-1]['invoice_number'] == inv['invoice_number']   # the job itself says its bill was voided
+    job = ok(use(api, job, p['id'], 2))              # two more
+    assert stock(api, p['id']) == 5 and job['parts'][0]['quantity'] == 5
+    job = ok(use(api, job, p['id'], 4, 'return'))    # four back
+    assert stock(api, p['id']) == 9 and job['parts'][0]['quantity'] == 1
+    ok(api('POST', '/api/workshop/jobs/%s/cancel' % job['id'], {'revision': job['revision']}))
+    assert stock(api, p['id']) == 10                 # cancelling gives the last one back: nothing lost, nothing twice

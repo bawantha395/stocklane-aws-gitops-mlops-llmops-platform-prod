@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { CheckCircle2, AlertTriangle } from "lucide-react";
 import { t } from "./i18n";
 
 /** Button: variants + built-in "Saving…" state + haptic-like press. */
@@ -32,7 +33,7 @@ export function toast(text: string, opts: { bad?: boolean; action?: { label: str
 export function ToastHost() {
   const [, tick] = useState(0);
   useEffect(() => { const f = () => tick((n) => n + 1); subs.add(f); return () => { subs.delete(f); }; }, []);
-  return <div className="ui-toasts" aria-live="polite">{items.map((x) => <div key={x.id} className={"ui-toast" + (x.bad ? " bad" : "")} role="status"><span>{x.text}</span>{x.action && <button onClick={() => { x.action!.run(); items = items.filter((i) => i.id !== x.id); subs.forEach((f) => f()); }}>{x.action.label}</button>}</div>)}</div>;
+  return <div className="ui-toasts" aria-live="polite">{items.map((x) => <div key={x.id} className={"ui-toast" + (x.bad ? " bad" : "")} role={x.bad ? "alert" : "status"}>{x.bad ? <AlertTriangle size={20} aria-hidden="true" /> : <CheckCircle2 size={20} aria-hidden="true" />}<span>{x.text}</span>{x.action && <button onClick={() => { x.action!.run(); items = items.filter((i) => i.id !== x.id); subs.forEach((f) => f()); }}>{x.action.label}</button>}</div>)}</div>;
 }
 
 /** Auto (follows the phone or computer), Light or Dark; remembered on this device. */
@@ -46,12 +47,12 @@ export const applyTheme = (m: ThemePref) => {
 if (typeof window !== "undefined" && window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { if (getTheme() === "auto") applyTheme("auto"); });
 
 /** The app's own "Are you sure?" box (replaces the browser's plain popup). `await askConfirm(...)` gives true or false. */
-type Ask = { message: string; title: string; confirm: string; danger: boolean; done: (ok: boolean) => void };
+type Ask = { message: string; title: string; confirm: string; danger: boolean; body?: ReactNode; done: (ok: boolean) => void };
 let asking: Ask | null = null; const askSubs = new Set<() => void>();
-export function askConfirm(message: string, opts: { title?: string; confirm?: string; danger?: boolean } = {}): Promise<boolean> {
+export function askConfirm(message: string, opts: { title?: string; confirm?: string; danger?: boolean; body?: ReactNode } = {}): Promise<boolean> {
   return new Promise((done) => {
     asking?.done(false);
-    asking = { message, title: opts.title ?? "Are you sure?", confirm: opts.confirm ?? "Yes, continue", danger: !!opts.danger, done };
+    asking = { message, title: opts.title ?? "Are you sure?", confirm: opts.confirm ?? "Yes, continue", danger: !!opts.danger, body: opts.body, done };
     askSubs.forEach((f) => f());
   });
 }
@@ -67,6 +68,7 @@ export function ConfirmHost() {
       <div className="ws-dialog ui-confirm" onClick={(e) => e.stopPropagation()}>
         <h3>{t(a.title)}</h3>
         <p>{t(a.message)}</p>
+        {a.body}
         <div className="ws-actions"><button ref={no} type="button" className="button secondary" onClick={() => close(false)}>{t("Back")}</button><button ref={yes} type="button" className={"button " + (a.danger ? "danger" : "primary")} onClick={() => close(true)}>{t(a.confirm)}</button></div>
       </div>
     </div>, document.body);
