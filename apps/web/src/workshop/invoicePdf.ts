@@ -72,6 +72,12 @@ export class Doc {
     this.rect(x - 4, y - 4, size + 8, size + 8, [1, 1, 1]);
     for (let r = 0; r < n; r++) { let c = 0; while (c < n) { if (!q.modules.get(r, c)) { c++; continue; } let e = c; while (e < n && q.modules.get(r, e)) e++; this.rect(x + c * cell, y + r * cell, (e - c) * cell + 0.2, cell + 0.2, INK); c = e; } }
   }
+  /** Puts another document's pages after this one (its pictures are renumbered); page numbers and the footer then run across both. */
+  absorb(other: Doc) {
+    const base = this.images.length;
+    for (const ops of other.pages) this.pages.push(ops.map((o) => o.replace(/\/Im(\d+) Do/g, (_, n) => "/Im" + (Number(n) + base) + " Do")));
+    this.images.push(...other.images);
+  }
   paragraph(x: number, s: string, max: number, size = 10, color: RGB = INK) {
     for (const part of wrap(s, max, size)) { this.room(size * 1.35); this.text(x, this.y + size, part, size, false, "l", color); this.y += size * 1.35; }
   }
@@ -112,7 +118,8 @@ export function workWarranty(inv: { warranty_until?: string; warranty_km?: numbe
   const text = parts.length ? "Covered " + parts.join(" or ") + (parts.length === 2 ? ", whichever comes first." : ".") : "";
   return inv.warranty_job ? text + (text ? " " : "") + "This is a warranty / redo job." : text;
 }
-export function invoicePdf(inv: Invoice, shop: Business): Blob {
+/** The bill as a document, so it can also be put behind a job card in one file. */
+export function invoiceDoc(inv: Invoice, shop: Business): Doc {
   const b = { ...shop, ...(inv.business || {}) };
   const d = new Doc((b.name || "Workshop") + " | " + inv.invoice_number);
   const taxRate = num(inv.tax_rate), status = inv.status;
@@ -216,8 +223,10 @@ export function invoicePdf(inv: Invoice, shop: Business): Blob {
   d.line(R - 170, d.y, R, d.y);
   d.text(R, d.y + 12, "Authorised signature", 8.5, false, "r", MUTED);
   if (status === "PAID" || status === "VOID" || status === "REFUNDED") for (let n = 0; n < d.pages.length; n++) { if (status === "REFUNDED") d.watermark("REFUNDED", [0.9, 0.78, 0.7], n, 70); else d.watermark(status === "PAID" ? "PAID" : "VOID", status === "PAID" ? [0.77, 0.75, 0.92] : [0.8, 0.8, 0.82], n); }
-  return d.render();
+  return d;
 }
+
+export function invoicePdf(inv: Invoice, shop: Business): Blob { return invoiceDoc(inv, shop).render(); }
 
 /** Saves the invoice as a PDF file on this device. */
 export function downloadInvoicePdf(inv: Invoice, shop: Business) {

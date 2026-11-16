@@ -173,6 +173,7 @@ const SI: Record<string, string> = {
   "Claim number": "හිමිකම් අංකය",
   "Policy number": "ප්‍රතිපත්ති අංකය",
   "Valid until": "වලංගු දිනය",
+  "Print job file": "Job file එක print කරන්න",
   "The parts are still on this job; change them here and make a new invoice.": "කොටස් තවමත් මෙම රැකියාවේ ඇත; මෙහි වෙනස් කර නව ඉන්වොයිසියක් සාදන්න.",
   "was voided on": "අවලංගු කළේ",
   "Tax": "බදු",

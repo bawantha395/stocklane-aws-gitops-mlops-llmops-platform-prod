@@ -560,7 +560,10 @@ def get_job(job_id, who='', owner=False):
     out = view(current, business()['tax_rate'])
     out['parts'] = with_part_nos(out['parts'])
     if current.get('invoice_id') and current['status'] == 'INVOICED':
-        out['parts'] = returned_marks(out['parts'], get('WINV', current['invoice_id']))
+        inv = get('WINV', current['invoice_id'])
+        out['parts'] = returned_marks(out['parts'], inv)
+        out['returns'] = [{'at': c['at'], 'reason': c.get('reason', ''), 'quantity': sum(l.get('quantity') or ZERO for l in c.get('lines') or ())}
+                          for c in (inv or {}).get('credits') or ()]
     left = UNDO_SECONDS - (datetime.now(COLOMBO) - datetime.fromisoformat(current['created_at'])).total_seconds()
     out['undo_seconds_left'] = int(left) if current['status'] == 'OPEN' and left > 0 and (owner or current.get('created_by') == who) else 0
     req = get('WREQ', job_id)
@@ -1250,17 +1253,27 @@ def report(start='', end=''):
         created = local_date(i['created_at']).isoformat()
         if not start <= created <= end:
             continue
+        if i['status'] == 'REFUNDED' and i['total'] <= 0:
+            continue  # every part came back and the money went back: that is no sale (its cash is already counted above)
+        # parts that came back are not sales: count what the customer kept, and let the tax be whatever makes the bill add up
+        kept = [dict(p, quantity=p['quantity'] - (p.get('returned') or ZERO)) for p in i['parts']]
+        kept = [p for p in kept if p['quantity'] > 0]
+        parts_net = sum((line_total(p) for p in kept), ZERO)
+        labour_net = sum((l['amount'] for l in i['labour']), ZERO)
         count += 1
         cars.add(i['vehicle_key'])
         period_unpaid += balance
-        for k in sums:
-            sums[k] += i.get(k, ZERO)
+        sums['parts_total'] += parts_net
+        sums['labour_total'] += labour_net
+        sums['discount'] += i.get('discount', ZERO)
+        sums['tax'] += i['total'] - (parts_net + labour_net - i.get('discount', ZERO))
+        sums['total'] += i['total']
         by_day[created] += i['total']
         name = i.get('mechanic') or 'Not set'
         row = by_mechanic.setdefault(name.lower(), {'mechanic': name, 'jobs': 0, 'total': ZERO})
         row['jobs'] += 1
         row['total'] += i['total']
-        for p in i['parts']:
+        for p in kept:
             e = top_parts.setdefault(p['name'].lower(), {'name': p['name'], 'quantity': ZERO, 'amount': ZERO})
             e['quantity'] += p['quantity']
             e['amount'] += line_total(p)

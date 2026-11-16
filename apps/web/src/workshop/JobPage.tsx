@@ -149,6 +149,7 @@ export function JobPage({ id }: { id: string }) {
         <div className="ws-bar">
           {!locked && f.phone && <button className="button secondary small" data-tour="cost-so-far" onClick={() => costSoFar()}>{t("Cost so far")}</button>}
           {!madeNow && <button className="button secondary small" data-tour="print-jobcard" onClick={() => printJobCard(dirty ? { ...job, customer: f.customer, address: f.address, phone: f.phone, vehicle: f.vehicle, chassis: f.chassis, invoice_type: f.invoice_type as Job["invoice_type"], odometer: f.odometer === "" ? undefined : Number(f.odometer), summary: f.summary, mechanic: f.mechanic } : job, business)}>{t("Print job card")}</button>}
+          {job.status === "INVOICED" && job.invoice_id && <button className="button secondary small" onClick={() => printJobCard(job, business, true)}>{t("Print job file")}</button>}
           <button className="button secondary small" onClick={() => go({ name: "vehicle", id: job.vehicle_key })}>{t("Vehicle file")}</button>
           {job.invoice_id && <button className="button primary small" onClick={() => go({ name: "invoice", id: job.invoice_id! })}>Invoice {job.invoice_number}</button>}
         </div>

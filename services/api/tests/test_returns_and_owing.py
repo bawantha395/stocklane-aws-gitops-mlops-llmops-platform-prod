@@ -330,3 +330,30 @@ def test_void_a_bill_then_use_and_take_back_parts_keeps_stock_exact(api):
     assert stock(api, p['id']) == 9 and job['parts'][0]['quantity'] == 1
     ok(api('POST', '/api/workshop/jobs/%s/cancel' % job['id'], {'revision': job['revision']}))
     assert stock(api, p['id']) == 10                 # cancelling gives the last one back: nothing lost, nothing twice
+
+
+def test_sales_report_counts_only_what_the_customer_kept(api):
+    from test_job_stock import new_job, use
+    p, inv = invoiced(api, 4, 'CAB-7001')
+    ok(api('POST', '/api/workshop/invoices/%s/payments' % inv['id'], {'amount': inv['total'], 'method': 'CASH'}, role='MECHANIC'))
+    ok(api('POST', '/api/workshop/invoices/%s/return' % inv['id'], {'lines': [{'index': 0, 'quantity': 1}], 'reason': 'x', 'refundMethod': 'CASH'}))   # 3 kept
+    j = ok(use(api, new_job(api, 'CAB-7002'), p['id'], 2))
+    inv2 = ok(api('POST', '/api/workshop/jobs/%s/invoice' % j['id'], {'revision': j['revision']}, role='MECHANIC'))
+    ok(api('POST', '/api/workshop/invoices/%s/payments' % inv2['id'], {'amount': inv2['total'], 'method': 'CASH'}, role='MECHANIC'))
+    ok(api('POST', '/api/workshop/invoices/%s/return' % inv2['id'], {'lines': [{'index': 0, 'quantity': 2}], 'reason': 'x', 'refundMethod': 'CASH'}))  # all back
+    r = ok(api('GET', '/api/workshop/report', role='OWNER'))
+    one = ok(api('GET', '/api/workshop/invoices/%s' % inv['id']))
+    assert r['invoices'] == 1 and r['vehicles'] == 1                      # the fully refunded bill is no sale
+    assert r['total'] == one['total'] == r['parts_total'] + r['labour_total'] - r['discount'] + r['tax']
+    assert r['top_parts'][0]['quantity'] == 3 and r['top_parts'][0]['amount'] == r['parts_total']
+    assert r['average'] == r['total']
+    assert r['received'] == r['total']                                    # cash kept = what was sold, refunds taken off
+
+
+def test_job_lists_returns_for_the_printed_status_block(api):
+    p, inv = invoiced(api, 3, 'CAB-6210')
+    assert ok(api('GET', '/api/workshop/jobs/%s' % inv['job_id']))['returns'] == []
+    ok(api('POST', '/api/workshop/invoices/%s/return' % inv['id'], {'lines': [{'index': 0, 'quantity': 2}], 'reason': 'Wrong part'}))
+    job = ok(api('GET', '/api/workshop/jobs/%s' % inv['job_id']))
+    assert len(job['returns']) == 1 and job['returns'][0]['reason'] == 'Wrong part' and float(job['returns'][0]['quantity']) == 2
+    assert job['out_at'] and job['status'] == 'INVOICED'

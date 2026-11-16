@@ -18,7 +18,7 @@ export type Job = {
   next_service_date?: string; next_service_km?: number; created_at: string; lines?: number; age_days?: number;
   front_photo?: string; plate_photo?: string; before_photos?: string[]; photo_count?: number;
   job_no?: string; chassis?: string; invoice_type?: "CASH" | "CREDIT" | "INSURANCE" | "WARRANTY"; out_at?: string; quote_number?: string; quote_id?: string; voids?: { invoice_number: string; at: string }[];
-  stage?: Stage; brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean;
+  stage?: Stage; stage_at?: string; returns?: { at: string; reason: string; quantity: number }[]; brought_by?: string; brought_phone?: string; warranty_until?: string; warranty_km?: number | null; warranty_job?: boolean;
   delete_requested?: boolean; delete_request?: DeleteRequest; undo_seconds_left?: number; archive_reason?: string; archived_by?: string; archived_at?: string;
 };
 export type DeleteRequest = { job_id: string; registration: string; customer: string; reason: string; requested_by: string; requested_at: string; status: "PENDING" | "REJECTED"; note?: string; decided_by?: string };

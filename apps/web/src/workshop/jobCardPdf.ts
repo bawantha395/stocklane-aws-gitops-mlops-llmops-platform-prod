@@ -1,8 +1,8 @@
 /** The paper job card, printed by the system and laid out like Ganga Motors' own card: header, in/out times, job no, the vehicle and
  *  customer lines, then lines for the work. Page 2 is the parts sheet. Details are filled in; the mechanic writes the work and signs.
  *  No prices appear, so it can travel with the vehicle. Built in the browser (A4, Helvetica, ASCII only). */
-import { Doc, INK, MARGIN, R, W, clean, width, wrap, type RGB } from "./invoicePdf";
-import { dateOnly, type Business, type Job } from "./common";
+import { Doc, INK, invoiceDoc, MARGIN, R, W, clean, width, wrap, type RGB } from "./invoicePdf";
+import { dateOnly, STAGE_LABEL, type Business, type Invoice, type Job } from "./common";
 import { getLogo, peekLogo } from "../logoStore";
 import { api, type Product } from "../api";
 import { toast } from "../ui";
@@ -32,8 +32,9 @@ function header(d: Doc, b: Business, title: string) {
   if (rows.length) d.y += 2;
 }
 
-export function jobCardPdf(j: Job, shop: Business, partNos: Record<string, string> = {}): Blob {
-  const d = new Doc((shop.name || "Workshop") + " | " + (j.job_no || "Job card"));
+export function jobCardDoc(j: Job, shop: Business, partNos: Record<string, string> = {}): Doc {
+  const nowIso = new Date().toISOString();
+  const d = new Doc((shop.name || "Workshop") + " | " + (j.job_no || "Job card") + " | Printed " + dateOnly(nowIso) + ", " + hhmm(nowIso));
   header(d, shop, "JOB CARD");
   const dots = (x: number, y: number, w: number, value = "", bold = false) => { d.line(x, y + 1, x + w, y + 1, 0.5, RULE); if (value) d.text(x + 3, y - 2, value, 10, bold); };
   const out = j.out_at;
@@ -66,8 +67,27 @@ export function jobCardPdf(j: Job, shop: Business, partNos: Record<string, strin
   let size = 10, lines = j.summary ? wrap(j.summary, R - MARGIN - 8, size) : [];
   if (lines.length > slots) { size = 8.5; lines = wrap(j.summary, R - MARGIN - 8, size); }
   if (lines.length > slots) { lines = lines.slice(0, slots); const last = lines[slots - 1] || ""; lines[slots - 1] = (last.length > 60 ? last.slice(0, 60) : last) + " ... (more on the job page)"; }
+  // what happened to the job so far goes on the last ruled lines (small grey); the lines between stay free for handwriting
+  const when = (iso: string) => dateOnly(iso) + ", " + hhmm(iso);
+  const status: string[] = [];
+  status.push("Opened " + when(j.created_at));
+  if (j.status === "INVOICED") status.push("Invoiced " + (j.invoice_number || "") + (j.out_at ? ", " + when(j.out_at) : ""));
+  else if (j.status === "CANCELLED") status.push("Cancelled");
+  else if (j.stage) status.push("Now: " + STAGE_LABEL[j.stage] + (j.stage_at ? " (since " + when(j.stage_at) + ")" : ""));
+  for (const r of j.returns || []) status.push("Returned " + r.quantity + (r.quantity === 1 ? " part, " : " parts, ") + dateOnly(r.at) + (r.reason ? " (" + r.reason + ")" : ""));
+  for (const v of j.voids || []) status.push("Voided " + v.invoice_number + ", " + dateOnly(v.at));
+  const total = Math.max(1, Math.floor((qrTop - 10 - d.y) / 26));
+  // keep at least 2 free lines after the complaint; if there is no room, the newest lines win
+  const room = Math.max(0, total - Math.max(lines.length, 1) - 2);
+  const shown = status.length > room ? status.slice(status.length - room) : status;
   let k = 0;
-  while (d.y + 26 < qrTop - 6 || k < 1) { d.y += 26; if (d.y > qrTop - 4) break; if (lines[k]) d.text(MARGIN + 3, d.y - 4, lines[k]!, size); d.line(MARGIN, d.y, R, d.y, 0.5, RULE); k++; }
+  while (d.y + 26 < qrTop - 6 || k < 1) {
+    d.y += 26; if (d.y > qrTop - 4) break;
+    if (lines[k]) d.text(MARGIN + 3, d.y - 4, lines[k]!, size);
+    const si = k - (total - shown.length);
+    if (si >= 0 && shown[si]) d.text(MARGIN + 3, d.y - 4, clean(shown[si]!), 8.5, false, "l", MUTED);
+    d.line(MARGIN, d.y, R, d.y, 0.5, RULE); k++;
+  }
   try { d.qr(R - 56, qrTop, 56, jobLink(j.id)); d.text(R - 60 - 4, qrTop + 30, "Scan to open this job", 7.5, false, "r", MUTED); } catch { /* ignore */ }
   d.text(MARGIN, qrTop + 30, j.mechanic ? "Mechanic: " + j.mechanic : "", 8.5, false, "l", MUTED);
 
@@ -91,13 +111,22 @@ export function jobCardPdf(j: Job, shop: Business, partNos: Record<string, strin
   for (const c of cols.slice(1)) d.line(c.x - 4, top2, c.x - 4, d.y, 0.5, RULE);
   d.line(MARGIN, top2, MARGIN, d.y, 0.5, RULE); d.line(R, top2, R, d.y, 0.5, RULE);
   if (given.length > n) d.text(MARGIN, d.y + 12, "+ " + (given.length - n) + " more parts on the job in the system", 8.5, false, "l", MUTED);
+  return d;
+}
+
+export function jobCardPdf(j: Job, shop: Business, partNos: Record<string, string> = {}): Blob { return jobCardDoc(j, shop, partNos).render(); }
+
+/** The whole file for the shelf: the job card and its parts sheet, then the bill. */
+export function jobFilePdf(j: Job, shop: Business, inv: Invoice, partNos: Record<string, string> = {}): Blob {
+  const d = jobCardDoc(j, shop, partNos);
+  d.absorb(invoiceDoc(inv, shop));
   return d.render();
 }
 
 /** Prints the job card the way a bill is printed: the print dialog opens on this page, no new tab and no blob address.
  *  The PDF is loaded into a hidden frame and that frame is printed. Phones (where a hidden frame cannot print) and any
  *  browser that refuses it get the card in a new tab instead, and finally a saved file. */
-export async function printJobCard(j: Job, shop: Business) {
+export async function printJobCard(j: Job, shop: Business, withBill = false) {
   const phone = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
   const tab = phone ? window.open("", "_blank") : null; // a tab can only be opened straight from the tap
   try { if (tab) tab.document.body.innerHTML = '<p style="font:16px sans-serif;padding:24px">Preparing the job card…</p>'; } catch { /* ignore */ }
@@ -109,14 +138,17 @@ export async function printJobCard(j: Job, shop: Business) {
     if ((j.parts || []).some((p) => p.product_id && !p.part_no)) {
       try { for (const p of await wait(api<Product[]>("/api/inventory/products"))) partNos[p.id] = (p as Product & { part_number?: string }).part_number || p.sku; } catch { /* leave blank */ }
     }
-    const url = URL.createObjectURL(jobCardPdf(j, shop, partNos));
+    let blob: Blob;
+    if (withBill && j.invoice_id) blob = jobFilePdf(j, shop, await wait(api<Invoice>("/api/workshop/invoices/" + j.invoice_id)), partNos);
+    else blob = jobCardPdf(j, shop, partNos);
+    const url = URL.createObjectURL(blob);
     const keep = () => setTimeout(() => URL.revokeObjectURL(url), 30 * 60 * 1000);
     if (tab && !tab.closed) { tab.location.href = url; keep(); return; }
     if (!phone && (await printInFrame(url))) { keep(); return; }
     const t2 = tab && !tab.closed ? tab : window.open(url, "_blank");
     if (t2 && t2 !== tab) { keep(); return; }
-    const a = document.createElement("a"); a.href = url; a.download = (j.job_no || "job-card") + ".pdf"; document.body.appendChild(a); a.click(); a.remove(); keep();
-  } catch (e) { tab?.close(); toast("Could not make the job card: " + (e as Error).message); }
+    const a = document.createElement("a"); a.href = url; a.download = (j.job_no || "job-card") + (withBill ? "-file" : "") + ".pdf"; document.body.appendChild(a); a.click(); a.remove(); keep();
+  } catch (e) { tab?.close(); toast("Could not make the " + (withBill ? "job file" : "job card") + ": " + (e as Error).message); }
 }
 
 /** Loads the PDF in a hidden frame and opens the print dialog. Resolves false when the browser cannot print it that way. */
