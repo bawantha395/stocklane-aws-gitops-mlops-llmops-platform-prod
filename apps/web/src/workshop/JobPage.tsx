@@ -10,7 +10,7 @@ import { StockPicker } from "./StockPicker";
 import { printJobCard } from "./jobCardPdf";
 import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job, STAGE_LABEL, type Stage, waLink } from "./common";
 
-type PartRow = { name: string; quantity: string; unit_price: string; product_id?: string; discount_pct?: string; part_no?: string; returned?: number };
+type PartRow = { name: string; quantity: string; unit_price: string; outside?: boolean; outside_cost?: string; outside_shop?: string; product_id?: string; discount_pct?: string; part_no?: string; returned?: number };
 type LabourRow = { description: string; amount: string };
 type Suggest = { parts: { name: string; price: number; uses: number }[]; labour: { description: string; amount: number; uses: number }[] };
 
@@ -32,7 +32,7 @@ export function JobPage({ id }: { id: string }) {
     setJob(j); setDirty(false);
     setF({ customer: j.customer, address: j.address || "", brought_by: j.brought_by || "", brought_phone: j.brought_phone || "", warranty_until: j.warranty_until || "", warranty_km: j.warranty_km == null ? "" : String(j.warranty_km), warranty_job: j.warranty_job ? "1" : "", phone: j.phone, vehicle: j.vehicle, chassis: j.chassis || "", invoice_type: j.invoice_type || "CASH", odometer: j.odometer == null ? "" : String(j.odometer), summary: j.summary, mechanic: j.mechanic, notes: j.notes,
       discount: j.discount ? String(j.discount) : "", next_service_date: j.next_service_date || "", next_service_km: j.next_service_km == null ? "" : String(j.next_service_km) });
-    setParts(j.parts.map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: String(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(p.part_no ? { part_no: p.part_no } : {}), ...(p.returned ? { returned: p.returned } : {}), ...(p.discount_pct ? { discount_pct: String(p.discount_pct) } : {}) })));
+    setParts(j.parts.map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: String(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(p.outside ? { outside: true, ...(owner ? { outside_cost: p.outside_cost == null ? "" : String(p.outside_cost), outside_shop: p.outside_shop || "" } : {}) } : {}), ...(p.part_no ? { part_no: p.part_no } : {}), ...(p.returned ? { returned: p.returned } : {}), ...(p.discount_pct ? { discount_pct: String(p.discount_pct) } : {}) })));
     setLabour(j.labour.map((l) => ({ description: l.description, amount: String(l.amount) })));
   };
   useEffect(() => { if (data) adopt(data); }, [data]);
@@ -45,7 +45,7 @@ export function JobPage({ id }: { id: string }) {
   const rate = job?.tax_rate ?? business.tax_rate;
   const mechanicList = business.mechanics || [];
   const lines = useMemo(() => ({
-    parts: parts.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), quantity: num(p.quantity), unit_price: num(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(num(p.discount_pct) > 0 ? { discount_pct: num(p.discount_pct) } : {}) })),
+    parts: parts.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), quantity: num(p.quantity), unit_price: num(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(p.outside && !p.product_id ? { outside: true, ...(p.outside_cost !== undefined ? { outside_cost: p.outside_cost } : {}), ...(p.outside_shop !== undefined ? { outside_shop: p.outside_shop.trim() } : {}) } : {}), ...(num(p.discount_pct) > 0 ? { discount_pct: num(p.discount_pct) } : {}) })),
     labour: labour.filter((l) => l.description.trim()).map((l) => ({ description: l.description.trim(), amount: num(l.amount) })),
   }), [parts, labour]);
   const totals = billTotals({ ...lines, discount: num(f.discount), tax_rate: rate });
@@ -242,6 +242,14 @@ export function JobPage({ id }: { id: string }) {
             <input className="ws-l-price" disabled={locked} aria-label="Unit price" inputMode="decimal" placeholder={t("Price")} value={p.unit_price} onChange={(e) => part(i, { unit_price: e.target.value })} />
             <output className="ws-l-total">{lkr(partAmount({ name: p.name, quantity: num(p.quantity), unit_price: num(p.unit_price), discount_pct: num(p.discount_pct) }))}</output>
             {!locked && <button className="ws-l-del" aria-label="Remove part" onClick={() => { setParts(parts.filter((_, k) => k !== i)); setDirty(true); }}>×</button>}
+            {p.outside && (
+              <div className="ws-l-out">
+                <small className="stock-tag out">{t("Bought outside")}</small>
+                <input disabled={locked} aria-label="Cost price per unit" inputMode="decimal" placeholder={owner ? t("Cost each") : t("Cost each (owner sees)")} value={p.outside_cost ?? ""} onChange={(e) => part(i, { outside_cost: e.target.value.replace(/[^0-9.]/g, "") })} />
+                <input disabled={locked} aria-label="Shop" placeholder={t("Shop")} value={p.outside_shop ?? ""} onChange={(e) => part(i, { outside_shop: e.target.value })} />
+                {owner && num(p.outside_cost ?? "") > 0 && num(p.unit_price) > 0 && num(p.quantity) > 0 && <span className="ws-l-margin">{t("Margin")} {lkr(round2((num(p.unit_price) - num(p.outside_cost ?? "")) * num(p.quantity)))}</span>}
+              </div>
+            )}
             {offRow(p, i)}
           </div>
           )
@@ -250,6 +258,7 @@ export function JobPage({ id }: { id: string }) {
           <div className="ws-add" data-tour="part-chips">
             <button className="button primary small" disabled={busy} onClick={() => setPicking(true)}>{t("Pick from stock")}</button>
             <button className="button secondary small" onClick={() => { setParts([...parts, { name: "", quantity: "1", unit_price: "" }]); setDirty(true); }}>+ Add part</button>
+            <button className="button secondary small" data-tour="bought-outside" onClick={() => { setParts([...parts, { name: "", quantity: "1", unit_price: "", outside: true, outside_cost: "", outside_shop: "" }]); setDirty(true); }}>+ {t("Bought outside")}</button>
             {sugg?.parts?.slice(0, 5).map((s) => <button key={s.name} className="ws-quick" onClick={() => { setParts([...parts, { name: s.name, quantity: "1", unit_price: String(s.price) }]); setDirty(true); }}>{s.name}</button>)}
           </div>
         )}

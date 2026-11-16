@@ -1,3 +1,5 @@
+import { ListPick } from "./ListPick";
+const LiveCam = React.lazy(() => import("./Camera").then((m) => ({ default: m.Camera })));
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
@@ -1595,12 +1597,6 @@ function App() {
                           </button>
                           <button
                             className="button secondary"
-                            onClick={() => { setCountId(active.id); navigate("count"); }}
-                          >
-                            {t("Count this item")}
-                          </button>
-                          <button
-                            className="button secondary"
                             onClick={() => setLabelItem(active)}
                           >
                             <Printer size={17} /> QR label
@@ -2089,6 +2085,7 @@ function App() {
           imageId={edit?.image_id || imageId}
           inTask={(inTask || fromCounter.current) && !edit}
           products={items}
+          owner={owner}
           onClose={() => {
             setNewItem(false);
             setEdit(null);
@@ -2213,7 +2210,9 @@ function ProductEditor({
   onClose,
   onSaved,
   onAddedAnother,
+  owner = false,
 }: {
+  owner?: boolean;
   onAddedAnother?: (message: string) => void | Promise<void>;
   item: Item | null;
   draft: Draft | null;
@@ -2266,6 +2265,7 @@ function ProductEditor({
   // A photo can be added while registering: it is stored now and attached to the new item on save.
   const [photoId, setPhotoId] = useState(imageId), [photoBusy, setPhotoBusy] = useState(false), [savedNote, setSavedNote] = useState("");
   const addAnother = useRef(false), formEl = useRef<HTMLFormElement>(null);
+  const [shootPhoto, setShootPhoto] = useState(false);
   const pickPhoto = async (f?: File) => {
     if (!f) return;
     setPhotoBusy(true); setError("");
@@ -2285,6 +2285,20 @@ function ProductEditor({
     setFilled((f) => { if (!f[field]) return f; const next = { ...f }; delete next[field]; return next; });
   };
   const clearAll = () => { (Object.keys(filled) as Field[]).forEach((f) => fieldState[f][1]("")); setFilled({}); };
+  // the shop's own shelf and category lists (Settings); while there are none the two boxes stay free text
+  type Stores = { racks: { name: string; levels: string[] }[]; categories: string[]; shelves: string[] };
+  const [stores, setStores] = useState<Stores>({ racks: [], categories: [], shelves: [] });
+  useEffect(() => { api<Stores>("/api/inventory/stores").then(setStores).catch(() => { /* free text */ }); }, []);
+  const addStore = async (body: Record<string, unknown>) => setStores(await api<Stores>("/api/inventory/stores/add", { method: "POST", body: JSON.stringify(body) }, crypto.randomUUID()));
+  const addCategory = async (name: string) => { await addStore({ kind: "category", name }); return name; };
+  const addShelf = async (text: string) => {
+    const m = /^(.*?)\s*-\s*([^-]+)$/.exec(text), rackName = (m ? m[1] : text).trim(), level = m ? m[2].trim() : "";
+    const rack = stores.racks.find((r) => r.name.toLowerCase() === rackName.toLowerCase());
+    if (rack && level) await addStore({ kind: "level", rack: rack.name, level });
+    else if (rack) throw new Error(t("{rack} is already there. Add a level, like {rack}-A", { rack: rack.name }));
+    else await addStore({ kind: "rack", name: rackName, levels: level ? [level] : [] });
+    return level ? (rack ? rack.name : rackName) + "-" + level : rackName;
+  };
   const nAi = Object.values(filled).filter((x) => x === "ai").length;
   const nLabel = Object.values(filled).filter((x) => x === "label").length;
   const open = (Object.entries(suggested) as [Field, Suggestion][]).filter(
@@ -2432,12 +2446,20 @@ function ProductEditor({
         {photoId && <Photo id={photoId} zoom />}
         {!item && (
           <div className="reg-photo">
+            <button type="button" className="button secondary" disabled={photoBusy || busy} onClick={() => setShootPhoto(true)}>
+              <Camera size={18} /> {photoBusy ? t("Uploading…") : photoId ? t("Retake photo") : t("Take photo")}
+            </button>{" "}
             <label className={"button secondary" + (photoBusy || busy ? " disabled" : "")}>
-              <Camera size={18} /> {photoBusy ? t("Uploading…") : photoId ? t("Change photo") : t("Add photo")}
+              {t("Upload photo")}
               <input type="file" accept="image/*" hidden disabled={photoBusy || busy} onChange={(e) => { void pickPhoto(e.target.files?.[0]); e.target.value = ""; }} />
             </label>
             <small>{t("Optional. Helps Lifta recognise this part later.")}</small>
           </div>
+        )}
+        {shootPhoto && (
+          <React.Suspense fallback={null}>
+            <LiveCam onQR={() => {}} onPhoto={(f) => { setShootPhoto(false); void pickPhoto(f); }} onClose={() => setShootPhoto(false)} />
+          </React.Suspense>
         )}
         {savedNote && <p className="reg-saved" role="status"><Check size={16} /> {savedNote}</p>}
         {banner && (
@@ -2464,7 +2486,11 @@ function ProductEditor({
             ).map(([label, value, , required, field]) => (
               <label className={"stock-field" + (filled[field] ? " filled-" + filled[field] : "")} key={label}>
                 {t(label)}
-                <span className="input-wrap"><input
+                <span className="input-wrap">{(field === "category" && stores.categories.length > 0) || (field === "location" && stores.shelves.length > 0) ? (
+                  <ListPick label={t(label)} value={value} required={required} maxLength={field === "category" ? 80 : 180}
+                    options={field === "category" ? stores.categories : stores.shelves} onChange={(v) => edit(field, v)}
+                    onAdd={owner ? (field === "category" ? addCategory : addShelf) : undefined} placeholder={field === "location" ? t("Pick a shelf") : t("Pick a category")} />
+                ) : <input
                   required={required}
                   maxLength={
                     label === "Manufacturer / brand"
@@ -2477,7 +2503,7 @@ function ProductEditor({
                   list={field === "category" ? "category-options" : field === "brand" ? "brand-options" : undefined}
                   autoComplete={field === "category" || field === "brand" ? "off" : undefined}
                   onChange={(e) => edit(field, e.target.value)}
-                />{badge(field)}</span>
+                />}{badge(field)}</span>
                 {hint(field)}
               </label>
             ))}

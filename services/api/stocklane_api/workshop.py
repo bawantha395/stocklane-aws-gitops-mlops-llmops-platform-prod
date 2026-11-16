@@ -114,6 +114,16 @@ def parts_in(value):
                 'unit_price': money(r.get('unit_price', 0), 'Part price')}
         if r.get('product_id'):
             line['product_id'] = text(r['product_id'], 'Stock part', 64, True)
+        if r.get('outside') and not r.get('product_id'):
+            # a part bought from another shop for this job: it never touches the stock. What was paid and where is for the owner.
+            line['outside'] = True
+            given = [k for k in ('outside_cost', 'outside_shop') if k in r]
+            line['_given'] = given  # what was typed on this save; a field left out keeps its stored value (a mechanic never reads the cost back)
+            if str(r.get('outside_cost') if r.get('outside_cost') is not None else '').strip() != '':
+                line['outside_cost'] = money(r.get('outside_cost'), 'Cost price')
+            shop = text(r.get('outside_shop'), 'Shop', 100, False)
+            if shop:
+                line['outside_shop'] = shop
         if r.get('discount_pct') not in (None, '', 0, '0'):
             pct = num(r['discount_pct'], 'Line discount')
             if pct < 0 or pct > 100 or pct.as_tuple().exponent < -2:
@@ -135,6 +145,11 @@ def stamp_parts(new, old):
         for k in ('added_at', 'part_no'):
             if same and same.get(k):
                 line[k] = same[k]
+        given = line.pop('_given', [])
+        if line.get('outside') and same:
+            for k in ('outside_cost', 'outside_shop'):
+                if k not in given and same.get(k) is not None:
+                    line[k] = same[k]
         line.setdefault('added_at', today().isoformat())
     return new
 
@@ -1237,6 +1252,8 @@ def report(start='', end=''):
     by_day = {(a + timedelta(days=n)).isoformat(): ZERO for n in range((b - a).days + 1)}
     by_mechanic, by_method, top_parts, top_labour, cars = {}, {}, {}, {}, set()
     count, period_unpaid, received = 0, ZERO, ZERO
+    outside = {'lines': 0, 'sales': ZERO, 'cost': ZERO, 'sales_with_cost': ZERO, 'without_cost': 0}
+    by_shop = {}
     ageing, unpaid_list = {'d0_7': ZERO, 'd8_30': ZERO, 'd31_60': ZERO, 'd60_plus': ZERO}, []
     for i in winv():
         if i['status'] == 'VOID':
@@ -1277,6 +1294,22 @@ def report(start='', end=''):
             e = top_parts.setdefault(p['name'].lower(), {'name': p['name'], 'quantity': ZERO, 'amount': ZERO})
             e['quantity'] += p['quantity']
             e['amount'] += line_total(p)
+        for p in kept:
+            if not p.get('outside'):
+                continue
+            sale = line_total(p)
+            outside['lines'] += 1
+            outside['sales'] += sale
+            if p.get('outside_cost') is None:
+                outside['without_cost'] += 1
+                continue
+            paid_out = (p['outside_cost'] * p['quantity']).quantize(MONEY, ROUND_HALF_UP)
+            outside['cost'] += paid_out
+            outside['sales_with_cost'] += sale
+            shop = (p.get('outside_shop') or 'Not named')
+            e = by_shop.setdefault(shop.lower(), {'shop': shop, 'lines': 0, 'cost': ZERO})
+            e['lines'] += 1
+            e['cost'] += paid_out
         for l in i['labour']:
             e = top_labour.setdefault(l['description'].lower(), {'name': l['description'], 'times': 0, 'amount': ZERO})
             e['times'] += 1
@@ -1289,7 +1322,8 @@ def report(start='', end=''):
             'by_mechanic': sorted(by_mechanic.values(), key=lambda r: -r['total']),
             'by_method': sorted(({'method': k, 'amount': v} for k, v in by_method.items()), key=lambda r: -r['amount']),
             'top_parts': sorted(top_parts.values(), key=lambda r: -r['amount'])[:10],
-            'top_labour': sorted(top_labour.values(), key=lambda r: -r['amount'])[:10], 'unpaid_list': unpaid_list[:20]}
+            'top_labour': sorted(top_labour.values(), key=lambda r: -r['amount'])[:10], 'unpaid_list': unpaid_list[:20],
+            'outside': {**outside, 'margin': outside['sales_with_cost'] - outside['cost'], 'by_shop': sorted(by_shop.values(), key=lambda r: -r['cost'])[:10]}}
 
 
 # ---------- PDFs ----------
@@ -1324,6 +1358,19 @@ def stock_note_pdf(movement_id, with_cost=False):
     n['date'] = local_date(n['created_at']).isoformat()
     product = get('PRODUCT', n['product_id']) or {}
     n.update(part_number=product.get('part_number'), location=product.get('location'))
+    ids = n.get('doc_ids') or []
+    if len(ids) > 1:
+        # a note with several parts: every line carries the same running number
+        rows = {r['id']: r for r in batch_get([('MV#' + i, 'M') for i in ids])}
+        lines = []
+        for i in ids:
+            r = rows.get(i)
+            if not r:
+                continue
+            pr = get('PRODUCT', r['product_id']) or {}
+            lines.append({'name': r['name'], 'sku': r.get('sku'), 'part_number': pr.get('part_number'), 'location': pr.get('location'),
+                          'quantity': r['quantity'], 'unit': r.get('unit'), **({'unit_cost': r['unit_cost']} if with_cost and r.get('unit_cost') is not None else {})})
+        n['lines'] = lines
     if not with_cost:
         n.pop('unit_cost', None)  # a printed note carries the price only when the owner asks for it
     if n.get('job_id'):

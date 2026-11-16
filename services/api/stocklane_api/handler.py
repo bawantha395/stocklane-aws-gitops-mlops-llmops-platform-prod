@@ -36,6 +36,10 @@ route('POST', '/api/inventory/products', STAFF, lambda e, p, b, k: inventory.cre
 route('PATCH', '/api/inventory/products/([^/]+)', OWNER, lambda e, p, b, k: inventory.edit_product(k, p[0], actor(e), b))
 route('POST', '/api/inventory/products/([^/]+)/archive', OWNER, lambda e, p, b, k: inventory.archive_product(k, p[0], actor(e), b))
 route('GET', '/api/inventory/movements/([^/]+)/note.pdf', STAFF, lambda e, p, b, k: ('pdf',) + workshop.stock_note_pdf(p[0], 'OWNER' in groups(e) and q(e, 'cost') == '1'))
+route('GET', '/api/inventory/stores', STAFF, lambda e, p, b, k: inventory.stores_view())
+route('PUT', '/api/inventory/stores', OWNER, lambda e, p, b, k: inventory.stores_save(k, actor(e), b))
+route('POST', '/api/inventory/stores/add', OWNER, lambda e, p, b, k: inventory.stores_add(k, actor(e), b))
+route('POST', '/api/inventory/documents', STAFF, lambda e, p, b, k: (lambda r: r if 'OWNER' in groups(e) else inventory.hide_cost(r))(inventory.record_document(k, actor(e), b)))
 route('POST', '/api/inventory/movements/([^/]+)/cost', OWNER, lambda e, p, b, k: inventory.set_cost(k, p[0], actor(e), b))
 route('GET', '/api/inventory/movements', STAFF, lambda e, p, b, k: inventory.movements('OWNER' in groups(e)))
 def movement(e, p, b, k):
@@ -120,6 +124,18 @@ def scheduled(event):
     raise ValueError('Unknown job')
 
 
+PRIVATE = ('outside_cost', 'outside_shop')
+
+
+def hide_private(value):
+    """Remove the owner-only fields anywhere in a reply (jobs, invoices, lists)."""
+    if isinstance(value, dict):
+        return {k: hide_private(v) for k, v in value.items() if k not in PRIVATE}
+    if isinstance(value, list):
+        return [hide_private(v) for v in value]
+    return value
+
+
 def handler(event, _context=None):
     if 'requestContext' not in event or 'http' not in event.get('requestContext', {}):
         return scheduled(event)
@@ -145,6 +161,8 @@ def handler(event, _context=None):
                 raise bad('The request body must be a JSON object')
             headers = {k.lower(): v for k, v in (event.get('headers') or {}).items()}
             result = fn(event, match.groups(), body, headers.get('idempotency-key'))
+            if not (isinstance(result, tuple) and result[0] == 'pdf') and 'OWNER' not in groups(event):
+                result = hide_private(result)  # what a part bought outside cost, and where, is for the owner
             if isinstance(result, tuple) and result[0] == 'pdf':
                 name = re.sub(r'[^A-Za-z0-9_-]', '', result[2]) or 'document'
                 return reply(200, {'filename': name + '.pdf', 'pdf': base64.b64encode(result[1]).decode()})

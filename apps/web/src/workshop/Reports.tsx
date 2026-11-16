@@ -9,6 +9,7 @@ type Rep = {
   by_day: { date: string; billed: number }[]; by_mechanic: { mechanic: string; jobs: number; total: number }[]; by_method: { method: string; amount: number }[];
   top_parts: { name: string; quantity: number; amount: number }[]; top_labour: { name: string; times: number; amount: number }[];
   unpaid_list: { id: string; invoice_number: string; registration: string; customer: string; days: number; balance: number }[];
+  outside?: { lines: number; sales: number; cost: number; margin: number; without_cost: number; by_shop: { shop: string; lines: number; cost: number }[] };
 };
 
 const niceMax = (v: number) => { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; };
@@ -136,6 +137,7 @@ export function Reports() {
             <Block title="By mechanic" head={["Mechanic", "Jobs", "Billed"]} rows={data.by_mechanic.map((m) => [m.mechanic, String(m.jobs), lkr(m.total)])} />
             <Donut title={t("Payments by method")} rows={data.by_method.map((m) => ({ label: m.method.charAt(0) + m.method.slice(1).toLowerCase(), value: m.amount }))} />
             <Bars title={t("Top parts")} rows={data.top_parts.map((p) => ({ label: p.name, value: p.amount, note: "×" + p.quantity }))} />
+            {!!data.outside?.lines && <Block title={t("Bought outside")} head={[t("Shop"), t("Parts"), t("Paid")]} rows={[...data.outside.by_shop.map((x): [string, string, string] => [x.shop, String(x.lines), lkr(x.cost)]), [t("Margin on these parts"), "", lkr(data.outside.margin)] as [string, string, string], ...(data.outside.without_cost ? [[t("Cost not entered"), String(data.outside.without_cost), ""] as [string, string, string]] : [])]} />}
             <Bars title={t("Top labour")} rows={data.top_labour.map((p) => ({ label: p.name, value: p.amount, note: "×" + p.times }))} />
             <Bars title={t("Unpaid by age")} rows={[{ label: "0 to 7 days", value: data.ageing.d0_7 }, { label: "8 to 30 days", value: data.ageing.d8_30 }, { label: "31 to 60 days", value: data.ageing.d31_60 }, { label: "Over 60 days", value: data.ageing.d60_plus }].filter((r) => r.value > 0)} />
           </div>

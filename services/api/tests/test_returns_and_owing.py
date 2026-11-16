@@ -357,3 +357,101 @@ def test_job_lists_returns_for_the_printed_status_block(api):
     job = ok(api('GET', '/api/workshop/jobs/%s' % inv['job_id']))
     assert len(job['returns']) == 1 and job['returns'][0]['reason'] == 'Wrong part' and float(job['returns'][0]['quantity']) == 2
     assert job['out_at'] and job['status'] == 'INVOICED'
+
+
+def other_product(api, qty=10):
+    from test_job_stock import ok as _ok
+    return _ok(api('POST', '/api/inventory/products', {'partNumber': 'PN-2', 'sku': 'AF-2', 'name': 'Air filter', 'category': 'Filters', 'brand': 'Toyota', 'unit': 'UNIT',
+                                                       'sellingPrice': 900, 'reorderLevel': 3, 'openingQuantity': qty, 'location': 'A4'}))
+
+
+def test_notes_are_numbered_in_a_running_series(api):
+    from test_stock_count import product
+    p = product(api, 5)
+    a = ok(api('POST', '/api/inventory/movements', {'kind': 'RECEIPT', 'productId': p['id'], 'quantity': 1}, role='MECHANIC'))
+    b = ok(api('POST', '/api/inventory/movements', {'kind': 'RECEIPT', 'productId': p['id'], 'quantity': 1}, role='MECHANIC'))
+    g = ok(api('POST', '/api/inventory/movements', {'kind': 'STOCK_OUT', 'productId': p['id'], 'quantity': 1}, role='MECHANIC'))
+    n = lambda x: int(x['doc_no'].split('-')[1])
+    assert a['doc_no'].startswith('GRN-') and n(b) == n(a) + 1 and g['doc_no'].startswith('GIN-') and n(g) >= 1
+    # an undo takes no number
+    undo = ok(api('POST', '/api/inventory/movements', {'kind': 'STOCK_OUT', 'productId': p['id'], 'quantity': 1, 'note': 'Undo of a counter entry'}, role='MECHANIC'))
+    again = ok(api('POST', '/api/inventory/movements', {'kind': 'RECEIPT', 'productId': p['id'], 'quantity': 1}, role='MECHANIC'))
+    assert 'doc_no' not in undo and n(again) == n(b) + 1
+
+
+def test_delivery_note_with_several_parts_is_one_number_and_one_pdf(api):
+    from test_stock_count import product, stock
+    p1, p2 = product(api, 5), other_product(api, 2)
+    body = {'kind': 'RECEIPT', 'supplier': 'Lanka Spares', 'reference': 'INV-9001',
+            'lines': [{'productId': p1['id'], 'quantity': 4, 'unitCost': '1200'}, {'productId': p2['id'], 'quantity': 6}]}
+    doc = ok(api('POST', '/api/inventory/documents', body, role='MECHANIC'))
+    assert doc['doc_no'].startswith('GRN-') and len(doc['lines']) == 2 and doc['supplier'] == 'Lanka Spares'
+    assert all('unit_cost' not in l for l in doc['lines'])  # a mechanic never reads the price back
+    assert stock(api, p1['id']) == 9 and stock(api, p2['id']) == 8
+    moves = [m for m in ok(api('GET', '/api/inventory/movements')) if m.get('doc_no') == doc['doc_no']]
+    assert len(moves) == 2 and {m['reference'] for m in moves} == {'INV-9001'} and {m['supplier'] for m in moves} == {'Lanka Spares'}
+    assert [m for m in moves if m['product_id'] == p1['id']][0]['unit_cost'] == 1200
+    # the same note prints from any of its lines, listing every part
+    for m in moves:
+        assert ok(api('GET', '/api/inventory/movements/%s/note.pdf' % m['id'], role='MECHANIC'))['pdf']
+    assert ok(api('GET', '/api/inventory/movements/%s/note.pdf' % moves[0]['id'], query={'cost': '1'}))['pdf']
+    nxt = ok(api('POST', '/api/inventory/documents', {'kind': 'RECEIPT', 'lines': [{'productId': p1['id'], 'quantity': 1}]}, role='MECHANIC'))
+    assert int(nxt['doc_no'].split('-')[1]) == int(doc['doc_no'].split('-')[1]) + 1
+    # the owner sees the cost on the saved note
+    assert ok(api('GET', '/api/inventory/movements/%s/note.pdf' % moves[0]['id'], query={'cost': '1'}))['pdf']
+
+
+def test_goods_issue_note_with_several_parts_and_nothing_half_saved(api):
+    from test_stock_count import product, stock
+    p1, p2 = product(api, 5), other_product(api, 1)
+    # the second part is short: nothing at all is taken
+    code, _ = api('POST', '/api/inventory/documents', {'kind': 'STOCK_OUT', 'lines': [{'productId': p1['id'], 'quantity': 2}, {'productId': p2['id'], 'quantity': 3}]}, role='MECHANIC')[:2]
+    assert code == 409 and stock(api, p1['id']) == 5 and stock(api, p2['id']) == 1
+    doc = ok(api('POST', '/api/inventory/documents', {'kind': 'STOCK_OUT', 'lines': [{'productId': p1['id'], 'quantity': 2}, {'productId': p2['id'], 'quantity': 1}]}, role='MECHANIC'))
+    assert doc['doc_no'].startswith('GIN-') and stock(api, p1['id']) == 3 and stock(api, p2['id']) == 0
+    # rules: lines needed, no part twice, not more than a transaction can hold
+    assert api('POST', '/api/inventory/documents', {'kind': 'RECEIPT', 'lines': []}, role='MECHANIC')[0] == 400
+    assert api('POST', '/api/inventory/documents', {'kind': 'RECEIPT', 'lines': [{'productId': p1['id'], 'quantity': 1}, {'productId': p1['id'], 'quantity': 1}]}, role='MECHANIC')[0] == 400
+    assert api('POST', '/api/inventory/documents', {'kind': 'RECEIPT', 'lines': [{'productId': p1['id'], 'quantity': 1}] * 16}, role='MECHANIC')[0] == 400
+    assert api('POST', '/api/inventory/documents', {'kind': 'ISSUE', 'lines': [{'productId': p1['id'], 'quantity': 1}]}, role='MECHANIC')[0] == 400
+
+
+def test_part_bought_outside_keeps_its_cost_for_the_owner_only(api):
+    from test_job_stock import new_job
+    ok(api('PUT', '/api/workshop/settings', BIZ))
+    job = new_job(api, 'CAB-7777')
+    line = {'name': 'Wiper blade', 'quantity': 2, 'unit_price': 1500, 'outside': True, 'outside_cost': '900', 'outside_shop': 'Fort Auto'}
+    # the mechanic buys it and types the price, but never reads it back
+    j = ok(api('PATCH', '/api/workshop/jobs/%s' % job['id'], {'revision': job['revision'], 'parts': [line]}, role='MECHANIC'))
+    assert j['parts'][0]['outside'] is True and 'outside_cost' not in j['parts'][0] and 'outside_shop' not in j['parts'][0]
+    own = ok(api('GET', '/api/workshop/jobs/%s' % job['id']))
+    assert own['parts'][0]['outside_cost'] == 900 and own['parts'][0]['outside_shop'] == 'Fort Auto'
+    # the mechanic saves the job again (the cost is hidden from them, so it is not sent): the stored cost stays
+    again = ok(api('PATCH', '/api/workshop/jobs/%s' % job['id'], {'revision': j['revision'], 'parts': [{'name': 'Wiper blade', 'quantity': 3, 'unit_price': 1500, 'outside': True}]}, role='MECHANIC'))
+    assert 'outside_cost' not in again['parts'][0]
+    # the mechanic names the shop later: only the shop changes, the cost stays
+    shopped = ok(api('PATCH', '/api/workshop/jobs/%s' % job['id'], {'revision': again['revision'], 'parts': [{'name': 'Wiper blade', 'quantity': 3, 'unit_price': 1500, 'outside': True, 'outside_shop': 'Pettah Spares'}]}, role='MECHANIC'))
+    assert ok(api('GET', '/api/workshop/jobs/%s' % job['id']))['parts'][0]['outside_shop'] == 'Pettah Spares'
+    ok(api('PATCH', '/api/workshop/jobs/%s' % job['id'], {'revision': shopped['revision'], 'parts': [{'name': 'Wiper blade', 'quantity': 3, 'unit_price': 1500, 'outside': True, 'outside_shop': 'Fort Auto'}]}, role='MECHANIC'))
+    kept = ok(api('GET', '/api/workshop/jobs/%s' % job['id']))
+    assert kept['parts'][0]['quantity'] == 3 and kept['parts'][0]['outside_cost'] == 900
+    # the owner can correct it, or clear it
+    fixed = ok(api('PATCH', '/api/workshop/jobs/%s' % job['id'], {'revision': kept['revision'], 'parts': [dict(line, quantity=3, outside_cost='950')]}))
+    assert fixed['parts'][0]['outside_cost'] == 950
+    cleared = ok(api('PATCH', '/api/workshop/jobs/%s' % job['id'], {'revision': fixed['revision'], 'parts': [dict(line, quantity=3, outside_cost='')]}))
+    assert 'outside_cost' not in cleared['parts'][0]
+    # a stock line cannot be an outside line, and a negative cost is refused
+    assert api('PATCH', '/api/workshop/jobs/%s' % job['id'], {'revision': cleared['revision'], 'parts': [dict(line, outside_cost='-5')]})[0] == 400
+    # the bill carries the cost for the owner's report, but the customer's copy and a mechanic never see it
+    again = ok(api('PATCH', '/api/workshop/jobs/%s' % job['id'], {'revision': cleared['revision'], 'parts': [dict(line, quantity=3, outside_cost='950')]}))
+    inv = ok(api('POST', '/api/workshop/jobs/%s/invoice' % job['id'], {'revision': again['revision']}, role='MECHANIC'))
+    assert 'outside_cost' not in inv['parts'][0] and inv['parts'][0]['outside'] is True
+    assert ok(api('GET', '/api/workshop/invoices/%s' % inv['id']))['parts'][0]['outside_cost'] == 950
+    assert 'outside_cost' not in ok(api('GET', '/api/workshop/invoices/%s' % inv['id'], role='MECHANIC'))['parts'][0]
+    assert ok(api('GET', '/api/workshop/invoices/%s/pdf' % inv['id'], role='MECHANIC'))['pdf']
+    # the owner's report: what was spent outside, with whom, and what was left
+    rep = ok(api('GET', '/api/workshop/report'))
+    out = rep['outside']
+    assert out['lines'] == 1 and out['cost'] == 2850 and out['sales'] == 4500 and out['margin'] == 1650 and out['without_cost'] == 0
+    assert out['by_shop'][0]['shop'] == 'Fort Auto' and out['by_shop'][0]['cost'] == 2850
+    assert api('GET', '/api/workshop/report', role='MECHANIC')[0] == 403

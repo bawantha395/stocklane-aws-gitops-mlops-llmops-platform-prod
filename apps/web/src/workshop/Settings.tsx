@@ -7,6 +7,7 @@ import { useLogo } from "../BizLogo";
 import { Building2, FileText, Landmark, Percent, Wrench } from "lucide-react";
 import QRCode from "qrcode";
 import { BizLogo } from "../BizLogo";
+import { StoresSection } from "./StoresSection";
 import { hue } from "./Cards";
 import { lkr, useCommand, useLoad, useWs, num, type Business } from "./common";
 
@@ -131,6 +132,7 @@ export function Settings() {
         </div>
 
         <div className="ws-set-col">
+          <StoresSection />
           <section className="ws-sec">
             <h3><span className="ws-sec-ico"><Landmark size={18} /></span>{t("Getting paid")}</h3>
             <label className="ws-field">{t("Bank details for payments")}<textarea rows={3} value={f.bank} onChange={(e) => set("bank", e.target.value)} placeholder={"Bank of Ceylon\nAccount 1234567"} /></label>

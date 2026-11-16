@@ -426,16 +426,38 @@ def stock_note(n, business):
         d.text(260, y + 10, fit(value, 280, 10), 10, True)
         y += 17
     d.y = y + 12
-    d.rect(MARGIN, d.y, R - MARGIN, 18, GREY)
-    d.text(MARGIN + 6, d.y + 12, 'ITEM', 8, True)
-    d.text(R - 120, d.y + 12, 'QUANTITY', 8, True, 'r')
-    d.text(R - 6, d.y + 12, 'UNIT', 8, True, 'r')
-    d.y += 18
-    d.text(MARGIN + 6, d.y + 14, fit(n['name'], 330, 10.5), 10.5, True)
-    d.text(MARGIN + 6, d.y + 26, fit(' | '.join(x for x in (n.get('sku'), n.get('part_number') and 'Part no. ' + n['part_number'], n.get('location')) if x), 330, 8), 8, color=MUTED)
-    d.text(R - 120, d.y + 17, q(n['quantity']), 11, True, 'r')
-    d.text(R - 6, d.y + 17, 'litres' if n.get('unit') == 'LITRE' else 'pcs', 9.5, align='r')
-    d.y += 36
+    lines = n.get('lines') or [n]
+    costed = grn and any(l.get('unit_cost') is not None for l in lines)
+    qx = R - 150 if costed else R - 120
+
+    def head():
+        d.rect(MARGIN, d.y, R - MARGIN, 18, GREY)
+        d.text(MARGIN + 6, d.y + 12, 'ITEM', 8, True)
+        if costed:
+            d.text(R - 60, d.y + 12, 'COST (LKR)', 8, True, 'r')
+        d.text(qx, d.y + 12, 'QUANTITY', 8, True, 'r')
+        d.text(R - 6, d.y + 12, 'UNIT', 8, True, 'r')
+        d.y += 18
+    head()
+    spent = Decimal('0')
+    for l in lines:
+        if d.room(38):
+            head()
+        d.text(MARGIN + 6, d.y + 14, fit(l['name'], 300, 10.5), 10.5, True)
+        d.text(MARGIN + 6, d.y + 26, fit(' | '.join(x for x in (l.get('sku'), l.get('part_number') and 'Part no. ' + l['part_number'], l.get('location')) if x), 300, 8), 8, color=MUTED)
+        if costed and l.get('unit_cost') is not None:
+            d.text(R - 60, d.y + 17, m(Decimal(str(l['unit_cost']))), 10, False, 'r')
+            spent += Decimal(str(l['unit_cost'])) * Decimal(str(l['quantity']))
+        d.text(qx, d.y + 17, q(l['quantity']), 11, True, 'r')
+        d.text(R - 6, d.y + 17, 'litres' if l.get('unit') == 'LITRE' else 'pcs', 9.5, align='r')
+        d.y += 36
+        if len(lines) > 1:
+            d.line(MARGIN, d.y - 2, R, d.y - 2, 0.4)
+    if len(lines) > 1:
+        d.text(MARGIN + 6, d.y + 12, str(len(lines)) + ' items', 9, True)
+        if costed and spent:
+            d.text(R - 6, d.y + 12, 'Cost of this delivery: LKR ' + m(spent), 9.5, True, 'r')
+        d.y += 18
     d.line(MARGIN, d.y, R, d.y)
     if n.get('note'):
         d.paragraph(MARGIN, 'Note: ' + n['note'], R - MARGIN, 9, bold=False)

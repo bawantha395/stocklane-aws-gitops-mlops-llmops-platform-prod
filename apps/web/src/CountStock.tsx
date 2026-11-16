@@ -60,7 +60,17 @@ export function CountStock({ items, countId, setCountId, find, openScanner, owne
     } finally { setBusy(false); }
   };
 
-  const matches = search.trim() ? find(search).slice(0, 12) : [];
+  const matches = search.trim() ? find(search).slice(0, 30) : [];
+  // with an empty box: the parts not counted yet in this session, so the person can go down the shelf
+  const done = new Set(log.map((r) => r.id));
+  const todo = search.trim() ? [] : items.filter((p) => !done.has(p.id)).sort((a, b) => (a.location || "~").localeCompare(b.location || "~") || a.name.localeCompare(b.name)).slice(0, 30);
+  const row = (p: P) => (
+    <button className="lookup-row" key={p.id} onClick={() => { fromScan.current = false; setCountId(p.id); }}>
+      {photo(p)}
+      <span><strong>{p.name}</strong><small>{p.brand} · {t("Part no.")} {p.part_number || t("Not set")} · {t("System no.")} {p.sku}</small><small>{p.location || t("Shelf not set")}</small></span>
+      <b>{num(Number(p.quantity))}<small>{p.unit === "LITRE" ? "L" : t("units")}</small></b>
+    </button>
+  );
   const diffs = log.filter((r) => r.counted !== r.recorded);
   return (
     <section className="stock-panel count-panel">
@@ -75,17 +85,12 @@ export function CountStock({ items, countId, setCountId, find, openScanner, owne
           </div>
           {search && (
             <div className="lookup-results">
-              {matches.map((p) => (
-                <button className="lookup-row" key={p.id} onClick={() => { fromScan.current = false; setCountId(p.id); }}>
-                  {photo(p)}
-                  <span><strong>{p.name}</strong><small>{t("Part no.")} {p.part_number || "—"} · {p.location || t("Shelf not set")}</small></span>
-                  <b>{num(Number(p.quantity))}<small>{p.unit === "LITRE" ? "L" : ""}</small></b>
-                </button>
-              ))}
+              {matches.map(row)}
               {!matches.length && <p className="stock-help">{t("No item found. Check the part number.")}</p>}
             </div>
           )}
           {!search && <p className="stock-help">{t("Scan the part's QR, then type what you count on the shelf. Scan, type, Enter, next.")}</p>}
+          {!search && todo.length > 0 && (<><h3 className="find-h">{t("Not counted yet")} <small>{items.length - done.size}</small></h3><div className="lookup-results">{todo.map(row)}</div></>)}
         </>
       )}
       {item && (

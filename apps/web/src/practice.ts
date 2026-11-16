@@ -425,6 +425,10 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
     }
   }
   if (path.includes("/api/workshop/export")) return { exported_at: now(), format: "lifta-export-1", note: "Practice sample. Nothing here is real.", jobs: clone(db.jobs), invoices: clone(db.invoices) };
+  if (path.includes("/api/inventory/stores")) {
+    if (method !== "GET") { const b = (() => { try { return JSON.parse(String(options.body || "{}")); } catch { return {}; } })(); return { racks: b.racks || [], categories: b.categories || [], shelves: [], revision: 1 }; }
+    return { racks: [], categories: [], shelves: [], revision: 0 };
+  }
   // Anything unlisted still must not error or reach the server: answer as an empty, harmless success.
   return method === "GET" ? [] : { ok: true };
 }
