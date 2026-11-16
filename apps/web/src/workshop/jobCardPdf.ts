@@ -5,6 +5,7 @@ import { Doc, INK, MARGIN, R, W, clean, width, wrap, type RGB } from "./invoiceP
 import { dateOnly, type Business, type Job } from "./common";
 import { getLogo, peekLogo } from "../logoStore";
 import { api, type Product } from "../api";
+import { toast } from "../ui";
 
 const MUTED: RGB = [0.42, 0.45, 0.44], RULE: RGB = [0.62, 0.66, 0.64], ACCENT: RGB = [0.2, 0.41, 0.31], GREY: RGB = [0.93, 0.94, 0.93];
 const TYPE: Record<string, string> = { CASH: "Cash", CREDIT: "Credit", INSURANCE: "Insurance", WARRANTY: "Warranty" };
@@ -93,18 +94,42 @@ export function jobCardPdf(j: Job, shop: Business, partNos: Record<string, strin
   return d.render();
 }
 
-/** Opens the job card so it can be printed (a new tab). The tab opens at once (a click is needed for that) and the card is put in it when the logo is ready.
- *  Falls back to saving the file when the browser blocks the tab. */
+/** Prints the job card the way a bill is printed: the print dialog opens on this page, no new tab and no blob address.
+ *  The PDF is loaded into a hidden frame and that frame is printed. Phones (where a hidden frame cannot print) and any
+ *  browser that refuses it get the card in a new tab instead, and finally a saved file. */
 export async function printJobCard(j: Job, shop: Business) {
-  const tab = window.open("", "_blank");
-  try { await getLogo(); } catch { /* the name is printed instead */ }
-  // older stock lines were saved without a part number: look them up in the parts list
-  const partNos: Record<string, string> = {};
-  if ((j.parts || []).some((p) => p.product_id && !p.part_no)) {
-    try { for (const p of await api<Product[]>("/api/inventory/products")) partNos[p.id] = (p as Product & { part_number?: string }).part_number || p.sku; } catch { /* leave blank */ }
-  }
-  const url = URL.createObjectURL(jobCardPdf(j, shop, partNos));
-  if (tab) tab.location.href = url;
-  else { const a = document.createElement("a"); a.href = url; a.download = (j.job_no || "job-card") + ".pdf"; document.body.appendChild(a); a.click(); a.remove(); }
-  setTimeout(() => URL.revokeObjectURL(url), 120000);
+  const phone = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+  const tab = phone ? window.open("", "_blank") : null; // a tab can only be opened straight from the tap
+  try { if (tab) tab.document.body.innerHTML = '<p style="font:16px sans-serif;padding:24px">Preparing the job card…</p>'; } catch { /* ignore */ }
+  const wait = <T,>(p: Promise<T>) => Promise.race([p, new Promise<never>((_, no) => setTimeout(() => no(new Error("slow")), 5000))]); // never wait for ever
+  try {
+    try { await wait(getLogo()); } catch { /* the name is printed instead */ }
+    // older stock lines were saved without a part number: look them up in the parts list
+    const partNos: Record<string, string> = {};
+    if ((j.parts || []).some((p) => p.product_id && !p.part_no)) {
+      try { for (const p of await wait(api<Product[]>("/api/inventory/products"))) partNos[p.id] = (p as Product & { part_number?: string }).part_number || p.sku; } catch { /* leave blank */ }
+    }
+    const url = URL.createObjectURL(jobCardPdf(j, shop, partNos));
+    const keep = () => setTimeout(() => URL.revokeObjectURL(url), 30 * 60 * 1000);
+    if (tab && !tab.closed) { tab.location.href = url; keep(); return; }
+    if (!phone && (await printInFrame(url))) { keep(); return; }
+    const t2 = tab && !tab.closed ? tab : window.open(url, "_blank");
+    if (t2 && t2 !== tab) { keep(); return; }
+    const a = document.createElement("a"); a.href = url; a.download = (j.job_no || "job-card") + ".pdf"; document.body.appendChild(a); a.click(); a.remove(); keep();
+  } catch (e) { tab?.close(); toast("Could not make the job card: " + (e as Error).message); }
+}
+
+/** Loads the PDF in a hidden frame and opens the print dialog. Resolves false when the browser cannot print it that way. */
+function printInFrame(url: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+    let done = false;
+    const finish = (ok: boolean) => { if (done) return; done = true; clearTimeout(timer); if (!ok) frame.remove(); else setTimeout(() => frame.remove(), 120000); resolve(ok); };
+    const timer = setTimeout(() => finish(false), 8000);
+    frame.onload = () => { try { frame.contentWindow?.focus(); frame.contentWindow?.print(); setTimeout(() => finish(true), 300); } catch { finish(false); } };
+    frame.src = url;
+    document.body.appendChild(frame);
+  });
 }

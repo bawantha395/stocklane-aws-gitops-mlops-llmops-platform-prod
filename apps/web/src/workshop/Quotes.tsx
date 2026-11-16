@@ -2,7 +2,7 @@ import { t } from "../i18n";
 import { toast, askConfirm } from "../ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PhotoStrip } from "./Photos";
-import { downloadQuotePdf, shareQuotePdf } from "./quotePdf";
+import { downloadQuotePdf } from "./quotePdf";
 import { Empty, Loading, Pill, addDays, dateOnly, kmText, lkr, num, regKey, today, useCommand, waLink, useDebounced, useLoad, useWs, type Quote, type QuoteWork, type Vehicle } from "./common";
 
 const SECTIONS: QuoteWork["section"][] = ["Rem/Refit", "Repaint", "Other"];
@@ -43,7 +43,7 @@ export function Quotes({ lock }: { lock?: "ESTIMATE" | "QUOTATION" } = {}) {
           </button>
         ))}
       </div>
-      {!shown.length && <div className="ws-cards"><Empty action={{ label: "+ " + t("New estimate"), onClick: () => go({ name: "quote", id: "new", kind: "ESTIMATE" }) }}>{data.length ? "Nothing matches." : "Nothing here yet. Make an estimate for an insurance claim, or a quotation with a fixed price."}</Empty></div>}
+      {!shown.length && <div className="ws-cards"><Empty action={{ label: "+ " + (lock === "QUOTATION" ? t("New quotation") : t("New estimate")), onClick: () => go({ name: "quote", id: "new", kind: lock === "QUOTATION" ? "QUOTATION" : "ESTIMATE" }) }}>{pool.length ? "Nothing matches." : lock === "QUOTATION" ? "No quotations yet. A quotation is a fixed price you give the customer." : lock === "ESTIMATE" ? "No estimates yet. Make one for an insurance claim, when the price can still change." : "Nothing here yet. Make an estimate for an insurance claim, or a quotation with a fixed price."}</Empty></div>}
     </>
   );
 }
@@ -130,11 +130,19 @@ function QuoteForm({ start, newKind, reg }: { start?: Quote | null; newKind?: "E
   };
   const withSaved = async (use: (q: Quote) => void | Promise<void>) => { if (!ready()) return; await run(async () => { const q = dirty || !quote ? await save() : quote; await use(q); }); };
   const download = () => void withSaved((q) => downloadQuotePdf(q, business));
-  const share = () => void withSaved(async (q) => {
-    const text = (business.name || "") + " - " + (q.kind === "QUOTATION" ? t("Quotation") : t("Estimate")) + " " + q.number + (q.insurer ? " - " + q.insurer : "") + " - " + q.registration + (q.kind === "QUOTATION" && q.valid_until ? " - " + t("Valid until") + " " + q.valid_until : "");
-    // Phones with a share sheet send the PDF itself (pick WhatsApp there); otherwise WhatsApp opens with the message and the PDF is saved to attach.
-    if (!(await shareQuotePdf(q, business, text))) { downloadQuotePdf(q, business); toast(t("PDF saved. Send it from your files.")); window.open(waLink(q.phone || "", text), "_blank", "noopener"); }
-  });
+  const share = () => {
+    // The tab has to be opened straight from the tap. Saving first takes a moment, and a tab opened after it can be blocked by the browser.
+    const tab = window.open("", "_blank");
+    try { if (tab) tab.opener = null; } catch { /* ignore */ }
+    let used = false;
+    void withSaved(async (q) => {
+      used = true;
+      const text = (business.name || "") + " - " + (q.kind === "QUOTATION" ? t("Quotation") : t("Estimate")) + " " + q.number + (q.insurer ? " - " + q.insurer : "") + " - " + q.registration + (q.kind === "QUOTATION" && q.valid_until ? " - " + t("Valid until") + " " + q.valid_until : "") + " - LKR " + lkr(q.total);
+      // WhatsApp only, with the message ready. No file is saved or attached: "Download PDF" is the button for the file.
+      const url = waLink(q.phone || "", text);
+      if (tab && !tab.closed) tab.location.href = url; else window.open(url, "_blank", "noopener");
+    }).finally(() => { if (!used) tab?.close(); });
+  };
 
   const part = (i: number, p: Partial<PartRow>) => { setParts(parts.map((x, k) => (k === i ? { ...x, ...p } : x))); setDirty(true); };
   const line = (i: number, p: Partial<WorkRow>) => { setWork(work.map((x, k) => (k === i ? { ...x, ...p } : x))); setDirty(true); };

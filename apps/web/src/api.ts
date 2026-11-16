@@ -58,9 +58,11 @@ export async function download(path:string,name:string){
 export async function openPdf(path:string,name:string){
  const tab=window.open('','_blank');
  try{
+  if(tab)tab.document.body.innerHTML='<p style="font:16px sans-serif;padding:24px">Preparing the document…</p>';
+  
   const {blob}=await pdfBlob(path,name);const url=URL.createObjectURL(blob);
   if(tab)tab.location.href=url;else{const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove();}
-  setTimeout(()=>URL.revokeObjectURL(url),120000);
+  setTimeout(()=>URL.revokeObjectURL(url),30*60*1000);
  }catch(e){tab?.close();throw e;}
 }
 export type Product={id:string;sku:string;name:string;category:string;brand:string;grade:string;capacity:string;barcode:string|null;unit:string;quantity:number;selling_price:number;reorder_level:number;image_id:string|null;supplier?:string|null;last_cost?:number|null;prev_cost?:number|null};
