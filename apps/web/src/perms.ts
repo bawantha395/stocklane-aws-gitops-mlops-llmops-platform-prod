@@ -1,5 +1,5 @@
 /** What this sign-in may do, as the server sent it at sign-in. The server checks every request again; this only decides what to show. */
-const MECHANIC = ["jobs_view", "jobs", "quotes", "vehicles", "bills_view", "bill", "job_stock", "stock_in", "stock_out", "item_add"];
+const MECHANIC = ["jobs_view", "jobs", "quotes", "vehicles", "customers_view", "bills_view", "bill", "job_stock", "stock_in", "stock_out", "item_add"];
 let all = false;
 let mine = new Set<string>();
 

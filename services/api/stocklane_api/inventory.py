@@ -55,8 +55,19 @@ def product_view(item):
     return public(item, drop=('pk', 'sk', 'ttl'))
 
 
+def with_supplier_names(rows):
+    """A renamed supplier shows its current name on the parts it supplies (the part keeps the id; old notes keep the name of that day)."""
+    if any(r.get('supplier_id') for r in rows):
+        from . import suppliers
+        known = suppliers.names()
+        for r in rows:
+            if r.get('supplier_id') in known:
+                r['supplier'] = known[r['supplier_id']]
+    return rows
+
+
 def active_products():
-    return [product_view(p) for p in query('PRODUCT') if not p.get('archived')]
+    return with_supplier_names([product_view(p) for p in query('PRODUCT') if not p.get('archived')])
 
 
 def load_product(product_id):
@@ -85,17 +96,17 @@ def announce(product):
 # ---------- reads ----------
 def products(owner=True):
     rows = sorted(active_products(), key=lambda p: (p['created_at'], p['sku']), reverse=True)
-    return rows if owner else hide_cost(rows)
+    return priced(rows) if owner else hide_cost(rows)
 
 
 def archived_products():
-    return sorted([product_view(p) for p in query('PRODUCT') if p.get('archived')], key=lambda p: p['sku'])
+    return sorted(with_supplier_names([product_view(p) for p in query('PRODUCT') if p.get('archived')]), key=lambda p: p['sku'])
 
 
 def catalogue():
     if time.monotonic() > _cache['until']:
         keys = ('id', 'sku', 'name', 'category', 'brand', 'grade', 'capacity', 'barcode', 'unit', 'selling_price',
-                'reorder_level', 'image_id', 'part_number', 'location', 'archived', 'supplier')
+                'reorder_level', 'image_id', 'part_number', 'location', 'archived', 'supplier', 'supplier_id')
         rows = sorted(({k: p.get(k) for k in keys} for p in active_products()), key=lambda p: p['sku'])
         _cache.update(value=rows, until=time.monotonic() + 30)
     return _cache['value']
@@ -174,29 +185,85 @@ def handovers(person_id):
 # ---------- shelves and categories ----------
 # The owner makes the lists once (Settings); an item form then picks from them. A rack has levels ("Rack 1" with A, B, C), and the
 # shelf written on a part is "Rack 1-A". While no list exists the fields stay free text, so a shop can start without them.
+RACK_TYPES = ('RACK', 'CUPBOARD', 'FLOOR')
+MAX_AREAS, MAX_RACKS, MAX_LEVELS = 8, 100, 20
+
+
+def new_id():
+    return uuid.uuid4().hex[:10]
+
+
 def shelf_label(rack, level=''):
     return rack + '-' + level if level else rack
 
 
+def level_name(l):
+    return l['name'] if isinstance(l, dict) else l
+
+
 def shelf_names(racks):
-    return [shelf_label(r['name'], l) for r in racks for l in (r.get('levels') or ['']) ]
+    return [shelf_label(r['name'], level_name(l)) for r in racks for l in (r.get('levels') or [''])]
+
+
+def shelf_index(racks):
+    """label (lower case) -> (rack id, level id). A rack without levels is one shelf, with no level id."""
+    out = {}
+    for r in racks:
+        for l in (r.get('levels') or [None]):
+            out[shelf_label(r['name'], l['name'] if l else '').lower()] = (r.get('id'), l.get('id') if l else None)
+    return out
 
 
 def stores_row():
-    return get('STORES', 'main') or {'racks': [], 'categories': [], 'revision': 0}
+    return get('STORES', 'main') or {'racks': [], 'categories': [], 'areas': [], 'revision': 0}
+
+
+def rack_public(r):
+    """What older screens read: the level names. The ids, area and type ride along."""
+    return {'id': r.get('id'), 'name': r['name'], 'area_id': r.get('area_id'), 'type': r.get('type') or 'RACK', 'levels': [level_name(l) for l in r.get('levels') or []],
+            'level_ids': [l.get('id') if isinstance(l, dict) else None for l in r.get('levels') or []]}
 
 
 def stores_view(row=None):
     row = row or stores_row()
-    return {'racks': row.get('racks') or [], 'categories': row.get('categories') or [], 'shelves': shelf_names(row.get('racks') or []),
+    racks = row.get('racks') or []
+    return {'racks': [rack_public(r) for r in racks], 'categories': row.get('categories') or [], 'areas': row.get('areas') or [], 'shelves': shelf_names(racks),
             'revision': int(row.get('revision') or 0)}
 
 
-def clean_stores(body):
-    racks, seen = [], set()
+def _clean_areas(raw, old):
+    if raw is None:
+        return [dict(a) for a in old or []]
+    if not isinstance(raw, list) or len(raw) > MAX_AREAS:
+        raise bad('Up to %d areas (walls)' % MAX_AREAS)
+    keep = {a['id']: a for a in old or []}
+    out, names, ids = [], set(), set()
+    for a in raw:
+        if not isinstance(a, dict):
+            raise bad('Check the areas')
+        name = text(a.get('name'), 'Area name', 40, True)
+        aid = str(a.get('id') or '')
+        if aid and aid not in keep:
+            raise missing('An area is no longer there. Reload and try again.')
+        aid = aid or new_id()
+        if name.lower() in names or aid in ids:
+            raise bad('"%s" is on the list twice' % name)
+        names.add(name.lower()); ids.add(aid)
+        out.append({'id': aid, 'name': name})
+    return out
+
+
+def clean_stores(body, old_racks=(), old_areas=()):
+    """The racks and categories as the owner sent them. A rack or level keeps its id: by the id it came with, else by its name (so the older
+    screens, which send names only, never lose ids). New ones get new ids. Returns racks, categories, areas."""
+    areas = _clean_areas(body.get('areas'), old_areas)
+    area_ids = {a['id'] for a in areas}
+    racks, seen, rids = [], set(), set()
     raw = body.get('racks') or []
-    if not isinstance(raw, list) or len(raw) > 100:
-        raise bad('Up to 100 racks')
+    if not isinstance(raw, list) or len(raw) > MAX_RACKS:
+        raise bad('Up to %d racks' % MAX_RACKS)
+    by_id = {r['id']: r for r in old_racks if r.get('id')}
+    by_name = {r['name'].lower(): r for r in old_racks}
     for r in raw:
         if not isinstance(r, dict):
             raise bad('Check the racks')
@@ -204,51 +271,101 @@ def clean_stores(body):
         if name.lower() in seen:
             raise bad('"%s" is in the list twice' % name)
         seen.add(name.lower())
-        levels, lseen = [], set()
-        raw_levels = r.get('levels') or []
-        if not isinstance(raw_levels, list) or len(raw_levels) > 20:
-            raise bad('Up to 20 levels on a rack')
-        for l in raw_levels:
-            level = text(l, 'Level', 12, True)
-            if level.lower() in lseen:
-                raise bad('"%s" is on %s twice' % (level, name))
-            lseen.add(level.lower())
-            levels.append(level)
-        racks.append({'name': name, 'levels': levels})
-    cats, cseen = [], set()
-    raw = body.get('categories') or []
-    if not isinstance(raw, list) or len(raw) > 150:
-        raise bad('Up to 150 categories')
-    for c in raw:
-        name = text(c, 'Category', 80, True)
-        if name.lower() in cseen:
+        was = by_id.get(r.get('id')) if r.get('id') else by_name.get(name.lower())
+        if r.get('id') and not was:
+            raise missing('A rack is no longer there. Reload and try again.')
+        rid = (was or {}).get('id') or new_id()
+        if rid in rids:
             raise bad('"%s" is in the list twice' % name)
-        cseen.add(name.lower())
-        cats.append(name)
+        rids.add(rid)
+        rtype = str(r.get('type') or (was or {}).get('type') or 'RACK').upper()
+        if rtype not in RACK_TYPES:
+            raise bad('A rack is a rack, a cupboard or the floor')
+        area = r['area_id'] if 'area_id' in r else (was or {}).get('area_id')
+        if area and area not in area_ids:  # an area made in this same save is named by its name
+            area = next((a['id'] for a in areas if a['name'].lower() == str(area).lower()), None)
+            if not area:
+                raise bad('Choose an area from the list')
+        raw_levels = r.get('levels') or []
+        if not isinstance(raw_levels, list) or len(raw_levels) > MAX_LEVELS:
+            raise bad('Up to %d levels on a rack' % MAX_LEVELS)
+        was_levels = {level_name(l).lower(): l for l in (was or {}).get('levels') or [] if isinstance(l, dict)}
+        was_by_id = {l['id']: l for l in (was or {}).get('levels') or [] if isinstance(l, dict)}
+        levels, lseen, lids = [], set(), set()
+        for l in raw_levels:
+            lname = text(level_name(l), 'Level', 12, True)
+            if lname.lower() in lseen:
+                raise bad('"%s" is on %s twice' % (lname, name))
+            lseen.add(lname.lower())
+            given = l.get('id') if isinstance(l, dict) else None
+            old_l = was_by_id.get(given) if given else was_levels.get(lname.lower())
+            if given and not old_l:
+                raise missing('A level is no longer there. Reload and try again.')
+            lid = (old_l or {}).get('id') or new_id()
+            if lid in lids:
+                raise bad('"%s" is on %s twice' % (lname, name))
+            lids.add(lid)
+            level = {'id': lid, 'name': lname}
+            photo = photos_one(l.get('photo_id')) if isinstance(l, dict) and 'photo_id' in l else (old_l or {}).get('photo_id')
+            if photo:
+                level['photo_id'] = photo
+            levels.append(level)
+        racks.append({'id': rid, 'name': name, 'area_id': area or None, 'type': rtype, 'levels': levels})
+    cats, cseen = [], set()
+    raw = body.get('categories') if 'categories' in body else None
+    if raw is None:
+        cats = []
+    else:
+        if not isinstance(raw, list) or len(raw) > 150:
+            raise bad('Up to 150 categories')
+        for c in raw:
+            name = text(c, 'Category', 80, True)
+            if name.lower() in cseen:
+                raise bad('"%s" is in the list twice' % name)
+            cseen.add(name.lower())
+            cats.append(name)
     shelves = shelf_names(racks)
     if len({x.lower() for x in shelves}) != len(shelves):
         raise bad('Two shelves have the same name')
-    return racks, cats
+    return racks, cats, areas
+
+
+def photos_one(value):
+    from . import photos
+    return photos.one(value, 'Shelf photo')
+
+
+def _store_row(old, racks, cats, areas, who):
+    row = {'pk': 'STORES', 'sk': 'main', 'racks': racks, 'categories': cats, 'areas': areas, 'revision': int(old.get('revision') or 0) + 1, 'updated_at': now(), 'updated_by': who}
+    cond = {'ConditionExpression': 'revision = :r', 'ExpressionAttributeValues': {':r': old['revision']}} if old.get('pk') else {'ConditionExpression': 'attribute_not_exists(pk)'}
+    return put(row, **cond), row
+
+
+def _busy(old_labels_gone, cats_gone):
+    used = active_products()
+    busy_s = sorted({x for x in old_labels_gone if any((p.get('location') or '').lower() == x.lower() for p in used)})
+    busy_c = sorted({x for x in cats_gone if any((p.get('category') or '').lower() == x.lower() for p in used)})
+    return busy_s + busy_c
 
 
 def stores_save(key, who, body):
     """Owner: the whole list of racks (with levels) and categories. A shelf or category that parts still use cannot be removed."""
     def build():
-        racks, cats = clean_stores(body or {})
         old = stores_row()
+        b = body or {}
+        if 'racks' not in b:  # the categories screen sends no racks: they stay as they are
+            b = dict(b, racks=old.get('racks') or [])
+        racks, cats, areas = clean_stores(b, old.get('racks') or [], old.get('areas') or [])
         want = {x.lower() for x in shelf_names(racks)}
         want_c = {x.lower() for x in cats}
         gone = [x for x in shelf_names(old.get('racks') or []) if x.lower() not in want]
         gone_c = [x for x in old.get('categories') or [] if x.lower() not in want_c]
         if gone or gone_c:
-            used = active_products()
-            busy_s = sorted({x for x in gone if any((p.get('location') or '').lower() == x.lower() for p in used)})
-            busy_c = sorted({x for x in gone_c if any((p.get('category') or '').lower() == x.lower() for p in used)})
-            if busy_s or busy_c:
-                raise conflict('Parts still use ' + ', '.join(busy_s + busy_c) + '. Move those parts first, then remove it')
-        row = {'pk': 'STORES', 'sk': 'main', 'racks': racks, 'categories': cats, 'revision': int(old.get('revision') or 0) + 1, 'updated_at': now(), 'updated_by': who}
-        cond = {'ConditionExpression': 'revision = :r', 'ExpressionAttributeValues': {':r': old['revision']}} if old.get('pk') else {'ConditionExpression': 'attribute_not_exists(pk)'}
-        return [put(row, **cond)], [None], stores_view(row)
+            busy = _busy(gone, gone_c)
+            if busy:
+                raise conflict('Parts still use ' + ', '.join(busy) + '. Move those parts first, then remove it')
+        op, row = _store_row(old, racks, cats, areas, who)
+        return [op], [None], stores_view(row)
     return command(key, 'stores', who, body, build)
 
 
@@ -257,7 +374,7 @@ def stores_add(key, who, body):
     def build():
         b = body or {}
         old = stores_row()
-        racks = [dict(r, levels=list(r.get('levels') or [])) for r in old.get('racks') or []]
+        racks = [dict(r, levels=[dict(l) for l in r.get('levels') or []]) for r in old.get('racks') or []]
         cats = list(old.get('categories') or [])
         kind = b.get('kind')
         if kind == 'category':
@@ -268,63 +385,18 @@ def stores_add(key, who, body):
             rack = next((r for r in racks if r['name'].lower() == str(b.get('rack') or '').lower()), None)
             if not rack:
                 raise missing('Rack not found')
-            rack['levels'].append(text(b.get('level'), 'Level', 12, True))
+            rack['levels'].append({'name': text(b.get('level'), 'Level', 12, True)})
         else:
             raise bad('Add a rack, a level or a category')
-        racks, cats = clean_stores({'racks': racks, 'categories': cats})
-        row = {'pk': 'STORES', 'sk': 'main', 'racks': racks, 'categories': cats, 'revision': int(old.get('revision') or 0) + 1, 'updated_at': now(), 'updated_by': who}
-        cond = {'ConditionExpression': 'revision = :r', 'ExpressionAttributeValues': {':r': old['revision']}} if old.get('pk') else {'ConditionExpression': 'attribute_not_exists(pk)'}
-        return [put(row, **cond)], [None], stores_view(row)
+        racks, cats, areas = clean_stores({'racks': racks, 'categories': cats}, old.get('racks') or [], old.get('areas') or [])
+        op, row = _store_row(old, racks, cats, areas, who)
+        return [op], [None], stores_view(row)
     return command(key, 'stores-add', who, body, build)
 
 
-def stores_rename(who, body):
-    """Owner: give a rack, one level of a rack, or a category a new name; every part that used the old name follows it.
-
-    Three small steps, each safe to repeat, so a rename that is cut off half way is finished by pressing Save again:
-    the new name joins the list, the parts move over (in batches), the old name leaves the list.
-    """
+def _move_parts(moves, field):
+    """Parts (archived ones too, so a restored part still points at a real shelf) follow a renamed shelf or category. Batches that are safe to repeat."""
     from .core import Retry, transact
-    b = body or {}
-    kind = b.get('kind')
-    row = stores_row()
-    racks = [dict(r, levels=list(r.get('levels') or [])) for r in row.get('racks') or []]
-    cats = list(row.get('categories') or [])
-    moves, field = {}, 'location'  # old value (lower case) -> new value
-    if kind == 'category':
-        old, new = text(b.get('from'), 'Category', 80, True), text(b.get('to'), 'New name', 80, True)
-        if not any(c.lower() == old.lower() for c in cats):
-            raise missing('Category not found')
-        if old.lower() != new.lower() and any(c.lower() == new.lower() for c in cats):
-            raise conflict('"%s" is already on the list' % new)
-        moves, field = {old.lower(): new}, 'category'
-        cats = [new if c.lower() == old.lower() else c for c in cats]
-    elif kind in ('rack', 'level'):
-        rack = next((r for r in racks if r['name'].lower() == str(b.get('rack') or b.get('from') or '').strip().lower()), None)
-        if not rack:
-            raise missing('Rack not found')
-        before = shelf_names([rack])
-        if kind == 'rack':
-            new = text(b.get('to'), 'New name', 40, True)
-            if new.lower() != rack['name'].lower() and any(r['name'].lower() == new.lower() for r in racks):
-                raise conflict('"%s" is already on the list' % new)
-            rack['name'] = new
-        else:
-            old, new = text(b.get('from'), 'Level', 12, True), text(b.get('to'), 'New name', 12, True)
-            if not any(l.lower() == old.lower() for l in rack['levels']):
-                raise missing('Level not found')
-            if old.lower() != new.lower() and any(l.lower() == new.lower() for l in rack['levels']):
-                raise conflict('"%s" is already on %s' % (new, rack['name']))
-            rack['levels'] = [new if l.lower() == old.lower() else l for l in rack['levels']]
-        moves = {a.lower(): z for a, z in zip(before, shelf_names([rack])) if a != z}
-    else:
-        raise bad('Rename a rack, a level or a category')
-    racks, cats = clean_stores({'racks': racks, 'categories': cats})
-    # 1 + 3: the list (the old name is simply replaced; parts are checked against the list only when they are saved)
-    new_row = {'pk': 'STORES', 'sk': 'main', 'racks': racks, 'categories': cats, 'revision': int(row.get('revision') or 0) + 1, 'updated_at': now(), 'updated_by': who}
-    cond = {'ConditionExpression': 'revision = :r', 'ExpressionAttributeValues': {':r': row['revision']}} if row.get('pk') else {'ConditionExpression': 'attribute_not_exists(pk)'}
-    transact([put(new_row, **cond)], ['Someone changed the lists just now. Reload and try again.'])
-    # 2: the parts, archived ones too, so a restored part still points at a real shelf
     moved, todo = 0, [p for p in query('PRODUCT') if str(p.get(field) or '').lower() in moves]
     for i in range(0, len(todo), 50):
         ops = [update('PRODUCT', p['sk'], 'SET #f = :n', {':n': moves[str(p[field]).lower()], ':o': p[field]}, {'#f': field}, '#f = :o') for p in todo[i:i + 50]]
@@ -338,6 +410,54 @@ def stores_rename(who, body):
                     continue
         moved += len(ops)
     _cache['until'] = 0
+    return moved
+
+
+def stores_rename(who, body):
+    """Owner: give a rack, one level of a rack, or a category a new name; every part that used the old name follows it.
+
+    Three small steps, each safe to repeat, so a rename that is cut off half way is finished by pressing Save again:
+    the new name joins the list, the parts move over (in batches), the old name leaves the list. The ids never change.
+    """
+    from .core import transact
+    b = body or {}
+    kind = b.get('kind')
+    row = stores_row()
+    racks = [dict(r, levels=[dict(l) for l in r.get('levels') or []]) for r in row.get('racks') or []]
+    cats = list(row.get('categories') or [])
+    moves, field = {}, 'location'  # old value (lower case) -> new value
+    if kind == 'category':
+        old, new = text(b.get('from'), 'Category', 80, True), text(b.get('to'), 'New name', 80, True)
+        if not any(c.lower() == old.lower() for c in cats):
+            raise missing('Category not found')
+        if old.lower() != new.lower() and any(c.lower() == new.lower() for c in cats):
+            raise conflict('"%s" is already on the list' % new)
+        moves, field = {old.lower(): new}, 'category'
+        cats = [new if c.lower() == old.lower() else c for c in cats]
+    elif kind in ('rack', 'level'):
+        rack = next((r for r in racks if r['name'].lower() == str(b.get('rack') or b.get('from') or '').strip().lower() or (b.get('id') and r.get('id') == b.get('id'))), None)
+        if not rack:
+            raise missing('Rack not found')
+        before = shelf_names([rack])
+        if kind == 'rack':
+            new = text(b.get('to'), 'New name', 40, True)
+            if new.lower() != rack['name'].lower() and any(r['name'].lower() == new.lower() for r in racks):
+                raise conflict('"%s" is already on the list' % new)
+            rack['name'] = new
+        else:
+            old, new = text(b.get('from'), 'Level', 12, True), text(b.get('to'), 'New name', 12, True)
+            if not any(l['name'].lower() == old.lower() for l in rack['levels']):
+                raise missing('Level not found')
+            if old.lower() != new.lower() and any(l['name'].lower() == new.lower() for l in rack['levels']):
+                raise conflict('"%s" is already on %s' % (new, rack['name']))
+            rack['levels'] = [dict(l, name=new) if l['name'].lower() == old.lower() else l for l in rack['levels']]
+        moves = {a.lower(): z for a, z in zip(before, shelf_names([rack])) if a != z}
+    else:
+        raise bad('Rename a rack, a level or a category')
+    racks, cats, areas = clean_stores({'racks': racks, 'categories': cats}, row.get('racks') or [], row.get('areas') or [])
+    op, new_row = _store_row(row, racks, cats, areas, who)
+    transact([op], ['Someone changed the lists just now. Reload and try again.'])
+    moved = _move_parts(moves, field)
     return dict(stores_view(new_row), moved=moved)
 
 
@@ -348,11 +468,114 @@ def stores_standard(key, who, names):
         cats = list(old.get('categories') or [])
         have = {c.lower() for c in cats}
         cats += [n for n in names if n.lower() not in have]
-        racks, cats = clean_stores({'racks': old.get('racks') or [], 'categories': cats})
-        row = {'pk': 'STORES', 'sk': 'main', 'racks': racks, 'categories': cats, 'revision': int(old.get('revision') or 0) + 1, 'updated_at': now(), 'updated_by': who}
-        cond = {'ConditionExpression': 'revision = :r', 'ExpressionAttributeValues': {':r': old['revision']}} if old.get('pk') else {'ConditionExpression': 'attribute_not_exists(pk)'}
-        return [put(row, **cond)], [None], stores_view(row)
+        racks, cats, areas = clean_stores({'racks': old.get('racks') or [], 'categories': cats}, old.get('racks') or [], old.get('areas') or [])
+        op, row = _store_row(old, racks, cats, areas, who)
+        return [op], [None], stores_view(row)
     return command(key, 'stores-standard', who, {'names': names}, build)
+
+
+# ---------- the store room layout (areas, racks, levels with stable ids) ----------
+def shelf_of(location):
+    """(rack id, level id) for a shelf label, or (None, None) for free text / no shelf."""
+    if not location:
+        return None, None
+    return shelf_index(stores_row().get('racks') or []).get(str(location).lower(), (None, None))
+
+
+def layout_view(row=None):
+    """Everything the store-room screens need: the layout, how many parts sit on each shelf, and how many are not shelved."""
+    row = row or stores_row()
+    racks = row.get('racks') or []
+    index = shelf_index(racks)
+    counts, loose = {}, 0
+    for p in active_products():
+        rid, lid = p.get('rack_id'), p.get('level_id')
+        if not rid:
+            rid, lid = index.get((p.get('location') or '').lower(), (None, None))
+        if not rid:
+            loose += 1
+            continue
+        c = counts.setdefault(rid, {})
+        c[lid or ''] = c.get(lid or '', 0) + 1
+    return {'areas': row.get('areas') or [], 'categories': row.get('categories') or [], 'revision': int(row.get('revision') or 0), 'not_shelved': loose, 'counts': counts,
+            'racks': [{'id': r['id'], 'name': r['name'], 'area_id': r.get('area_id'), 'type': r.get('type') or 'RACK',
+                       'levels': [{'id': l['id'], 'name': l['name'], **({'photo_id': l['photo_id']} if l.get('photo_id') else {})} for l in r.get('levels') or []]} for r in racks]}
+
+
+def shelf_parts(rack, level=''):
+    """The parts on one rack (all its levels), on one level, or not shelved at all (rack 'none'). A part counts by its ids, else by its location text.
+    Archived parts are left out. Only what the Shelf page shows: no cost."""
+    row = stores_row()
+    racks = row.get('racks') or []
+    index = shelf_index(racks)
+    rack, level = str(rack or ''), str(level or '')
+    if rack != 'none':
+        hit = next((r for r in racks if r.get('id') == rack), None)
+        if not hit:
+            raise missing('That rack is no longer there. Reload the store room.')
+        if level and level != 'none' and not any(l.get('id') == level for l in hit.get('levels') or []):
+            raise missing('That level is no longer there. Reload the store room.')
+    out = []
+    for p in active_products():
+        rid, lid = p.get('rack_id'), p.get('level_id')
+        if not rid:
+            rid, lid = index.get((p.get('location') or '').lower(), (None, None))
+        if rack == 'none':
+            ok = not rid
+        else:
+            ok = rid == rack and (not level or (lid or 'none') == level)
+        if ok:
+            out.append({k: p.get(k) for k in ('id', 'sku', 'name', 'brand', 'part_number', 'unit', 'quantity', 'reorder_level', 'location', 'image_id')} | {'level_id': lid})
+    out.sort(key=lambda r: (r.get('name') or '').lower())
+    return {'rack_id': None if rack == 'none' else rack, 'level_id': level or None, 'parts': out}
+
+
+def layout_save(key, who, body):
+    """Owner: areas, racks and levels in the order shown. Ids keep a shelf the same shelf when it is renamed or moved to another area. A shelf
+    that parts still sit on cannot be removed. Renamed shelves carry their parts' location text along (same 3 safe steps as a rename)."""
+    from .core import transact
+    b = body or {}
+    old = stores_row()
+    if int(b.get('revision') if b.get('revision') is not None else old.get('revision') or 0) != int(old.get('revision') or 0):
+        raise conflict('Someone changed the store room just now. Reload and try again.')
+    racks, _, areas = clean_stores({'racks': b.get('racks') or [], 'areas': b.get('areas') or [], 'categories': old.get('categories') or []}, old.get('racks') or [], old.get('areas') or [])
+    old_index = {v: k for k, v in shelf_index(old.get('racks') or []).items()}
+    new_index = {v: k for k, v in shelf_index(racks).items()}
+    labels = {}  # (rack id, level id) -> the label, as spelled
+    for r in old.get('racks') or []:
+        for l in (r.get('levels') or [None]):
+            labels[(r['id'], l['id'] if l else None)] = ('old', shelf_label(r['name'], l['name'] if l else ''))
+    gone = [labels[k][1] for k in old_index if k not in new_index]
+    if gone:
+        busy = _busy(gone, [])
+        if busy:
+            raise conflict('Parts still sit on ' + ', '.join(busy) + '. Move those parts first, then remove it')
+    new_labels = {}
+    for r in racks:
+        for l in (r.get('levels') or [None]):
+            new_labels[(r['id'], l['id'] if l else None)] = shelf_label(r['name'], l['name'] if l else '')
+    moves = {labels[k][1].lower(): new_labels[k] for k in new_labels if k in labels and labels[k][1] != new_labels[k]}
+    op, row = _store_row(old, racks, old.get('categories') or [], areas, who)
+    transact([op], ['Someone changed the store room just now. Reload and try again.'])
+    moved = _move_parts(moves, 'location') if moves else 0
+    return dict(layout_view(row), moved=moved)
+
+
+QUICK_AREAS = ('Wall A', 'Wall B', 'Wall C', 'Wall D')
+
+
+def quick_start(key, who, body):
+    """Owner, a shop with no racks yet: 4 walls, each with 3 racks of 3 levels (A1-A, A1-B, A1-C ...). The owner then renames and trims."""
+    def build():
+        old = stores_row()
+        if old.get('racks'):
+            raise conflict('This shop already has racks. Change them in the list.')
+        areas = [{'id': new_id(), 'name': n} for n in QUICK_AREAS]
+        racks = [{'name': '%s%d' % (a['name'][-1], n), 'area_id': a['id'], 'type': 'RACK', 'levels': ['A', 'B', 'C']} for a in areas for n in (1, 2, 3)]
+        racks, cats, areas = clean_stores({'racks': racks, 'areas': areas, 'categories': old.get('categories') or []}, (), areas)
+        op, row = _store_row(old, racks, cats, areas, who)
+        return [op], [None], layout_view(row)
+    return command(key, 'stores-quick-start', who, body, build)
 
 
 def listed(location, category, keep=()):
@@ -383,6 +606,7 @@ def create_product(key, who, body):
         grade, capacity = text(p.get('grade'), 'Grade', 80, False), text(p.get('capacity'), 'Capacity', 60, False)
         location = text(p.get('location'), 'Location', 180, False)
         location, category = listed(location, category)
+        rack_id, level_id = shelf_of(location)
         unit = p.get('unit')
         if unit not in ('UNIT', 'LITRE'):
             raise bad('Unit must be UNIT or LITRE')
@@ -395,9 +619,14 @@ def create_product(key, who, body):
         item = {'pk': 'PRODUCT', 'sk': product_id, 'id': product_id, 'sku': sku, 'name': name, 'category': category,
                 'brand': brand, 'grade': grade, 'capacity': capacity, 'unit': unit, 'quantity': opening,
                 'selling_price': price, 'reorder_level': reorder, 'created_at': created, 'archived': False,
-                'manufacturer_key': brand.upper(), 'part_number': part_key(part), 'location': location}
-        if text(p.get('supplier'), 'Supplier', 100, False):
-            item['supplier'] = text(p.get('supplier'), 'Supplier', 100, False)
+                'manufacturer_key': brand.upper(), 'part_number': part_key(part), 'location': location,
+                **({'rack_id': rack_id, **({'level_id': level_id} if level_id else {})} if rack_id else {})}
+        from . import suppliers
+        sid, sname = suppliers.resolve(p.get('supplierId'), p.get('supplier'))
+        if sname:
+            item['supplier'] = sname
+        if sid:
+            item['supplier_id'] = sid
         if barcode:
             item['barcode'] = barcode
         if p.get('imageId'):
@@ -432,8 +661,20 @@ def edit_product(key, product_id, who, body):
         updated = dict(item, name=name, category=category, brand=brand, manufacturer_key=brand.upper(),
                        grade=text(p.get('grade'), 'Grade', 80, False), capacity=text(p.get('capacity'), 'Capacity', 60, False),
                        part_number=part_key(part), location=new_location, reorder_level=reorder)
-        if 'supplier' in p:
-            updated['supplier'] = text(p.get('supplier'), 'Supplier', 100, False)
+        updated.pop('rack_id', None), updated.pop('level_id', None)
+        rid, lid = shelf_of(new_location)
+        if rid:
+            updated['rack_id'] = rid
+            if lid:
+                updated['level_id'] = lid
+        if 'supplier' in p or 'supplierId' in p:
+            from . import suppliers
+            sid, sname = suppliers.resolve(p.get('supplierId'), p.get('supplier'), keep=item.get('supplier_id'))
+            updated['supplier'] = sname
+            if sid:
+                updated['supplier_id'] = sid
+            else:
+                updated.pop('supplier_id', None)
         ops = [put(updated, ConditionExpression='quantity = :q', ExpressionAttributeValues={':q': item['quantity']}),
                archive_audit(product_id, who, 'EDIT', p)]
         labels = [None, None]
@@ -463,8 +704,8 @@ def archive_product(key, product_id, who, body):
 
 
 # ---------- movements ----------
-DOCS = {'RECEIPT': 'GRN', 'STOCK_OUT': 'GIN', 'ISSUE': 'GIN'}  # goods received note, goods issue note
-RUNNING = ('RECEIPT', 'STOCK_OUT')  # these notes are numbered in a running series (GRN-0001, GIN-0001); a part put on a job is named by the job
+DOCS = {'RECEIPT': 'GRN', 'STOCK_OUT': 'GIN', 'ISSUE': 'GIN', 'SUPPLIER_RETURN': 'SRN', 'ORDER': 'PO'}  # goods received note, goods issue note
+RUNNING = ('RECEIPT', 'STOCK_OUT', 'SUPPLIER_RETURN')  # these notes are numbered in a running series (GRN-0001, GIN-0001); a part put on a job is named by the job
 MAX_DOC_LINES = 15  # one transaction holds 100 writes and each line needs 5
 
 
@@ -499,7 +740,7 @@ def movement_items(product, kind, quantity, price, job_id, issue_id, who, note, 
     returned = quantity if kind == 'RETURN' else ZERO
     # A count correction is not a purchase or a sale: it moves the books to match the shelf, so it has its own signed total
     # and never counts as demand for the forecast.
-    adjusted = quantity if kind == 'COUNT_IN' else -quantity if kind == 'COUNT_OUT' else ZERO
+    adjusted = quantity if kind == 'COUNT_IN' else -quantity if kind in ('COUNT_OUT', 'SUPPLIER_RETURN') else ZERO
     items.append(update('DAY', day_of(created) + '#' + product['id'],
                         'SET sku = :s, #n = :nm, #u = :u, product_id = :p ADD added :a, taken :t, returned :r, adjusted :j',
                         {':s': product['sku'], ':nm': product['name'], ':u': product['unit'], ':p': product['id'],
@@ -518,7 +759,7 @@ def cost_of(value):
 
 
 # what only the owner may see: what the shop paid for its parts
-COST_FIELDS = ('unit_cost', 'last_cost', 'last_cost_at', 'prev_cost')
+COST_FIELDS = ('unit_cost', 'last_cost', 'last_cost_at', 'prev_cost', 'markup_pct', 'markup_used', 'suggested_price', 'margin_pct')
 
 
 def hide_cost(rows):
@@ -553,6 +794,23 @@ def set_cost(key, movement_id, who, body):
     return result
 
 
+TERMS = ('PAID', 'CREDIT')
+
+
+def delivery_terms(m, supplier_id):
+    """How a delivery is paid: now (the default, nothing is owed) or on credit (the supplier is owed until it is paid). A credit
+    delivery needs a supplier from the list, and carries that supplier's credit days of the day."""
+    terms = str(m.get('terms') or 'PAID').upper()
+    if terms not in TERMS:
+        raise bad('A delivery is either paid now or on credit')
+    if terms == 'PAID':
+        return {}
+    if not supplier_id:
+        raise bad('Choose the supplier from the list for a delivery on credit')
+    from . import suppliers
+    return {'terms': 'CREDIT', 'due_days': int(suppliers.one(supplier_id).get('credit_days') or 0)}
+
+
 def record_movement(key, who, body):
     def build():
         m = body or {}
@@ -568,7 +826,9 @@ def record_movement(key, who, body):
         note = text(m.get('note'), 'Note', 500, False)
         extra = {}
         if kind == 'RECEIPT':
-            extra = {'supplier': text(m.get('supplier'), 'Supplier', 100, False), 'reference': text(m.get('reference'), 'Supplier invoice or delivery no.', 60, False)}
+            from . import suppliers
+            sid, sname = suppliers.resolve(m.get('supplierId'), m.get('supplier'))
+            extra = {'supplier': sname, 'supplier_id': sid, 'reference': text(m.get('reference'), 'Supplier invoice or delivery no.', 60, False), **delivery_terms(m, sid)}
             cost = cost_of(m.get('unitCost'))
             if cost is not None:
                 extra['unit_cost'] = cost
@@ -638,6 +898,9 @@ def record_movement(key, who, body):
         if kind == 'RECEIPT' and extra.get('supplier') and not product.get('supplier'):
             expr += ', supplier = :sup'  # the first supplier named on a delivery becomes the item's usual supplier
             values[':sup'] = extra['supplier']
+            if extra.get('supplier_id'):
+                expr += ', supplier_id = :sid'
+                values[':sid'] = extra['supplier_id']
         if extra.get('unit_cost') is not None:
             # the last price paid, and the one before it so a rise or a drop can be shown to the owner
             expr += ', last_cost = :lc, last_cost_at = :lat'
@@ -659,11 +922,24 @@ def record_movement(key, who, body):
         result = {'id': mid, 'product_id': product['id'], 'kind': kind, 'quantity': quantity, 'unit_price': price,
                   'job_id': job_id if on_job else None, 'issue_id': issue_id, 'actor': who, 'note': note, 'created_at': created,
                   'receiver_id': receiver_id, 'sku': product['sku'], 'name': product['name'], 'unit': product['unit'],
-                  'balance': balance, **{k: v for k, v in rows[0]['Put']['Item'].items() if k in ('doc_no', 'supplier', 'reference', 'unit_cost')}}
+                  'balance': balance, **{k: v for k, v in rows[0]['Put']['Item'].items() if k in ('doc_no', 'supplier', 'supplier_id', 'reference', 'unit_cost', 'terms')}}
         return ops, labels, result
     result = command(key, 'movement', who, body, build)
     _cache['until'] = 0
+    if result.get('kind') == 'RECEIPT' and result.get('supplier_id'):
+        _orders_follow(result['supplier_id'], [(result['product_id'], result['quantity'])], result.get('doc_no') or result['id'])
     return result
+
+
+def _orders_follow(supplier_id, lines, token):
+    """A delivery from a supplier closes the matching lines of its open orders. Best effort: the delivery is already saved, so a failure here only
+    leaves an order showing as waiting until someone marks it received."""
+    try:
+        from . import orders
+        orders.on_receipt(supplier_id, lines, token)
+    except Exception:  # noqa: BLE001
+        import traceback
+        traceback.print_exc()
 
 
 def record_document(key, who, body):
@@ -685,7 +961,17 @@ def record_document(key, who, body):
             raise bad('Unsupported note')
         extra = {}
         if kind == 'RECEIPT':
-            extra = {'supplier': text(m.get('supplier'), 'Supplier', 100, False), 'reference': text(m.get('reference'), 'Supplier invoice or delivery no.', 60, False)}
+            from . import suppliers
+            sid, sname = suppliers.resolve(m.get('supplierId'), m.get('supplier'))
+            extra = {'supplier': sname, 'supplier_id': sid, 'reference': text(m.get('reference'), 'Supplier invoice or delivery no.', 60, False), **delivery_terms(m, sid)}
+        elif kind == 'SUPPLIER_RETURN':
+            from . import suppliers
+            if not m.get('supplierId'):
+                raise bad('Choose the supplier these parts go back to')
+            sid, sname = suppliers.resolve(m.get('supplierId'), '', keep=str(m.get('supplierId')))
+            reason = text(m.get('reason'), 'Reason', 200, True)
+            extra = {'supplier': sname, 'supplier_id': sid, 'reference': text(m.get('reference'), 'Supplier credit note no.', 60, False), 'reason': reason}
+            note = ('Returned to supplier: ' + reason)[:500]
         receiver_id = m.get('receiverId') if kind == 'STOCK_OUT' else None
         receiver_name = active_person(receiver_id)['name'] if receiver_id else None
         doc_no, counter = next_doc_no(kind)
@@ -705,7 +991,7 @@ def record_document(key, who, body):
             seen.add(product['id'])
             if product['unit'] == 'UNIT' and quantity != quantity.to_integral_value():
                 raise bad('%s is counted in whole units' % product['name'])
-            balance = product['quantity'] + (-quantity if kind == 'STOCK_OUT' else quantity)
+            balance = product['quantity'] + (-quantity if kind in ('STOCK_OUT', 'SUPPLIER_RETURN') else quantity)
             if balance < 0:
                 raise conflict('Only %s of %s in stock' % (product['quantity'].normalize(), product['name']))
             row_extra = dict(extra, doc_ids=ids)
@@ -722,6 +1008,15 @@ def record_document(key, who, body):
                 if extra.get('supplier') and not product.get('supplier'):
                     expr += ', supplier = :sup'
                     values[':sup'] = extra['supplier']
+                    if extra.get('supplier_id'):
+                        expr += ', supplier_id = :sid'
+                        values[':sid'] = extra['supplier_id']
+            if kind == 'SUPPLIER_RETURN':
+                # what the shop paid for them: the price on the line, else the last price paid; it lowers what is owed to the supplier
+                cost = cost_of(line.get('unitCost'))
+                cost = cost if cost is not None else product.get('last_cost')
+                if cost is not None:
+                    row_extra['unit_cost'] = cost
             ops.append(update('PRODUCT', product['id'], expr, values, condition='quantity = :old and archived = :nf'))
             rows, _ = movement_items(product, kind, quantity, product['selling_price'], None, None, who, note,
                                      receiver_id, receiver_name, created, row_extra, doc_no=doc_no, movement_id=mid)
@@ -733,6 +1028,8 @@ def record_document(key, who, body):
         return ops, [None] * len(ops), result
     result = command(key, 'document', who, body, build)
     _cache['until'] = 0
+    if result.get('kind') == 'RECEIPT' and result.get('supplier_id'):
+        _orders_follow(result['supplier_id'], [(l['product_id'], l['quantity']) for l in result['lines']], result['doc_no'])
     return result
 
 
@@ -896,3 +1193,119 @@ def history_snapshot(start_text, confirmed, who):
                      'usage': usage, 'inStock': in_stock})
     return {'schemaVersion': 1, 'timezone': 'Asia/Colombo', 'historyConfirmed': True, 'historyFrom': start.isoformat(),
             'historyUntil': until.isoformat(), 'asOf': as_of.isoformat(), 'confirmedBy': who, 'products': rows}
+
+
+# ---------- price and markup ----------
+PRICE_STEP = Decimal(5)  # suggested prices are rounded up to the next 5 rupees
+MAX_PRICE = Decimal(10_000_000)
+PRICE_BATCH = 25  # each change is two writes; one transaction holds 100
+
+
+def suggested(cost, markup):
+    """Cost plus the markup (30 means +30%), rounded up to the next 5 rupees. None when the cost or the markup is not known."""
+    if cost is None or not markup or markup <= 0:
+        return None
+    raw = Decimal(cost) * (1 + Decimal(markup) / 100)
+    return ((raw / PRICE_STEP).to_integral_value(rounding='ROUND_CEILING') * PRICE_STEP).quantize(Decimal('0.01'))
+
+
+def margin_pct(price, cost):
+    """What share of the selling price is profit: (price - cost) / price. None without both."""
+    if cost is None or not price or price <= 0:
+        return None
+    return ((Decimal(price) - Decimal(cost)) / Decimal(price) * 100).quantize(Decimal('0.1'))
+
+
+def priced(rows, default=None):
+    """Adds markup, suggested price and margin to part rows. Only for people who may see cost."""
+    if default is None:
+        from . import workshop
+        default = workshop.business().get('default_markup_pct') or ZERO
+    out = []
+    for r in rows:
+        used = r.get('markup_pct') if r.get('markup_pct') is not None else default
+        out.append(dict(r, markup_used=used if used else None, suggested_price=suggested(r.get('last_cost'), used), margin_pct=margin_pct(r.get('selling_price'), r.get('last_cost'))))
+    return out
+
+
+def _price(value):
+    price = non_negative(value, 'Price')
+    if price > MAX_PRICE or price.as_tuple().exponent < -2:
+        raise bad('The price must be 10,000,000 or less, with at most 2 decimals')
+    return price
+
+
+def _log(item, old, new, who, at):
+    return put({'pk': 'PRICELOG', 'sk': at + '#' + uuid.uuid4().hex[:8], 'product_id': item['id'], 'sku': item['sku'], 'name': item['name'], 'old': old, 'new': new, 'by': who, 'at': at})
+
+
+def set_price(key, product_id, who, body):
+    """Change a part's selling price and/or its own markup. Jobs and bills already made keep the price they were made at."""
+    def build():
+        item, b = load_product(product_id), body or {}
+        new, at = dict(item), now()
+        ops, labels = [], []
+        if 'price' in b:
+            price, old = _price(b['price']), item['selling_price']
+            if price == old and 'markupPct' not in b:
+                raise bad('The price is already %s' % format(old, ',.2f'))
+            new['selling_price'] = price
+        if 'markupPct' in b:
+            from . import workshop
+            if b['markupPct'] in (None, ''):
+                new.pop('markup_pct', None)
+            else:
+                new['markup_pct'] = workshop.markup_pct(b['markupPct'], 'Markup')
+        if 'price' not in b and 'markupPct' not in b:
+            raise bad('Send a price or a markup')
+        ops.append(put(new, ConditionExpression='selling_price = :o', ExpressionAttributeValues={':o': item['selling_price']}))
+        labels.append(None)
+        if new['selling_price'] != item['selling_price']:
+            ops.append(_log(item, item['selling_price'], new['selling_price'], who, at))
+            labels.append(None)
+        return ops, labels, priced([product_view(new)])[0]
+    result = command(key, 'set-price:' + product_id, who, body, build)
+    announce(result)
+    _cache['until'] = 0
+    return result
+
+
+def price_review():
+    """Parts whose selling price differs from cost plus markup, lowest margin first. Parts with no known cost or no markup are not listed."""
+    rows = [r for r in priced(active_products()) if r['suggested_price'] is not None and r['suggested_price'] != r['selling_price']]
+    for r in rows:
+        r['below'] = r['selling_price'] < r['suggested_price']
+    keys = ('id', 'sku', 'name', 'part_number', 'unit', 'quantity', 'last_cost', 'selling_price', 'suggested_price', 'markup_used', 'margin_pct', 'below')
+    rows = sorted(({k: r.get(k) for k in keys} for r in rows), key=lambda r: (r['margin_pct'] is None, r['margin_pct'] if r['margin_pct'] is not None else 0, r['sku']))
+    return {'items': rows, 'below': sum(1 for r in rows if r['below'])}
+
+
+def apply_prices(key, who, body):
+    """Set several prices at once (the review screen). All or none; a part changed by someone else meanwhile makes the whole batch retry or stop."""
+    def build():
+        items = (body or {}).get('items')
+        if not isinstance(items, list) or not items:
+            raise bad('Choose the prices to set')
+        if len(items) > PRICE_BATCH:
+            raise bad('Up to %d prices at once' % PRICE_BATCH)
+        seen, ops, at = set(), [], now()
+        for it in items:
+            pid = str(it.get('productId') or '') if isinstance(it, dict) else ''
+            if not pid or pid in seen:
+                raise bad('Each part can be on the list once')
+            seen.add(pid)
+            item, price = load_product(pid), _price(it.get('price'))
+            if price == item['selling_price']:
+                continue
+            ops += [put(dict(item, selling_price=price), ConditionExpression='selling_price = :o', ExpressionAttributeValues={':o': item['selling_price']}), _log(item, item['selling_price'], price, who, at)]
+        if not ops:
+            raise bad('Those prices are already set')
+        return ops, [None] * len(ops), {'updated': len(ops) // 2}
+    result = command(key, 'apply-prices', who, body, build)
+    _cache['until'] = 0
+    return result
+
+
+def price_history(product_id):
+    load_product(product_id)
+    return [public(r) for r in query('PRICELOG', forward=False, limit=300) if r['product_id'] == product_id][:50]

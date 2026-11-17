@@ -1,7 +1,7 @@
 import { Crash } from "./Crash";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, Package, ArrowDownLeft, ArrowUpRight, Activity, Plus, Printer, Search, RefreshCw, LogOut, Check, X, ScanLine, Home, ArrowRight, ArrowLeft, ClipboardCheck, ListChecks, Wrench, Menu as MenuIcon, FileText, PlusCircle, X as CloseIcon, Compass } from "lucide-react";
+import { Camera, Package, ArrowDownLeft, ArrowUpRight, Activity, Plus, Printer, Search, RefreshCw, LogOut, Check, X, ScanLine, Home, ArrowRight, ArrowLeft, ClipboardCheck, ListChecks, Truck, Wrench, Warehouse, Menu as MenuIcon, FileText, PlusCircle, X as CloseIcon, Compass } from "lucide-react";
 import { api, ApiError, auth, openPdf, userEmail, shrink, signOut, type Match, type Draft, type Movement } from "./api";
 import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/manrope";
@@ -11,7 +11,7 @@ import "./theme.css";
 import "./tokens.css";
 import { ToastHost, ConfirmHost, askConfirm, applyTheme, getTheme, toast } from "./ui";
 import { setBusinessName, setDefaultReorder, useBusinessName } from "./businessName";
-import { t, useLang, setLang } from "./i18n";
+import { t, useLang, setLang, setSinhalaAllowed, useSinhalaAllowed } from "./i18n";
 import { Walkthrough } from "./Walkthrough";
 import { MechanicHome } from "./MechanicHome";
 import { SetupWizard, setupDone } from "./SetupWizard";
@@ -27,7 +27,12 @@ const Scanner = React.lazy(() =>
   import("./Scanner").then((module) => ({ default: module.Scanner })),
 );
 import { StockReport, MovementPdf } from "./StockReport";
+import { Orders } from "./Orders";
+import { StoreMap, SHELF_FOCUS } from "./StoreMap";
+import { PriceReview } from "./Pricing";
+import { Suppliers } from "./Suppliers";
 import { Workshop } from "./workshop";
+import { PlatformSection } from "./workshop/PlatformSection";
 import { DateChips, SummaryBar, ALL, bounds, inRange, useSaved, type Range } from "./workshop/DateRange";
 import "./brand.css";
 import { CommandBar } from "./CommandBar";
@@ -51,6 +56,10 @@ type View =
   | "find"
   | "count"
   | "analysis"
+  | "suppliers"
+  | "orders"
+  | "prices"
+  | "shelf"
   | "activity"
   | "counter"
   | "workshop";
@@ -59,7 +68,7 @@ function App() {
   const [counterMode, setCounterMode] = useState<CounterMode>(() => (loadNav().mode as CounterMode) || "receive");
   useEffect(() => { saveNav(view, counterMode); }, [view, counterMode]);
   const businessName = useBusinessName();
-  const lang = useLang();
+  const lang = useLang(), sinhalaOn = useSinhalaAllowed();
   const [, setThemeTick] = useState(0);
   const [cmdOpen, setCmdOpen] = useState(false);
   useEffect(() => { const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setCmdOpen(true); } }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, []);
@@ -114,7 +123,7 @@ function App() {
   const [session, setSession] = useState<Session | null>(null),
     [status, setStatus] = useState<any>(null),
     [loading, setLoading] = useState(false);
-  const [booted, setBooted] = useState(false), [gate, setGate] = useState<"" | "signedOut" | "noAccess">("");
+  const [booted, setBooted] = useState(false), [gate, setGate] = useState<"" | "signedOut" | "noAccess" | "platform">("");
   const [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false);
@@ -168,7 +177,7 @@ function App() {
   const visibleMoves = moves.filter((movement) => {
     const query = activitySearch.trim().toLowerCase();
     const incoming = ["OPENING", "RECEIPT", "RETURN", "COUNT_IN"].includes(movement.kind);
-    const outgoing = ["ISSUE", "STOCK_OUT", "COUNT_OUT"].includes(movement.kind);
+    const outgoing = ["ISSUE", "STOCK_OUT", "COUNT_OUT", "SUPPLIER_RETURN"].includes(movement.kind);
     const matchesKind =
       activityKind === "ALL" ||
       (activityKind === "IN" && incoming) ||
@@ -176,7 +185,7 @@ function App() {
       (activityKind === "RECEIVED" && ["RECEIPT", "OPENING"].includes(movement.kind)) ||
       (activityKind === "ISSUED" && movement.kind === "ISSUE") ||
       (activityKind === "RETURNED" && movement.kind === "RETURN") ||
-      (activityKind === "GIVEN" && movement.kind === "STOCK_OUT") ||
+      (activityKind === "GIVEN" && ["STOCK_OUT", "SUPPLIER_RETURN"].includes(movement.kind)) ||
       (activityKind === "COUNTED" && ["COUNT_IN", "COUNT_OUT"].includes(movement.kind));
     const matchesText =
       !query ||
@@ -232,7 +241,7 @@ function App() {
       setSession(s);
       try { const dl = sessionStorage.getItem("lifta.deeplink"); if (dl) { sessionStorage.removeItem("lifta.deeplink"); openWorkshop({ name: "job", id: dl }); } } catch { /* ignore */ }
       setStatus(v);
-      api<{ name: string; default_reorder_level?: number }>("/api/workshop/settings").then((b) => { setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); }).catch(() => undefined);
+      api<{ name: string; default_reorder_level?: number; sinhala?: boolean }>("/api/workshop/settings").then((b) => { setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); setSinhalaAllowed(!!b.sinhala); }).catch(() => undefined);
       const key = "stocklane.tasks.v2." + s.name;
       if (storageKey.current !== key) {
         storageKey.current = key;
@@ -255,7 +264,10 @@ function App() {
     } catch (e) {
       const code = e instanceof ApiError ? e.status : 0;
       if (auth && code === 401) setGate("signedOut");
-      else if (auth && code === 403) setGate("noAccess");
+      else if (auth && code === 403) {
+        // the person who runs the system has no workshop of their own: show them the workshops screen instead of "No access"
+        try { await api("/api/platform/shops"); setGate("platform"); } catch { setGate("noAccess"); }
+      }
       else setError((e as Error).message);
     } finally {
       setLoading(false);
@@ -692,6 +704,16 @@ function App() {
         </b>
       </button>
     ));
+  if (auth && !session && booted && gate === "platform" && !onCallback) {
+    return (
+      <main className="si-page"><section className="si-card" style={{ maxWidth: 560 }}>
+        <div className="si-brand"><Logo size={48} /><span className="si-word">Lifta<span>.</span></span></div>
+        <p className="si-eyebrow">PLATFORM</p>
+        <PlatformSection />
+        <button className="si-button" onClick={() => void signOut()}>Sign out</button>
+      </section></main>
+    );
+  }
   if (auth && !session) {
     const signIn = auth;
     const mode: SignInMode | "" = onCallback ? (error ? "failed" : "callback") : !booted ? "checking" : gate === "noAccess" ? "noAccess" : gate === "signedOut" ? "signedOut" : "";
@@ -707,13 +729,17 @@ function App() {
     { group: t("STOCK MANAGEMENT") },
     ...(canAny("stock_in", "stock_out") ? [{ key: "counter" as View, full: t("Parts counter"), short: t("Counter"), sub: t("A part came in or went out"), Icon: ScanLine, main: true }] : []),
     { key: "stock", full: t("Parts list"), short: t("Parts"), sub: owner ? t("All parts, photos and QR labels") : t("See what is in stock"), Icon: Package },
+    { key: "shelf", full: t("Store room"), short: t("Store room"), sub: t("Where every part sits"), Icon: Warehouse },
     { key: "activity", full: t("History"), short: t("History"), sub: t("Every part in and out"), Icon: Activity },
+    ...(can("orders") ? [{ key: "orders" as View, full: t("To order"), short: t("To order"), sub: t("Parts to buy, and WhatsApp orders"), Icon: ListChecks }] : []),
+    ...(can("see_cost") && can("price_edit") ? [{ key: "prices" as View, full: t("Price review"), short: t("Prices"), sub: t("Cost plus markup, set prices"), Icon: ClipboardCheck }] : []),
+    ...(can("suppliers_view") ? [{ key: "suppliers" as View, full: t("Suppliers"), short: t("Suppliers"), sub: t("Who you buy parts from"), Icon: Truck }] : []),
     ...(can("reports") ? [{ key: "analysis" as View, full: t("Reports"), short: t("Reports"), sub: t("Stock summary and low stock"), Icon: ClipboardCheck }] : []),
     { group: t("HELP") },
     { key: "tour", full: t("Walkthrough"), short: t("Walkthrough"), sub: t("Show me how it works"), Icon: Compass },
   ];
   const pickNav = (key: View | "tour") => { if (key === "tour") { setMenuOpen(false); setChooser(true); } else navigate(key); };
-  const moreActive = view === "stock" || view === "activity" || view === "analysis";
+  const moreActive = view === "stock" || view === "activity" || view === "analysis" || view === "suppliers" || view === "orders" || view === "prices" || view === "shelf";
   return (
     <div className="stock-shell" data-dock={dockHidden ? "hidden" : "shown"} data-hdr={hdrHidden ? "hidden" : "shown"}>
       <aside className="stock-sidebar" {...swipe}>
@@ -825,10 +851,10 @@ function App() {
             </span>
           </div>
           <div>
-            <div className="lang-toggle" role="group" aria-label="Language">
+            {sinhalaOn && <div className="lang-toggle" role="group" aria-label="Language">
               <button className={lang === "en" ? "on" : ""} onClick={() => setLang("en")}>EN</button>
               <button className={lang === "si" ? "on" : ""} onClick={() => setLang("si")}>සිං</button>
-            </div>
+            </div>}
             <button className="cmd-open" aria-label={t("Search anything")} onClick={() => setCmdOpen(true)}><Search size={18} /><span className="cmd-label">{t("Search")}</span><kbd>Ctrl K</kbd></button>
             <button className="theme-toggle" aria-label={t("Appearance") + ": " + t(getTheme() === "auto" ? "Auto" : getTheme() === "dark" ? "Dark" : "Light")} title={t("Appearance") + ": " + t(getTheme() === "auto" ? "Auto" : getTheme() === "dark" ? "Dark" : "Light")} onClick={() => { const c = getTheme(); applyTheme(c === "auto" ? "light" : c === "light" ? "dark" : "auto"); setThemeTick((n) => n + 1); }}>{getTheme() === "auto" ? "🌗" : getTheme() === "dark" ? "🌙" : "☀️"}</button>
             <button
@@ -1289,9 +1315,13 @@ function App() {
                         <p>
                           {active.grade} {active.capacity}
                         </p>
-                        <span className="shelf-chip">
-                          {active.location || "Shelf not set"}
-                        </span>
+                        {active.location ? (
+                          <button type="button" className="shelf-chip" title={t("Show on map")} onClick={() => { try { sessionStorage.setItem(SHELF_FOCUS, active.location || ""); } catch { /* ignore */ } navigate("shelf"); }}>
+                            {active.location} · {t("Show on map")}
+                          </button>
+                        ) : (
+                          <span className="shelf-chip">{"Shelf not set"}</span>
+                        )}
                       </div>
                     </div>
                     <div className="available-stock">
@@ -1742,6 +1772,10 @@ function App() {
           </>
         )}
         {view === "analysis" && can("reports") && <StockReport />}
+        {view === "suppliers" && can("suppliers_view") && <Suppliers />}
+        {view === "shelf" && <StoreMap items={items as never} />}
+        {view === "orders" && can("orders") && <Orders />}
+        {view === "prices" && can("see_cost") && can("price_edit") && <PriceReview />}
         {view === "workshop" && session && <Workshop key={wsStart.n} owner={owner} start={wsStart.page} />}
         {view === "counter" && session && (
           <Counter
@@ -1826,12 +1860,12 @@ function App() {
                         <span
                           className={
                             "movement-chip " +
-                            (["STOCK_OUT", "ISSUE", "COUNT_OUT"].includes(m.kind)
+                            (["STOCK_OUT", "ISSUE", "COUNT_OUT", "SUPPLIER_RETURN"].includes(m.kind)
                               ? "out"
                               : "in")
                           }
                         >
-                          {m.kind === "COUNT_IN" ? t("Count: found extra") : m.kind === "COUNT_OUT" ? t("Count: found missing") : m.kind === "STOCK_OUT" || m.kind === "ISSUE"
+                          {m.kind === "SUPPLIER_RETURN" ? t("Sent back to supplier") : m.kind === "COUNT_IN" ? t("Count: found extra") : m.kind === "COUNT_OUT" ? t("Count: found missing") : m.kind === "STOCK_OUT" || m.kind === "ISSUE"
                             ? m.kind === "ISSUE"
                               ? "Issued to workshop"
                               : "Given out"
@@ -1844,7 +1878,7 @@ function App() {
                         {m.doc_no && (
                           <button type="button" className="doc-link" title={t("Print this note")} onClick={() => void openPdf("/api/inventory/movements/" + m.id + "/note.pdf", m.doc_no + ".pdf").catch((e) => toast((e as Error).message, { bad: true }))}>{m.doc_no}</button>
                         )}
-                        {m.kind === "RECEIPT" && (m.supplier || m.reference) && <small>{[m.supplier, m.reference].filter(Boolean).join(" · ")}</small>}
+                        {(m.kind === "RECEIPT" || m.kind === "SUPPLIER_RETURN") && (m.supplier || m.reference) && <small>{[m.supplier, m.reference, m.terms === "CREDIT" ? t("On credit") : ""].filter(Boolean).join(" · ")}</small>}
                         {(m.kind === "RETURN" || m.kind === "ISSUE") && (m.reference || (m.note && !m.note.startsWith("Undo"))) && <small>{m.reference || m.note}</small>}
                         {can("cost_edit") && m.kind === "RECEIPT" && !(m.note || "").startsWith("Undo") && (costEdit?.id === m.id ? (
                           <small className="cost-edit">

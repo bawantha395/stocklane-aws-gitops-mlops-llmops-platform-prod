@@ -5,6 +5,7 @@ import { flushSync } from "react-dom";
 import "./workshop.css";
 import { api } from "../api";
 import { Archive } from "./Archive";
+import { CustomerPage, Customers } from "./Customers";
 import { Dashboard } from "./Dashboard";
 import { InvoicePage, Invoices } from "./Invoices";
 import { JobPage } from "./JobPage";
@@ -22,7 +23,7 @@ import { getBusinessName, setBusinessName, setDefaultReorder } from "../business
 const HELP: Partial<Record<PageName, string>> = {
   home: "Today in your workshop.", jobs: "Every vehicle that came in, with its repairs and bill.", new: "Fill in the vehicle and what needs doing.",
   quotes: "Estimates (the price can still change, like an insurance repair) and quotations (a fixed price). Send a PDF, revise it, then make the job.", quote: "Fill in the vehicle, the damage and the work by section.",
-  vehicles: "Every vehicle you have served, with owner and history.", due: "Vehicles due for service soon. Call or message the owner.",
+  vehicles: "Every vehicle you have served, with owner and history.", customers: "Every customer, with their vehicles, jobs, bills and what they owe.", due: "Vehicles due for service soon. Call or message the owner.",
   invoices: "Every bill. See who has paid and who still owes.", archive: "Deleted jobs are kept here. You can restore them.",
   report: "Sales, what is unpaid, and your best parts and work.", settings: "Your business details, tax and invoice header.",
 };
@@ -49,7 +50,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
       void run.finished.finally(() => { document.documentElement.classList.remove("vt-go"); if (src) src.style.viewTransitionName = ""; });
     } else { apply(); window.scrollTo({ top: 0 }); }
   }, []);
-  const tabs: [PageName, string][] = [["home", t("Home")], ["jobs", t("Jobs")], ["quotes", t("Quotes")], ["vehicles", t("Vehicles")], ["due", t("Service due")], ["invoices", t("Invoices")], ...(owner ? ([["archive", t("Archive")], ["report", t("Sales report")], ["settings", t("Settings")]] as [PageName, string][]) : [])];
+  const tabs: [PageName, string][] = [["home", t("Home")], ["jobs", t("Jobs")], ["quotes", t("Quotes")], ["vehicles", t("Vehicles")], ["customers", t("Customers")], ["due", t("Service due")], ["invoices", t("Invoices")], ...(owner ? ([["archive", t("Archive")], ["report", t("Sales report")], ["settings", t("Settings")]] as [PageName, string][]) : [])];
   const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   useEffect(() => { const on = () => setOnline(true), off = () => setOnline(false); window.addEventListener("online", on); window.addEventListener("offline", off); return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); }; }, []);
   // Groups: each group opens its first page; pages inside a group show as small chips under the bar.
@@ -57,12 +58,12 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
   const GROUPS: { key: string; label: string; pages: PageName[] }[] = [
     { key: "home", label: t("Home"), pages: ["home"] },
     { key: "jobs", label: t("Jobs"), pages: ["jobs"] },
-    { key: "vehicles", label: t("Vehicles"), pages: ["vehicles", "due"] },
+    { key: "vehicles", label: t("Vehicles"), pages: ["vehicles", ...(can("customers_view") ? ["customers"] : []), "due"] as PageName[] },
     ...(can("bills_view") || can("reports") ? [{ key: "money", label: t("Bills"), pages: [...(can("bills_view") ? ["invoices"] : []), ...(can("reports") ? ["report"] : [])] as PageName[] }] : []),
     ...(owner ? [{ key: "setup", label: t("Setup"), pages: ["archive", "settings"] as PageName[] }] : []),
   ];
-  const tab: PageName = page.name === "job" || page.name === "new" ? "jobs" : page.name === "quote" || page.name === "quotes" ? "jobs" : page.name === "vehicle" ? "vehicles" : page.name === "invoice" ? "invoices" : page.name;
-  const TITLES: Partial<Record<PageName, string>> = { home: t("Today"), jobs: t("Jobs"), new: t("New job"), job: t("Job"), quotes: t("Estimates and quotations"), quote: t("Estimate or quotation"), vehicles: t("Vehicles"), vehicle: t("Vehicle"), due: t("Service due"), invoices: t("Invoices"), invoice: t("Invoice"), archive: t("Archive"), report: t("Sales report"), settings: t("Settings") };
+  const tab: PageName = page.name === "job" || page.name === "new" ? "jobs" : page.name === "quote" || page.name === "quotes" ? "jobs" : page.name === "vehicle" ? "vehicles" : page.name === "customer" ? "customers" : page.name === "invoice" ? "invoices" : page.name;
+  const TITLES: Partial<Record<PageName, string>> = { home: t("Today"), jobs: t("Jobs"), new: t("New job"), job: t("Job"), quotes: t("Estimates and quotations"), quote: t("Estimate or quotation"), vehicles: t("Vehicles"), vehicle: t("Vehicle"), customers: t("Customers"), customer: t("Customer"), due: t("Service due"), invoices: t("Invoices"), invoice: t("Invoice"), archive: t("Archive"), report: t("Sales report"), settings: t("Settings") };
   const title = TITLES[page.name] || business.name;
   const headRef = useRef<HTMLHeadingElement>(null), pageRef = useRef<HTMLDivElement>(null), [shrunk, setShrunk] = useState(false);
   useEffect(() => { const h = headRef.current; if (!h || !("IntersectionObserver" in window)) return; const io = new IntersectionObserver((es) => setShrunk(!es[0]!.isIntersecting), { rootMargin: (window.innerWidth <= 760 ? "-150px" : "-10px") + " 0px 0px 0px" }); io.observe(h); return () => io.disconnect(); }, [page.name]);
@@ -74,7 +75,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
   }, [page.name]);
   useScrollFeel(pageRef, page.name + (page.id || ""));
   const group = GROUPS.find((g) => g.pages.includes(tab)) || GROUPS[0]!;
-  const crumbs: { label: string; to: Page }[] = page.name === "job" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "new" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "quote" ? [{ label: t("Jobs"), to: { name: "jobs", tab: page.kind === "QUOTATION" ? "QUOTATION" : "ESTIMATE" } as Page }] : page.name === "vehicle" ? [{ label: t("Vehicles"), to: { name: "vehicles" } }] : page.name === "invoice" ? [{ label: t("Invoices"), to: { name: "invoices" } }] : [];
+  const crumbs: { label: string; to: Page }[] = page.name === "job" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "new" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "quote" ? [{ label: t("Jobs"), to: { name: "jobs", tab: page.kind === "QUOTATION" ? "QUOTATION" : "ESTIMATE" } as Page }] : page.name === "vehicle" ? [{ label: t("Vehicles"), to: { name: "vehicles" } }] : page.name === "customer" ? [{ label: t("Customers"), to: { name: "customers" } }] : page.name === "invoice" ? [{ label: t("Invoices"), to: { name: "invoices" } }] : [];
   return (
     <WsContext.Provider value={{ owner, business, go, reloadBusiness }}>
       <section className="ws" aria-label="Workshop">
@@ -101,6 +102,8 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
         {page.name === "job" && page.id && <JobPage key={page.id} id={page.id} />}
         {page.name === "vehicles" && <Vehicles />}
         {page.name === "vehicle" && page.id && <VehiclePage key={page.id} id={page.id} />}
+        {page.name === "customers" && can("customers_view") && <Customers />}
+        {page.name === "customer" && page.id && can("customers_view") && <CustomerPage key={page.id} id={page.id} />}
         {page.name === "due" && <Due />}
         {page.name === "invoices" && <Invoices />}
         {page.name === "invoice" && page.id && <InvoicePage key={page.id} id={page.id} />}

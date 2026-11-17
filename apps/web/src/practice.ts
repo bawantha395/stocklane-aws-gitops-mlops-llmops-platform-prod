@@ -196,6 +196,32 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
   }
   if (area === "inventory") {
     if (a === "session") return { name: "Practice", roles: [state.owner ? "ROLE_OWNER" : "ROLE_MECHANIC"] };
+    if (a === "price-review") {
+      if (method !== "GET") throw new ApiError("Practice mode does not change prices. In your real workshop they are saved and logged.", 400);
+      return { below: 1, items: [{ id: "p1", sku: "OF-1", name: "Oil filter (sample)", part_number: "PN-1", unit: "UNIT", quantity: 4, last_cost: 1400, selling_price: 1500, suggested_price: 1820, markup_used: 30, margin_pct: 6.7, below: true }] };
+    }
+    if (a === "products" && b && seg[4] === "price-history") return [];
+    if (a === "products" && b && seg[4] === "price") throw new ApiError("Practice mode does not change prices. In your real workshop they are saved and logged.", 400);
+    if (a === "payables" && method === "GET") return { total: 18500, overdue: 6000, suppliers: [{ id: "s1", name: "Lanka Spares (sample)", balance: 18500, overdue: 6000, oldest_overdue_days: 12, bills: 2 }] };
+    if (a === "suppliers" && b && seg[4] === "payables") {
+      if (method !== "GET") throw new ApiError("Practice mode does not save payments. In your real workshop they are saved and settle the oldest bill first.", 400);
+      return { supplier: { id: b, name: "Lanka Spares (sample)", credit_days: 30 }, balance: 18500, open: 18500, overdue: 6000, oldest_overdue_days: 12, incomplete: 0,
+        bills: [{ id: "b2", doc_no: "GRN-SAMPLE-2", created_at: now(), reference: "DN-2", amount: 12500, open: 12500, due: "2030-01-31", overdue_days: 0, unknown: 0 }, { id: "b1", doc_no: "GRN-SAMPLE-1", created_at: "2020-01-01T00:00:00Z", reference: "DN-1", amount: 6000, open: 6000, due: "2020-01-31", overdue_days: 12, unknown: 0 }], returns: [], payments: [] };
+    }
+    if (a === "to-order" && method === "GET") return { open: 2, items: [
+      { key: "low:s1", want_id: null, product_id: "p1", name: "Oil filter (sample)", part_no: "PN-1", unit: "UNIT", quantity: 6, stock: 1, reorder_level: 3, supplier_id: "s1", supplier: "Lanka Spares (sample)", source: "LOW", status: "OPEN" },
+      { key: "want:w1", want_id: "w1", product_id: null, name: "Wiper blade (sample)", part_no: "", unit: "UNIT", quantity: 2, supplier_id: null, supplier: "", source: "JOB", job_no: "JOB-1", registration: "CAB-1234", status: "OPEN" }] };
+    if (a === "orders" && method === "GET") return [];
+    if (a === "orders" && method === "POST" && !b) return { id: "o-practice", order_no: "PO-PRACTICE", supplier_id: body.supplierId, supplier: "Lanka Spares (sample)", status: "SENT", created_at: now(), lines: [], contact: { phone: "0112345678", whatsapp: "" },
+      message: "Hello Lanka Spares (sample),\nOrder PO-PRACTICE from your workshop:\n\n1. PN-1 Oil filter x 6\n\nPlease confirm what you have and the price. Thank you." };
+    if ((a === "wants" || a === "supplier-returns" || a === "orders") && method !== "GET") throw new ApiError("Practice mode does not save this. In your real workshop it is saved and shown in the lists.", 400);
+    if (a === "suppliers") {
+      const sample = [{ id: "s1", name: "Lanka Spares (sample)", kind: "MAIN", phone: "0112345678", whatsapp: "", credit_days: 30, active: true, parts: 2, updated_at: now() }, { id: "s2", name: "Kade Mudalali (sample)", kind: "LOCAL", phone: "0715556666", whatsapp: "", credit_days: 0, active: true, parts: 0, updated_at: now() }];
+      if (method !== "GET") throw new ApiError("Practice mode does not save suppliers. In your real workshop they are saved and shown in every pick list.", 400);
+      if (!b) { const term = (url.searchParams.get("search") || "").toLowerCase(), kind = url.searchParams.get("kind") || ""; return clone(sample.filter((x) => (!term || x.name.toLowerCase().includes(term)) && (!kind || x.kind === kind))); }
+      const x = sample.find((y) => y.id === b); if (!x) throw new ApiError("Supplier not found", 404);
+      return clone({ ...x, address: "", notes: "", revision: 0, deliveries: [], delivery_count: 0, parts: [], last_delivery: null, bought: 0 });
+    }
     if (a === "products" && b === "archived") return clone(db.products.filter((x) => x.archived));
     if (a === "products" && b && seg[4] === "archive" && method === "POST") {
       const item = db.products.find((x) => x.id === b); if (!item) throw new ApiError("Not found", 404);
@@ -234,7 +260,7 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       if (body.kind === "STOCK_OUT" && q > Number(item.quantity)) throw new ApiError("Only " + item.quantity + " in stock.", 409);
       item.quantity = round2(Number(item.quantity) + (body.kind === "STOCK_OUT" ? -q : q));
       const m = { id: next("m"), product_id: item.id, sku: item.sku, name: item.name, unit: item.unit, kind: body.kind, quantity: q, unit_price: 0, balance: item.quantity, job_id: null, issue_id: null, actor: "Practice", note: body.note || "", created_at: now(), ...(body.kind === "RECEIPT" || body.kind === "STOCK_OUT" ? { doc_no: (body.kind === "RECEIPT" ? "GRN-" : "GIN-") + now().slice(0, 10).replace(/-/g, "") + "-P" + String(db.moved + 1).padStart(3, "0") } : {}), ...(body.kind === "RECEIPT" ? { supplier: body.supplier || undefined, reference: body.reference || undefined, ...(body.unitCost ? { unit_cost: Number(body.unitCost) } : {}) } : {}) };
-      if (body.kind === "RECEIPT" && body.supplier && !item.supplier) item.supplier = body.supplier;
+      if (body.kind === "RECEIPT" && (body.supplier || body.supplierId) && !item.supplier) item.supplier = body.supplier || (body.supplierId === "s1" ? "Lanka Spares (sample)" : "Kade Mudalali (sample)");
       if (body.kind === "RECEIPT" && body.unitCost) { const c = Number(body.unitCost); if (item.last_cost != null && item.last_cost !== c) item.prev_cost = item.last_cost; item.last_cost = c; }
       db.movements.unshift(m); db.moved++; return clone(m);
     }
@@ -287,6 +313,28 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       const sum = (f: (i: Row) => number) => db.invoices.reduce((s, i) => s + f(i), 0);
       return clone({ today: { date: d, invoices: db.invoices.length, billed: sum((i) => i.total), received: sum((i) => i.paid) }, month: { from: d.slice(0, 8) + "01", invoices: db.invoices.length, billed: sum((i) => i.total), received: sum((i) => i.paid) },
         open_jobs: rows(open), open_count: open.length, ready_jobs: rows(open.filter((j) => j.stage === "READY")), ready_count: open.filter((j) => j.stage === "READY").length, unpaid_count: owing.length, unpaid_total: owing.reduce((s, i) => s + i.total - i.paid, 0), oldest_unpaid_days: 0, due_count: 0, delete_requests: db.requests.filter((r) => r.status === "PENDING") });
+    }
+    if (a === "customers") {
+      const canon = (x: string) => x.replace(/\D/g, "").replace(/^94(?=\d{9}$)/, "0");
+      const people = (): Row[] => {
+        const m = new Map<string, Row>();
+        for (const j of db.jobs) {
+          const k = canon(String(j.phone || "")); if (k.length < 9) continue;
+          const c = m.get(k) || { id: "c" + k, name: j.customer, phone: k, phone2: "", kind: "WALKIN", active: true, birthday: "", address: "", notes: "", names: [], aliases: [], revision: 0, vehicles: 0, regs: [] as string[], jobs: 0, owing: 0, spent: 0, bills: 0, updated_at: j.updated_at || now() };
+          if (!c.regs.includes(j.registration)) { c.regs.push(j.registration); c.vehicles = c.regs.length; }
+          c.jobs++; m.set(k, c);
+        }
+        for (const i of db.invoices) { const c = m.get(canon(String(i.phone || ""))); if (!c || i.status === "VOID") continue; c.bills++; c.spent += i.total; if (i.status === "UNPAID" || i.status === "PARTIAL") c.owing += i.total - i.paid; }
+        return [...m.values()];
+      };
+      if (b === "lookup") { const d = (url.searchParams.get("search") || "").replace(/\D/g, ""); return d.length < 4 ? [] : clone(people().filter((c) => c.phone.includes(d)).slice(0, 6).map((c) => ({ id: c.id, name: c.name, phone: c.phone, address: "", kind: c.kind, vehicles: c.regs.map((r: string) => ({ registration: r, make: "", last_km: null })) }))); }
+      if (method === "POST" && !b) throw new ApiError("Practice mode does not save customers. In your real workshop a job with a phone number makes the customer by itself.", 400);
+      if (!b) { const term = (url.searchParams.get("search") || "").toLowerCase(), digits = term.replace(/\D/g, ""); return clone(people().filter((c) => !term || c.name.toLowerCase().includes(term) || (digits.length >= 3 && c.phone.includes(digits)) || c.regs.some((r: string) => r.toLowerCase().replace(/\W/g, "").includes(term.replace(/\W/g, ""))))); }
+      if (method !== "GET") throw new ApiError("Practice mode does not save customers.", 400);
+      if (seg[4] === "statement.pdf") return samplePdf("Statement");
+      const c = people().find((x) => x.id === b); if (!c) throw new ApiError("Customer not found", 404);
+      const mine = db.jobs.filter((j) => canon(String(j.phone || "")) === c.phone);
+      return clone({ ...c, vehicle_list: c.regs.map((r: string) => ({ registration: r, make: "", last_km: null, owner: c.name })), timeline: mine.map((j) => { const inv = db.invoices.find((i) => i.job_id === j.id); return { id: j.id, job_no: j.job_no, registration: j.registration, created_at: j.created_at, status: j.status, stage: j.stage, summary: j.summary, name: j.customer, ...(inv ? { total: inv.total, paid: inv.paid, balance: inv.total - inv.paid, pay_status: inv.status, invoice_id: inv.id, invoice_number: inv.invoice_number } : {}) }; }) });
     }
     if (a === "vehicles") {
       if (b) {
@@ -425,6 +473,15 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
     }
   }
   if (path.includes("/api/workshop/export")) return { exported_at: now(), format: "lifta-export-1", note: "Practice sample. Nothing here is real.", jobs: clone(db.jobs), invoices: clone(db.invoices) };
+  if (path.includes("/api/inventory/stores/shelf")) {
+    const rack = new URL(path, "http://demo").searchParams.get("rack");
+    return { rack_id: rack, level_id: null, parts: rack === "r1" ? [{ id: "p1", sku: "S-1", name: "Oil filter (sample)", part_number: "OF-1", unit: "UNIT", quantity: 4, reorder_level: 2, location: "Rack 1-A", level_id: "l1" }] : [] };
+  }
+  if (path.includes("/api/inventory/stores/layout") || path.includes("/api/inventory/stores/quick-start")) {
+    if (method !== "GET") throw new ApiError("Practice mode does not save the store room. In your real workshop your walls, racks and levels are saved.", 400);
+    return { revision: 1, not_shelved: 1, categories: [], counts: { "r1": { "l1": 2 } }, areas: [{ id: "a1", name: "Wall A (sample)" }, { id: "a2", name: "Wall B (sample)" }],
+      racks: [{ id: "r1", name: "Rack 1", area_id: "a1", type: "RACK", levels: [{ id: "l1", name: "A" }, { id: "l2", name: "B" }] }, { id: "r2", name: "Cupboard", area_id: "a2", type: "CUPBOARD", levels: [] }] };
+  }
   if (path.includes("/api/inventory/stores")) {
     if (method !== "GET") { const b = (() => { try { return JSON.parse(String(options.body || "{}")); } catch { return {}; } })(); return { racks: b.racks || [], categories: b.categories || [], shelves: [], revision: 1 }; }
     return { racks: [], categories: [], shelves: [], revision: 0 };

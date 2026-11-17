@@ -29,7 +29,7 @@ METHODS = ('CASH', 'CARD', 'BANK', 'OTHER')
 CHANGED = 'Someone changed this just now. Reload it and try again.'
 DEFAULT_BUSINESS = {'name': 'Workshop Suite', 'address': '', 'phone': '', 'email': '', 'reg_no': '', 'bank': '',
                     'footer': 'Thank you for your business.', 'tax_name': 'VAT', 'tax_rate': ZERO, 'mechanic_discount_pct': Decimal('10'),
-                    'payment_terms_days': 0, 'warranty': '', 'qr_url': '', 'qr_bits': '', 'invoice_prefix': 'INV', 'default_reorder_level': 5,
+                    'payment_terms_days': 0, 'warranty': '', 'qr_url': '', 'qr_bits': '', 'invoice_prefix': 'INV', 'default_reorder_level': 5, 'sinhala': False, 'default_markup_pct': ZERO,
                     'labour_items': [], 'mechanics': [], 'logo': None}
 
 
@@ -118,11 +118,15 @@ def parts_in(value):
         if r.get('outside') and not r.get('product_id'):
             # a part bought from another shop for this job: it never touches the stock. What was paid and where is for the owner.
             line['outside'] = True
-            given = [k for k in ('outside_cost', 'outside_shop') if k in r]
+            given = [k for k in ('outside_cost', 'outside_shop', 'outside_supplier_id') if k in r]
             line['_given'] = given  # what was typed on this save; a field left out keeps its stored value (a mechanic never reads the cost back)
             if str(r.get('outside_cost') if r.get('outside_cost') is not None else '').strip() != '':
                 line['outside_cost'] = money(r.get('outside_cost'), 'Cost price')
             shop = text(r.get('outside_shop'), 'Shop', 100, False)
+            if r.get('outside_supplier_id'):
+                from . import suppliers
+                line['outside_supplier_id'] = str(r['outside_supplier_id'])
+                shop = suppliers.name_of(line['outside_supplier_id'])  # the picked supplier's name is the shop
             if shop:
                 line['outside_shop'] = shop
         if r.get('discount_pct') not in (None, '', 0, '0'):
@@ -148,7 +152,7 @@ def stamp_parts(new, old):
                 line[k] = same[k]
         given = line.pop('_given', [])
         if line.get('outside') and same:
-            for k in ('outside_cost', 'outside_shop'):
+            for k in ('outside_cost', 'outside_shop', 'outside_supplier_id'):
                 if k not in given and same.get(k) is not None:
                     line[k] = same[k]
         line.setdefault('added_at', today().isoformat())
@@ -230,6 +234,16 @@ def qr_bits(url, packed):
 PREFIX = re.compile(r'[A-Za-z0-9]{1,6}')
 
 
+def markup_pct(value, label='Markup'):
+    """A markup on cost, in percent (30 means the price is cost plus 30%). Empty means none."""
+    if value in (None, ''):
+        return ZERO
+    m = num(value, label)
+    if m < 0 or m > 1000 or m.as_tuple().exponent < -2:
+        raise bad('%s must be between 0 and 1000 percent (at most 2 decimals)' % label)
+    return m
+
+
 def shop_lists(b):
     """Bill number prefix, default reorder level, the shop's labour price list and its mechanics."""
     prefix = str(b.get('invoice_prefix') or 'INV').strip().upper()
@@ -254,7 +268,7 @@ def shop_lists(b):
             raise bad('"%s" is in the mechanics list twice' % name)
         seen.add(name.lower())
         names.append(name)
-    return {'invoice_prefix': prefix, 'default_reorder_level': level, 'labour_items': labour, 'mechanics': names}
+    return {'invoice_prefix': prefix, 'default_reorder_level': level, 'labour_items': labour, 'mechanics': names, 'sinhala': b.get('sinhala') is True, 'default_markup_pct': markup_pct(b.get('default_markup_pct'), 'Default markup')}
 
 
 def save_logo(key, who, body):
@@ -306,6 +320,8 @@ def save_business(key, who, body):
         if terms < 0 or terms > 90 or terms != terms.to_integral_value():
             raise bad('Payment terms must be a whole number of days between 0 and 90')
         stored = get('WSET', 'business') or {}
+        if 'default_markup_pct' not in b:  # someone who cannot see cost cannot send it: keep what is stored
+            b = dict(b, default_markup_pct=stored.get('default_markup_pct'))
         item = {'pk': 'WSET', 'sk': 'business', 'logo': stored.get('logo'), **shop_lists(b), 'payment_terms_days': int(terms), 'warranty': lines_text(b.get('warranty'), 'Warranty note', 200), 'qr_url': text(b.get('qr_url'), 'QR link', 200), 'qr_bits': qr_bits(b.get('qr_url'), b.get('qr_bits')), 'name': text(b.get('name'), 'Business name', 60, True),
                 'address': lines_text(b.get('address'), 'Address', 200), 'phone': text(b.get('phone'), 'Phone', 60),
                 'email': text(b.get('email'), 'Email', 80), 'reg_no': text(b.get('reg_no'), 'Registration / tax number', 60),
@@ -316,7 +332,7 @@ def save_business(key, who, body):
 
 
 # ---------- vehicles ----------
-FROM_JOBS = ('owner', 'phone', 'make', 'chassis')
+FROM_JOBS = ('owner', 'phone', 'make', 'chassis', 'customer_id')
 INVOICE_TYPES = ('CASH', 'CREDIT', 'INSURANCE', 'WARRANTY')
 
 
@@ -368,7 +384,7 @@ def job_fill_only(current):
     """A job edit may correct the owner, number or make the vehicle file still holds from this very job (a typo fixed on the job page).
     Where the vehicle file holds something else (the vehicle changed hands), the job keeps its own value and the file is left alone."""
     v = get('VEHICLE', current['vehicle_key']) or {}
-    return tuple(name for name, job_field in (('owner', 'customer'), ('phone', 'phone'), ('make', 'vehicle'), ('chassis', 'chassis'))
+    return tuple(name for name, job_field in (('owner', 'customer'), ('phone', 'phone'), ('make', 'vehicle'), ('chassis', 'chassis'), ('customer_id', 'customer_id'))
                  if v.get(name) and v.get(name) != current.get(job_field))
 
 
@@ -381,7 +397,7 @@ def history_put(j, rate=ZERO):
 
 def vehicle_fields(j):
     return {'registration': j['registration'], 'owner': j['customer'], 'phone': j['phone'], 'make': j['vehicle'],
-            'last_km': j.get('odometer'), 'chassis': j.get('chassis')}
+            'last_km': j.get('odometer'), 'chassis': j.get('chassis'), 'customer_id': j.get('customer_id')}
 
 
 def vehicles(search=''):
@@ -448,7 +464,13 @@ def edit_vehicle(key, idem, who, body):
             fields['chassis'] = chassis_no(b['chassis'])
         if not fields:
             raise bad('Nothing to change')
-        ops, events = open_jobs_follow(key, fields, [vehicle_put(key, fields)], [CHANGED])
+        cops, always = [], ()
+        if 'phone' in fields or 'owner' in fields:
+            from . import customers
+            stored = get('VEHICLE', key)
+            cid, cops = customers.resolve(fields.get('owner', stored.get('owner', '')), fields.get('phone', stored.get('phone', '')), who)
+            fields['customer_id'], always = cid or '', ('customer_id',)
+        ops, events = open_jobs_follow(key, fields, [vehicle_put(key, fields, always=always)] + cops, [CHANGED] + [None] * len(cops))
         return ops, events, {'saved': True}
     return command(idem, 'edit-vehicle:' + key, who, body, build)
 
@@ -456,7 +478,7 @@ def edit_vehicle(key, idem, who, body):
 def open_jobs_follow(key, fields, ops, events):
     """Jobs that are still open follow the vehicle file, so a corrected phone number is not undone by the next save of the job.
     Billed jobs and issued invoices keep what was printed on them."""
-    mapping = (('owner', 'customer'), ('phone', 'phone'), ('make', 'vehicle'))
+    mapping = (('owner', 'customer'), ('phone', 'phone'), ('make', 'vehicle'), ('customer_id', 'customer_id'))
     for j in [j for j in query('WJOB') if j.get('vehicle_key') == key and j['status'] == 'OPEN'][:10]:
         changes = {job_field: fields.get(name, '') for name, job_field in mapping if name in fields}
         if not changes:
@@ -483,8 +505,10 @@ def new_owner(key, idem, who, body):
             raise bad('That is already the owner on file. Use Edit details to correct a name or number.')
         log = list(current.get('owner_log') or [])[-19:] + [clean({'at': now(), 'from_owner': current.get('owner', ''), 'from_phone': current.get('phone', ''),
                                                                     'to_owner': owner, 'to_phone': new_phone, 'by': who})]
-        fields = {'owner': owner, 'phone': new_phone, 'owner_log': log}
-        ops, events = open_jobs_follow(key, fields, [vehicle_put(key, fields, always=('phone',))], [CHANGED])
+        from . import customers
+        cid, cops = customers.resolve(owner, new_phone, who)
+        fields = {'owner': owner, 'phone': new_phone, 'owner_log': log, 'customer_id': cid or ''}
+        ops, events = open_jobs_follow(key, fields, [vehicle_put(key, fields, always=('phone', 'customer_id'))] + cops, [CHANGED] + [None] * len(cops))
         return ops, events, {'saved': True}
     return command(idem, 'vehicle-new-owner:' + key, who, body, build)
 
@@ -598,7 +622,10 @@ def create_job(key, who, body):
         reg = text(b.get('registration'), 'Vehicle number', 20, True).upper()
         created, job_id = now(), str(uuid.uuid4())
         job_no, counter = next_job_no()
-        j = clean({'pk': 'WJOB', 'sk': job_id, 'id': job_id, 'job_no': job_no, 'registration': reg, 'vehicle_key': regkey(reg),
+        from . import customers
+        customer_name = text(b.get('customer'), 'Customer name', 100, True)
+        customer_id, customer_ops = customers.resolve(customer_name, phone(b.get('phone')), who, lines_text(b.get('address'), 'Customer address', 200))
+        j = clean({'pk': 'WJOB', 'sk': job_id, 'id': job_id, 'job_no': job_no, 'customer_id': customer_id, 'registration': reg, 'vehicle_key': regkey(reg),
                    'chassis': chassis_no(b.get('chassis')) if b.get('chassis') else '', 'invoice_type': invoice_type(b.get('invoice_type')),
                    'customer': text(b.get('customer'), 'Customer name', 100, True), 'phone': phone(b.get('phone')),
                    'address': lines_text(b.get('address'), 'Customer address', 200),
@@ -609,7 +636,7 @@ def create_job(key, who, body):
                    'parts': [], 'labour': [], 'discount': ZERO, 'created_by': who, 'created_at': created, 'updated_at': created})
         face = {'front_photo': photos.one(b.get('front_photo'), 'Front photo'), 'plate_photo': photos.one(b.get('plate_photo'), 'Plate photo')}
         before = photos.many(b.get('before_photos'), 'Condition photos')
-        ops = [put(j), vehicle_put(j['vehicle_key'], {**vehicle_fields(j), **face}, fill_only=FROM_JOBS), history_put(j), counter]
+        ops = [put(j), vehicle_put(j['vehicle_key'], {**vehicle_fields(j), **face}, fill_only=FROM_JOBS), history_put(j), counter] + customer_ops
         if before:
             ops.append(put({'pk': 'WJPH', 'sk': job_id, 'before': before, 'n': 1, 'updated_at': created}))
         return ops, [None] * len(ops), view(j)
@@ -660,8 +687,13 @@ def save_job(job_id, key, who, body, owner=True):
                 j[field] = text(b[field], label, size, field == 'customer')
         if 'address' in b:
             j['address'] = lines_text(b['address'], 'Customer address', 200)
+        customer_ops = []
         if 'phone' in b:
             j['phone'] = phone(b['phone'])
+        if 'phone' in b or 'customer' in b:
+            from . import customers
+            if customers.canon(j.get('phone')) != customers.canon(current.get('phone')) or (customers.canon(j.get('phone')) and not current.get('customer_id')):
+                j['customer_id'], customer_ops = customers.resolve(j['customer'], j.get('phone'), who, j.get('address', ''))
         if 'odometer' in b:
             j['odometer'] = km(b['odometer'], 'Odometer')
         if 'chassis' in b:
@@ -703,7 +735,7 @@ def save_job(job_id, key, who, body, owner=True):
         rate = business()['tax_rate']
         op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
                  ExpressionAttributeValues={':r': current['revision'], ':open': 'OPEN'})
-        return [op, vehicle_put(j['vehicle_key'], vehicle_fields(j), fill_only=job_fill_only(current)), history_put(j, rate)], [CHANGED, None, None], view(j, rate)
+        return [op, vehicle_put(j['vehicle_key'], vehicle_fields(j), fill_only=job_fill_only(current)), history_put(j, rate)] + customer_ops, [CHANGED, None, None] + [None] * len(customer_ops), view(j, rate)
     return command(key, 'save-job:' + job_id, who, body, build)
 
 
@@ -971,11 +1003,11 @@ def finalise(job_id, key, who, body):
         number = shop['invoice_prefix'] + '-' + datetime.now(COLOMBO).strftime('%Y%m%d') + '-' + invoice_id[:6].upper()
         keep = ('registration', 'vehicle_key', 'customer', 'address', 'phone', 'vehicle', 'odometer', 'summary', 'mechanic', 'parts', 'labour',
                 'next_service_date', 'next_service_km', 'brought_by', 'brought_phone', 'warranty_until', 'warranty_km', 'warranty_job',
-                'job_no', 'chassis', 'invoice_type')
+                'job_no', 'chassis', 'invoice_type', 'customer_id')
         invoice = clean({'pk': 'WINV', 'sk': invoice_id, 'id': invoice_id, 'invoice_number': number, 'job_id': job_id,
                          **{k: current.get(k) for k in keep}, **t, 'tax_name': shop['tax_name'], 'tax_rate': rate, 'currency': 'LKR',
                          'paid': ZERO, 'payments': [], 'status': invoice_status(t['total'], ZERO), 'revision': 0, 'approved_by': who,
-                         'created_at': created, 'business': {k: v for k, v in shop.items() if k in DEFAULT_BUSINESS and k not in ('mechanic_discount_pct', 'labour_items', 'mechanics', 'default_reorder_level')}})
+                         'created_at': created, 'business': {k: v for k, v in shop.items() if k in DEFAULT_BUSINESS and k not in ('mechanic_discount_pct', 'labour_items', 'mechanics', 'default_reorder_level', 'sinhala', 'default_markup_pct')}})
         j = clean(dict(stamped, status='INVOICED', invoice_id=invoice_id, invoice_number=number,
                        revision=int(current['revision']) + 1, updated_at=created, out_at=created))
         op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
@@ -1242,9 +1274,15 @@ def export_all():
             'estimates': [public(q) for q in sorted(query('WQUO'), key=lambda q: q['created_at'])],
             'invoices': [public(i) for i in sorted(query('WINV'), key=lambda i: i['created_at'])],
             'vehicles': [public(v) for v in query('VEHICLE')],
+            'customers': [public(c) for c in query('CUST')],
             'workshop_log': [public(a) for a in query('WAUDIT')],
+            'suppliers': [public(s) for s in query('SUPP')],
             'stock_parts': [public(p) for p in query('PRODUCT')],
-            'stock_movements': [public(m) for m in query('MOVE')]}
+            'stock_movements': [public(m) for m in query('MOVE')],
+            'supplier_payments': [public(p) for p in query('SPAY')],
+            'to_order': [public(w) for w in query('WANT')],
+            'supplier_orders': [public(o) for o in query('ORD')],
+            'store_room': public(get('STORES', 'main') or {})}
 
 
 def profit_of(doc, costs=None):
@@ -1432,7 +1470,7 @@ def vehicle_pdf(key):
 def stock_note_pdf(movement_id, with_cost=False):
     """A goods received note (GRN) or goods issue note (GIN) for one stock movement."""
     n = get('MV#' + str(movement_id), 'M')
-    if not n or n['kind'] not in ('RECEIPT', 'STOCK_OUT', 'ISSUE'):
+    if not n or n['kind'] not in ('RECEIPT', 'STOCK_OUT', 'ISSUE', 'SUPPLIER_RETURN'):
         raise missing('Stock note not found')
     n = public(n)
     n['date'] = local_date(n['created_at']).isoformat()

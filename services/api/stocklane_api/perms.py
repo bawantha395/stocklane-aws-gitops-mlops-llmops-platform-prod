@@ -16,6 +16,8 @@ PERMISSIONS = (
     ('quotes', 'Workshop', 'Write estimates'),
     ('quotes_approve', 'Workshop', 'Approve, convert and delete estimates'),
     ('vehicles', 'Workshop', 'Edit vehicle and customer details'),
+    ('customers_view', 'Workshop', 'See the customer list, their history and statements'),
+    ('customers_edit', 'Workshop', 'Edit, merge and close customer records'),
     ('bills_view', 'Workshop', 'See bills'),
     ('bill', 'Workshop', 'Make bills and take payments'),
     ('void_refund', 'Workshop', 'Void bills, refunds and returns'),
@@ -28,7 +30,13 @@ PERMISSIONS = (
     ('item_edit', 'Stock', 'Edit and archive parts'),
     ('lists', 'Stock', 'Change shelves and categories'),
     ('people', 'Stock', 'Change who can receive parts'),
+    ('suppliers_view', 'Stock', 'See the supplier list and pick a supplier'),
+    ('suppliers_edit', 'Stock', 'Add, edit and close suppliers'),
+    ('supplier_return', 'Stock', 'Send parts back to a supplier'),
+    ('orders', 'Stock', 'See the to-order list and send orders to suppliers'),
     ('see_cost', 'Money', 'See what parts cost and the margin'),
+    ('price_edit', 'Money', 'Change the selling price of a part'),
+    ('supplier_pay', 'Money', 'See what is owed to suppliers and record payments'),
     ('cost_edit', 'Money', 'Correct the cost on a delivery'),
     ('see_sales', 'Money', 'See sales totals on the home screen'),
     ('reports', 'Money', 'See reports'),
@@ -36,10 +44,10 @@ PERMISSIONS = (
     ('export', 'Business', 'Download all data'),
 )
 KEYS = tuple(p[0] for p in PERMISSIONS)
-MECHANIC = {'jobs_view', 'jobs', 'quotes', 'vehicles', 'bills_view', 'bill', 'job_stock', 'stock_in', 'stock_out', 'item_add'}
-STOREKEEPER = {'jobs_view', 'job_stock', 'stock_in', 'stock_out', 'stock_count', 'item_add', 'people'}
+MECHANIC = {'jobs_view', 'jobs', 'quotes', 'vehicles', 'customers_view', 'bills_view', 'bill', 'job_stock', 'stock_in', 'stock_out', 'item_add', 'suppliers_view'}
+STOREKEEPER = {'jobs_view', 'job_stock', 'stock_in', 'stock_out', 'stock_count', 'item_add', 'people', 'suppliers_view', 'supplier_return', 'orders'}
 DEFAULTS = {'MECHANIC': MECHANIC, 'STOREKEEPER': STOREKEEPER,
-            'ADMIN': MECHANIC | STOREKEEPER | {'quotes_approve', 'archive', 'item_edit', 'lists'}}
+            'ADMIN': MECHANIC | STOREKEEPER | {'quotes_approve', 'archive', 'item_edit', 'lists', 'customers_edit', 'suppliers_edit', 'supplier_return', 'orders', 'price_edit'}}
 _cache = PerShop(until=0, value=None)
 
 

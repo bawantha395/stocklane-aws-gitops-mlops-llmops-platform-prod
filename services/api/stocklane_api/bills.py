@@ -409,7 +409,8 @@ def stock_report(r, business):
 def stock_note(n, business):
     """One goods received note (GRN) or goods issue note (GIN): what, how many, from whom or to whom, and who signs."""
     grn = n['kind'] == 'RECEIPT'
-    title = 'GOODS RECEIVED NOTE' if grn else 'GOODS ISSUE NOTE'
+    srn = n['kind'] == 'SUPPLIER_RETURN'
+    title = 'GOODS RECEIVED NOTE' if grn else 'SUPPLIER RETURN NOTE' if srn else 'GOODS ISSUE NOTE'
     d = Doc(footer=(business.get('name') or 'Workshop') + ' | ' + n.get('doc_no', title))
     letterhead(d, business, title, [(n.get('doc_no', ''), True), ('Date: ' + n['date'], False)])
     facts = [('Note no.', n.get('doc_no', '-')), ('Date', n['date'])]
@@ -418,6 +419,8 @@ def stock_note(n, business):
         if n.get('unit_cost') is not None:
             cost = Decimal(str(n['unit_cost']))
             facts += [('Cost price (per unit)', 'LKR ' + m(cost)), ('Cost of this delivery', 'LKR ' + m(cost * Decimal(str(n['quantity']))))]
+    elif srn:
+        facts += [('Returned to', n.get('supplier') or '-'), ('Reason', n.get('reason') or '-'), ('Supplier credit note no.', n.get('reference') or '-'), ('Sent back by', n.get('actor', '-'))]
     else:
         facts += [('Handed to', n.get('receiver_name') or '-'), ('For job / vehicle', n.get('job_registration') or '-'), ('Issued by', n.get('actor', '-'))]
     y = d.y + 4
@@ -427,7 +430,7 @@ def stock_note(n, business):
         y += 17
     d.y = y + 12
     lines = n.get('lines') or [n]
-    costed = grn and any(l.get('unit_cost') is not None for l in lines)
+    costed = (grn or srn) and any(l.get('unit_cost') is not None for l in lines)
     qx = R - 150 if costed else R - 120
 
     def head():
@@ -515,3 +518,42 @@ def return_note(n, business):
         d.line(x0, d.y, x0 + 210, d.y)
         d.text(x0, d.y + 12, label, 8.5, color=MUTED)
     return d.render()
+
+def statement(data, business):
+    """A customer's statement: the bills still to be paid, the payments received on them, and what is owed in all."""
+    c = data['customer']
+    d = Doc(footer=(business.get('name') or 'Workshop') + ' | statement | ' + c['name'])
+    letterhead(d, business, 'STATEMENT', [('Printed: ' + data['printed'], False)])
+    left = block(d, MARGIN, 280, 'CUSTOMER', [(c['name'], 11, True), (c.get('phone'), 9.5, False), (c.get('address'), 9, False)])
+    d.rect(330, d.y, R - 330, 46, WASH)
+    d.text(342, d.y + 16, 'Total owed (' + data['currency'] + ')', 9, color=MUTED)
+    d.text(R - 10, d.y + 38, m(data['balance']), 16, True, 'r')
+    d.y = max(left, d.y + 46) + 14
+
+    def table(title, heads, rows_, aligns, xs, widths):
+        d.room(50)
+        d.text(MARGIN, d.y + 8, title, 8, True, color=MUTED)
+        d.y += 14
+        d.rect(MARGIN, d.y, R - MARGIN, 17, GREY)
+        for h, a, x in zip(heads, aligns, xs):
+            d.text(x, d.y + 12, h, 8, True, a)
+        d.y += 17
+        for row in rows_:
+            d.room(16)
+            for cell, a, x, w in zip(row, aligns, xs, widths):
+                d.text(x, d.y + 12, fit(cell, w, 9), 9, align=a)
+            d.y += 16
+            d.line(MARGIN, d.y, R, d.y)
+        d.y += 14
+    if data['owed']:
+        table('BILLS TO BE PAID', ['DATE', 'BILL', 'VEHICLE', 'TOTAL', 'PAID', 'BALANCE'],
+              [(r['date'], r['number'], r['registration'], m(r['total']), m(r['paid']), m(r['balance'])) for r in data['owed']],
+              ['l', 'l', 'l', 'r', 'r', 'r'], [MARGIN + 6, MARGIN + 76, 300, 400, 470, R - 6], [66, 210, 90, 90, 90, 90])
+    else:
+        d.text(MARGIN, d.y + 12, 'Nothing is owed. Thank you.', 10, color=MUTED)
+        d.y += 24
+    if data['payments']:
+        table('PAYMENTS RECEIVED ON THESE BILLS', ['DATE', 'BILL', 'METHOD', 'AMOUNT'], [(r['date'], r['number'], r['method'].title(), m(r['amount'])) for r in data['payments']],
+              ['l', 'l', 'l', 'r'], [MARGIN + 6, MARGIN + 76, 300, R - 6], [66, 210, 90, 90])
+    return d.render()
+

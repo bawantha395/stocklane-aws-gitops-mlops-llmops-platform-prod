@@ -247,14 +247,16 @@ def convert(quote_id, key, who, body):
         summary = ' '.join(filter(None, ['Insurance ' + current['insurer'] if current.get('insurer') else '',
                                          'claim ' + current['claim_no'] if current.get('claim_no') else '', (current.get('issue') or '').replace('\n', ' ')]))[:1000]
         job_no, counter = workshop.next_job_no()
-        j = clean({'pk': 'WJOB', 'sk': job_id, 'id': job_id, 'job_no': job_no, 'chassis': current.get('chassis', ''),
+        from . import customers
+        customer_id, customer_ops = customers.resolve(customer, current.get('phone', ''), who)
+        j = clean({'pk': 'WJOB', 'sk': job_id, 'id': job_id, 'job_no': job_no, 'customer_id': customer_id, 'chassis': current.get('chassis', ''),
                    'invoice_type': 'INSURANCE' if current.get('insurer') else 'CASH',
                    'registration': current['registration'], 'vehicle_key': current['vehicle_key'],
                    'customer': customer, 'phone': current.get('phone', ''), 'address': '', 'vehicle': current.get('vehicle', ''), 'odometer': current.get('odometer'),
                    'summary': summary, 'mechanic': '', 'notes': '', 'status': 'OPEN', 'revision': 0, 'stage': 'WAITING', 'brought_by': '', 'brought_phone': '',
                    'parts': [dict(p, added_at=workshop.today().isoformat()) for p in current.get('parts', [])], 'labour': labour, 'discount': ZERO, 'quote_id': quote_id, 'quote_number': current['number'],
                    'created_by': who, 'created_at': created, 'updated_at': created})
-        ops = [put(j), vehicle_put(j['vehicle_key'], vehicle_fields(j), fill_only=FROM_JOBS), history_put(j), counter]
+        ops = [put(j), vehicle_put(j['vehicle_key'], vehicle_fields(j), fill_only=FROM_JOBS), history_put(j), counter] + customer_ops
         if current.get('photos'):
             ops.append(put({'pk': 'WJPH', 'sk': job_id, 'before': list(current['photos'])[:6], 'n': 1, 'updated_at': created}))
         done = clean(dict(current, status='CONVERTED', job_id=job_id, revision=int(current['revision']) + 1, updated_at=created))

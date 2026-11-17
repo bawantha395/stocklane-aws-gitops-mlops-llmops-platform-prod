@@ -8,7 +8,7 @@ import json
 import re
 import traceback
 
-from . import core, forecast, inventory, perms, photos, platform, quotes, staff, workshop
+from . import core, customers, forecast, inventory, orders, payables, perms, photos, platform, quotes, staff, suppliers, workshop
 from .core import ApiError, actor, bad, dumps, groups, remember_email, require
 
 OWNER, STAFF = ('OWNER',), perms.ROLES  # OWNER: the owner only. STAFF: anyone who works in the shop (reads everyone needs)
@@ -52,8 +52,16 @@ route('GET', '/api/inventory/products/archived', P('item_edit'), lambda e, p, b,
 route('GET', '/api/inventory/catalogue', STAFF, lambda e, p, b, k: inventory.catalogue())
 route('POST', '/api/inventory/products', P('item_add'), lambda e, p, b, k: inventory.create_product(k, actor(e), b))
 route('PATCH', '/api/inventory/products/([^/]+)', P('item_edit'), lambda e, p, b, k: inventory.edit_product(k, p[0], actor(e), b))
+route('POST', '/api/inventory/products/([^/]+)/price', P('price_edit'), lambda e, p, b, k: (perms.need(e, 'see_cost') if 'markupPct' in b else None, inventory.set_price(k, p[0], actor(e), b))[1])
+route('GET', '/api/inventory/products/([^/]+)/price-history', P('price_edit'), lambda e, p, b, k: inventory.price_history(p[0]))
+route('GET', '/api/inventory/price-review', P('see_cost'), lambda e, p, b, k: inventory.price_review())
+route('POST', '/api/inventory/price-review', P('price_edit'), lambda e, p, b, k: inventory.apply_prices(k, actor(e), b))
 route('POST', '/api/inventory/products/([^/]+)/archive', P('item_edit'), lambda e, p, b, k: inventory.archive_product(k, p[0], actor(e), b))
 route('GET', '/api/inventory/movements/([^/]+)/note.pdf', STAFF, lambda e, p, b, k: ('pdf',) + workshop.stock_note_pdf(p[0], sees_cost(e) and q(e, 'cost') == '1'))
+route('GET', '/api/inventory/stores/shelf', STAFF, lambda e, p, b, k: inventory.shelf_parts(q(e, 'rack'), q(e, 'level')))
+route('GET', '/api/inventory/stores/layout', STAFF, lambda e, p, b, k: inventory.layout_view())
+route('PUT', '/api/inventory/stores/layout', P('lists'), lambda e, p, b, k: inventory.layout_save(k, actor(e), b))
+route('POST', '/api/inventory/stores/quick-start', P('lists'), lambda e, p, b, k: inventory.quick_start(k, actor(e), b))
 route('GET', '/api/inventory/stores', STAFF, lambda e, p, b, k: inventory.stores_view())
 route('PUT', '/api/inventory/stores', P('lists'), lambda e, p, b, k: inventory.stores_save(k, actor(e), b))
 route('POST', '/api/inventory/stores/rename', P('lists'), lambda e, p, b, k: inventory.stores_rename(actor(e), b))
@@ -68,6 +76,8 @@ def movement(e, p, b, k):
 
 
 def document(e, p, b, k):
+    if b.get('kind') == 'SUPPLIER_RETURN':
+        raise bad('Use Send back to supplier for that')
     perms.need(e, 'stock_in' if b.get('kind') == 'RECEIPT' else 'stock_out')
     result = inventory.record_document(k, actor(e), b)
     return result if sees_cost(e) else inventory.hide_cost(result)
@@ -84,6 +94,22 @@ def dashboard(e, p, b, k):
 
 route('POST', '/api/inventory/movements', STAFF, movement)
 route('POST', '/api/inventory/documents', STAFF, document)
+route('POST', '/api/inventory/supplier-returns', P('supplier_return'), lambda e, p, b, k: inventory.record_document(k, actor(e), dict(b, kind='SUPPLIER_RETURN')))
+route('GET', '/api/inventory/payables', P('supplier_pay'), lambda e, p, b, k: payables.summary())
+route('GET', '/api/inventory/suppliers/([^/]+)/payables', P('supplier_pay'), lambda e, p, b, k: payables.books(p[0]))
+route('POST', '/api/inventory/suppliers/([^/]+)/payments', P('supplier_pay'), lambda e, p, b, k: payables.pay(p[0], k, actor(e), b))
+route('POST', '/api/inventory/suppliers/([^/]+)/payments/([^/]+)/void', P('supplier_pay'), lambda e, p, b, k: payables.void_payment(p[0], p[1], k, actor(e), b))
+route('POST', '/api/inventory/wants', P('job_stock'), lambda e, p, b, k: orders.want_add(k, actor(e), b))
+route('POST', '/api/inventory/wants/([^/]+)/cancel', P('orders'), lambda e, p, b, k: orders.want_cancel(p[0], k, actor(e), b))
+route('GET', '/api/inventory/to-order', P('orders'), lambda e, p, b, k: orders.to_order())
+route('GET', '/api/inventory/orders', P('orders'), lambda e, p, b, k: orders.orders(q(e, 'status')))
+route('POST', '/api/inventory/orders', P('orders'), lambda e, p, b, k: orders.make(k, actor(e), b))
+route('GET', '/api/inventory/orders/([^/]+)', P('orders'), lambda e, p, b, k: orders.order(p[0]))
+route('POST', '/api/inventory/orders/([^/]+)/close', P('orders'), lambda e, p, b, k: orders.close(p[0], k, actor(e), b))
+route('GET', '/api/inventory/suppliers', P('suppliers_view'), lambda e, p, b, k: suppliers.suppliers(q(e, 'search'), q(e, 'kind'), q(e, 'inactive') == '1'))
+route('POST', '/api/inventory/suppliers', P('suppliers_edit'), lambda e, p, b, k: suppliers.create(k, actor(e), b))
+route('GET', '/api/inventory/suppliers/([^/]+)', P('suppliers_view'), lambda e, p, b, k: suppliers.supplier(p[0], sees_cost(e)))
+route('PATCH', '/api/inventory/suppliers/([^/]+)', P('suppliers_edit'), lambda e, p, b, k: suppliers.edit(p[0], k, actor(e), b))
 route('GET', '/api/inventory/people', STAFF, lambda e, p, b, k: inventory.people())
 route('POST', '/api/inventory/people', P('people'), lambda e, p, b, k: inventory.add_person(k, actor(e), b))
 route('DELETE', '/api/inventory/people/([^/]+)', P('people'), lambda e, p, b, k: inventory.remove_person(p[0]))
@@ -135,6 +161,13 @@ route('GET', '/api/workshop/vehicles/([^/]+)', P('jobs_view'), lambda e, p, b, k
 route('GET', '/api/workshop/vehicles/([^/]+)/history.pdf', P('jobs_view'), lambda e, p, b, k: ('pdf',) + workshop.vehicle_pdf(p[0]))
 route('PATCH', '/api/workshop/vehicles/([^/]+)', P('vehicles'), lambda e, p, b, k: workshop.edit_vehicle(p[0], k, actor(e), b))
 route('POST', '/api/workshop/vehicles/([^/]+)/owner', P('vehicles'), lambda e, p, b, k: workshop.new_owner(p[0], k, actor(e), b))
+route('GET', '/api/workshop/customers/lookup', P('jobs'), lambda e, p, b, k: customers.lookup(q(e, 'search')))
+route('GET', '/api/workshop/customers', P('customers_view'), lambda e, p, b, k: customers.customers(q(e, 'search'), q(e, 'inactive') == '1'))
+route('POST', '/api/workshop/customers', P('customers_edit'), lambda e, p, b, k: customers.create(k, actor(e), b))
+route('GET', '/api/workshop/customers/([^/]+)', P('customers_view'), lambda e, p, b, k: customers.customer(p[0]))
+route('PATCH', '/api/workshop/customers/([^/]+)', P('customers_edit'), lambda e, p, b, k: customers.edit(p[0], k, actor(e), b))
+route('POST', '/api/workshop/customers/([^/]+)/merge', P('customers_edit'), lambda e, p, b, k: customers.merge(p[0], k, actor(e), b))
+route('GET', '/api/workshop/customers/([^/]+)/statement.pdf', P('customers_view'), lambda e, p, b, k: ('pdf',) + customers.statement_pdf(p[0]))
 route('GET', '/api/workshop/owing', P('bills_view'), lambda e, p, b, k: workshop.owing(q(e, 'reg') or '', q(e, 'phone') or ''))
 route('GET', '/api/workshop/service-due', P('jobs_view'), lambda e, p, b, k: workshop.service_due())
 route('GET', '/api/workshop/dashboard', P('jobs_view'), dashboard)
@@ -145,7 +178,7 @@ route('POST', '/api/workshop/staff/([^/]+)/role', OWNER, lambda e, p, b, k: staf
 route('DELETE', '/api/workshop/staff/([^/]+)', OWNER, lambda e, p, b, k: staff.remove(p[0], actor(e)))
 route('GET', '/api/workshop/permissions', OWNER, lambda e, p, b, k: perms.view())
 route('PUT', '/api/workshop/permissions', OWNER, lambda e, p, b, k: perms.save(k, actor(e), b))
-route('GET', '/api/workshop/settings', STAFF, lambda e, p, b, k: workshop.business())
+route('GET', '/api/workshop/settings', STAFF, lambda e, p, b, k: workshop.business() if sees_cost(e) else {x: y for x, y in workshop.business().items() if x != 'default_markup_pct'})
 route('PUT', '/api/workshop/settings', P('settings'), lambda e, p, b, k: workshop.save_business(k, actor(e), b))
 route('GET', '/api/workshop/export', P('export'), lambda e, p, b, k: workshop.export_all())
 route('GET', '/api/workshop/report', P('reports'), lambda e, p, b, k: workshop.report(q(e, 'from'), q(e, 'until')))
@@ -169,7 +202,7 @@ def scheduled(event):
     raise ValueError('Unknown job')
 
 
-PRIVATE = ('outside_cost', 'outside_shop', 'cost_each', 'profit')  # only for people with the see-cost permission
+PRIVATE = ('outside_cost', 'outside_shop', 'outside_supplier_id', 'cost_each', 'profit')  # only for people with the see-cost permission
 
 
 def hide_private(value):

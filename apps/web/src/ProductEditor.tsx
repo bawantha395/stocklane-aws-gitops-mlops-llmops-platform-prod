@@ -6,6 +6,9 @@ import { t } from "./i18n";
 import { suggestFields, type Field, type Suggestion } from "./suggestions";
 import { Item, uid, prettyModel, useCommand, Photo } from "./partsShared";
 import { ListPick } from "./ListPick";
+import { SupplierPick } from "./Suppliers";
+import { PriceBox } from "./Pricing";
+import { can } from "./perms";
 const LiveCam = React.lazy(() => import("./Camera").then((m) => ({ default: m.Camera })));
 
 export function ProductEditor({
@@ -58,6 +61,7 @@ export function ProductEditor({
     [size, setSize] = useState(item?.capacity || pre("capacity")),
     [location, setLocation] = useState(item?.location || ""),
     [supplierName, setSupplierName] = useState(item?.supplier || ""),
+    [supplierId, setSupplierId] = useState(item?.supplier_id || ""),
     [quantity, setQuantity] = useState(0),
     [unit, setUnit] = useState(item?.unit || "UNIT"),
     [reorder, setReorder] = useState(item ? Number(item.reorder_level) : getDefaultReorder()),
@@ -174,6 +178,7 @@ export function ProductEditor({
         partNumber: part,
         location,
         supplier: supplierName.trim(),
+        supplierId: supplierId || "",
         reorderLevel: reorder,
       };
       let result: Item;
@@ -318,9 +323,6 @@ export function ProductEditor({
             <datalist id="category-options">
               {[...new Set(products.filter((p) => !p.archived).map((p) => (p.category || "").trim()).filter(Boolean))].sort().map((c) => <option key={c} value={c} />)}
             </datalist>
-            <datalist id="supplier-options">
-              {[...new Set(products.map((p) => (p.supplier || "").trim()).filter(Boolean))].sort().map((s) => <option key={s} value={s} />)}
-            </datalist>
             <datalist id="brand-options">
               {[...new Set(products.filter((p) => !p.archived).map((p) => (p.brand || "").trim()).filter(Boolean))].sort().map((b) => <option key={b} value={b} />)}
             </datalist>
@@ -354,13 +356,10 @@ export function ProductEditor({
                 )}
               </>
             )}
+            {item && can("price_edit") && <PriceBox item={item} />}
             <details className="product-more" open={moreOpen} onToggle={(e) => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}>
               <summary>{t("More details")}</summary>
-              <label className="stock-field">
-                {t("Usual supplier")} <small>({t("optional")})</small>
-                <span className="input-wrap"><input value={supplierName} maxLength={100} list="supplier-options" autoComplete="off" placeholder="Lanka Spares" onChange={(e) => setSupplierName(e.target.value)} /></span>
-                <small className="stock-help">{t("Part came in fills this in for you.")}</small>
-              </label>
+              <div className="stock-field"><SupplierPick id={supplierId} name={supplierName} label={t("Usual supplier") + " (" + t("optional") + ")"} hint={t("Part came in fills this in for you.")} onChange={(v) => { setSupplierId(v.id); setSupplierName(v.name); }} /></div>
               <label className={"stock-field" + (filled.grade ? " filled-" + filled.grade : "")}>
                 {t("Specification")}
                 <span className="input-wrap"><input

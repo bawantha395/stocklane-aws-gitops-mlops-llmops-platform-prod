@@ -1,5 +1,6 @@
 import { can } from "../perms";
 import { t } from "../i18n";
+import { SupplierPick } from "../Suppliers";
 import { toast, askConfirm } from "../ui";
 import { AlertTriangle } from "lucide-react";
 import { isPractice } from "../practice";
@@ -11,7 +12,7 @@ import { StockPicker } from "./StockPicker";
 import { printJobCard } from "./jobCardPdf";
 import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job, STAGE_LABEL, type Stage, waLink, ProfitCard } from "./common";
 
-type PartRow = { name: string; quantity: string; unit_price: string; outside?: boolean; outside_cost?: string; outside_shop?: string; product_id?: string; discount_pct?: string; part_no?: string; returned?: number };
+type PartRow = { name: string; quantity: string; unit_price: string; outside?: boolean; outside_cost?: string; outside_shop?: string; outside_supplier_id?: string; product_id?: string; discount_pct?: string; part_no?: string; returned?: number };
 type LabourRow = { description: string; amount: string };
 type Suggest = { parts: { name: string; price: number; uses: number }[]; labour: { description: string; amount: number; uses: number }[] };
 
@@ -33,7 +34,7 @@ export function JobPage({ id }: { id: string }) {
     setJob(j); setDirty(false);
     setF({ customer: j.customer, address: j.address || "", brought_by: j.brought_by || "", brought_phone: j.brought_phone || "", warranty_until: j.warranty_until || "", warranty_km: j.warranty_km == null ? "" : String(j.warranty_km), warranty_job: j.warranty_job ? "1" : "", phone: j.phone, vehicle: j.vehicle, chassis: j.chassis || "", invoice_type: j.invoice_type || "CASH", odometer: j.odometer == null ? "" : String(j.odometer), summary: j.summary, mechanic: j.mechanic, notes: j.notes,
       discount: j.discount ? String(j.discount) : "", next_service_date: j.next_service_date || "", next_service_km: j.next_service_km == null ? "" : String(j.next_service_km) });
-    setParts(j.parts.map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: String(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(p.outside ? { outside: true, ...(owner ? { outside_cost: p.outside_cost == null ? "" : String(p.outside_cost), outside_shop: p.outside_shop || "" } : {}) } : {}), ...(p.part_no ? { part_no: p.part_no } : {}), ...(p.returned ? { returned: p.returned } : {}), ...(p.discount_pct ? { discount_pct: String(p.discount_pct) } : {}) })));
+    setParts(j.parts.map((p) => ({ name: p.name, quantity: String(p.quantity), unit_price: String(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(p.outside ? { outside: true, ...(owner ? { outside_cost: p.outside_cost == null ? "" : String(p.outside_cost), outside_shop: p.outside_shop || "", outside_supplier_id: p.outside_supplier_id || "" } : {}) } : {}), ...(p.part_no ? { part_no: p.part_no } : {}), ...(p.returned ? { returned: p.returned } : {}), ...(p.discount_pct ? { discount_pct: String(p.discount_pct) } : {}) })));
     setLabour(j.labour.map((l) => ({ description: l.description, amount: String(l.amount) })));
   };
   useEffect(() => { if (data) adopt(data); }, [data]);
@@ -46,7 +47,7 @@ export function JobPage({ id }: { id: string }) {
   const rate = job?.tax_rate ?? business.tax_rate;
   const mechanicList = business.mechanics || [];
   const lines = useMemo(() => ({
-    parts: parts.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), quantity: num(p.quantity), unit_price: num(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(p.outside && !p.product_id ? { outside: true, ...(p.outside_cost !== undefined ? { outside_cost: p.outside_cost } : {}), ...(p.outside_shop !== undefined ? { outside_shop: p.outside_shop.trim() } : {}) } : {}), ...(num(p.discount_pct) > 0 ? { discount_pct: num(p.discount_pct) } : {}) })),
+    parts: parts.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), quantity: num(p.quantity), unit_price: num(p.unit_price), ...(p.product_id ? { product_id: p.product_id } : {}), ...(p.outside && !p.product_id ? { outside: true, ...(p.outside_cost !== undefined ? { outside_cost: p.outside_cost } : {}), ...(p.outside_supplier_id ? { outside_supplier_id: p.outside_supplier_id } : p.outside_shop !== undefined ? { outside_shop: p.outside_shop.trim() } : {}) } : {}), ...(num(p.discount_pct) > 0 ? { discount_pct: num(p.discount_pct) } : {}) })),
     labour: labour.filter((l) => l.description.trim()).map((l) => ({ description: l.description.trim(), amount: num(l.amount) })),
   }), [parts, labour]);
   const totals = billTotals({ ...lines, discount: num(f.discount), tax_rate: rate });
@@ -247,7 +248,7 @@ export function JobPage({ id }: { id: string }) {
               <div className="ws-l-out">
                 <small className="stock-tag out">{t("Bought outside")}</small>
                 <input disabled={locked} aria-label="Cost price per unit" inputMode="decimal" placeholder={owner ? t("Cost each") : t("Cost each (owner sees)")} value={p.outside_cost ?? ""} onChange={(e) => part(i, { outside_cost: e.target.value.replace(/[^0-9.]/g, "") })} />
-                <input disabled={locked} aria-label="Shop" placeholder={t("Shop")} value={p.outside_shop ?? ""} onChange={(e) => part(i, { outside_shop: e.target.value })} />
+                <SupplierPick kind="LOCAL" label={t("Shop")} disabled={locked} id={p.outside_supplier_id ?? ""} name={p.outside_shop ?? ""} onChange={(v) => part(i, { outside_supplier_id: v.id, outside_shop: v.name })} />
                 {owner && num(p.outside_cost ?? "") > 0 && num(p.unit_price) > 0 && num(p.quantity) > 0 && <span className="ws-l-margin">{t("Margin")} {lkr(round2((num(p.unit_price) - num(p.outside_cost ?? "")) * num(p.quantity)))}</span>}
               </div>
             )}
@@ -260,6 +261,7 @@ export function JobPage({ id }: { id: string }) {
             {can("job_stock") && <button className="button primary small" disabled={busy} onClick={() => setPicking(true)}>{t("Pick from stock")}</button>}
             <button className="button secondary small" onClick={() => { setParts([...parts, { name: "", quantity: "1", unit_price: "" }]); setDirty(true); }}>+ Add part</button>
             <button className="button secondary small" data-tour="bought-outside" onClick={() => { setParts([...parts, { name: "", quantity: "1", unit_price: "", outside: true, outside_cost: "", outside_shop: "" }]); setDirty(true); }}>+ {t("Bought outside")}</button>
+            {can("job_stock") && <NeedPart jobId={id} />}
             {sugg?.parts?.slice(0, 5).map((s) => <button key={s.name} className="ws-quick" onClick={() => { setParts([...parts, { name: s.name, quantity: "1", unit_price: String(s.price) }]); setDirty(true); }}>{s.name}</button>)}
           </div>
         )}
@@ -339,5 +341,26 @@ export function JobPage({ id }: { id: string }) {
       {dialog === "reject" && <ReasonDialog title="Reject the delete request" label="Note for the mechanic (optional)" confirm="Reject" required={false}
         onDone={async (note) => { await command(base + "/delete-request/reject", { note }); setDialog(""); setSaved("Request rejected."); await reload(); }} onClose={() => setDialog("")} />}
     </div>
+  );
+}
+
+/** "We need this part": goes on the To order list with the job's number, for whoever buys parts. */
+function NeedPart({ jobId }: { jobId: string }) {
+  const command = useCommand();
+  const [open, setOpen] = useState(false), [f, setF] = useState({ name: "", quantity: "1", note: "" }), [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try { await command("/api/inventory/wants", { jobId, name: f.name, quantity: f.quantity, note: f.note }); toast(t("Added to the To order list.")); setF({ name: "", quantity: "1", note: "" }); setOpen(false); window.dispatchEvent(new Event("lifta:stock-changed")); }
+    catch (e) { toast((e as Error).message, { bad: true }); } finally { setBusy(false); }
+  };
+  if (!open) return <button className="button secondary small" onClick={() => setOpen(true)}>{t("Need a part?")}</button>;
+  return (
+    <span className="ws-need">
+      <input aria-label={t("Part name")} placeholder={t("Part name")} value={f.name} maxLength={100} onChange={(e) => setF({ ...f, name: e.target.value })} />
+      <input aria-label={t("Quantity")} className="ws-qty" inputMode="decimal" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value.replace(/[^0-9.]/g, "") })} />
+      <input aria-label={t("Note")} placeholder={t("Note")} value={f.note} maxLength={200} onChange={(e) => setF({ ...f, note: e.target.value })} />
+      <button className="button primary small" disabled={busy || !f.name.trim() || !(Number(f.quantity) > 0)} onClick={() => void save()}>{t("Add to To order")}</button>
+      <button className="button secondary small" onClick={() => setOpen(false)}>{t("Cancel")}</button>
+    </span>
   );
 }

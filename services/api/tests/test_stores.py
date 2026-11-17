@@ -11,7 +11,7 @@ def lists(api):
 
 
 def test_no_lists_means_free_text_as_before(api):
-    assert ok(api('GET', '/api/inventory/stores', role='MECHANIC')) == {'racks': [], 'categories': [], 'shelves': [], 'revision': 0}
+    assert ok(api('GET', '/api/inventory/stores', role='MECHANIC')) == {'racks': [], 'categories': [], 'areas': [], 'shelves': [], 'revision': 0}
     assert ok(api('POST', '/api/inventory/products', BODY, role='MECHANIC'))['location'] == 'Rack 1-B'
 
 

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Camera as CameraIcon, Check, Loader2, Minus, Plus } from "lucide-react";
 import { t, useLang } from "./i18n";
 import { toast } from "./ui";
+import { SupplierPick, useSuppliers } from "./Suppliers";
 import { api, openPdf, shrink, type Match, type Product, type BarcodeLookup, type Movement } from "./api";
 
 const Camera = React.lazy(() => import("./Camera").then((m) => ({ default: m.Camera })));
@@ -36,8 +37,10 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [done, setDone] = useState("");
   // The note for the last entry (GRN for a part that came in, GIN for one that went out): print it from the confirmation.
   const [note, setNote] = useState<{ id: string; no: string } | null>(null);
-  const [supplier, setSupplier] = useState(() => { try { return sessionStorage.getItem("lifta.supplier") || ""; } catch { return ""; } }), [reference, setReference] = useState(""), [cost, setCost] = useState("");
-  useEffect(() => { if (part?.supplier) setSupplier(part.supplier); }, [part?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [supplier, setSupplier] = useState(() => { try { return sessionStorage.getItem("lifta.supplier") || ""; } catch { return ""; } }), [supplierId, setSupplierId] = useState(() => { try { return sessionStorage.getItem("lifta.supplierId") || ""; } catch { return ""; } }), [reference, setReference] = useState(""), [cost, setCost] = useState("");
+  const [terms, setTerms] = useState<"PAID" | "CREDIT">("PAID"), { list: supplierList } = useSuppliers();
+  const pickSupplier = (v: { id: string; name: string }) => { setSupplierId(v.id); setSupplier(v.name); const s = (supplierList || []).find((x) => x.id === v.id); setTerms(s && s.credit_days > 0 ? "CREDIT" : "PAID"); };
+  useEffect(() => { if (part?.supplier) { setSupplier(part.supplier); setSupplierId(part.supplier_id || ""); } }, [part?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const commandKey = useRef(key());
   // "Part went out" can put the part straight on an open repair job: the job's bill and the stock change together
   type OpenJob = { id: string; registration: string; customer: string };
@@ -134,9 +137,9 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
     if (!part) return;
     setBusy(true); setError("");
     try {
-      const res = await api<{ id: string; doc_no?: string }>("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "RECEIPT", productId: part.id, quantity, note: "Received at the counter", supplier: supplier.trim() || undefined, reference: reference.trim() || undefined, unitCost: cost.trim() || undefined }) }, commandKey.current);
+      const res = await api<{ id: string; doc_no?: string }>("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "RECEIPT", productId: part.id, quantity, note: "Received at the counter", ...(supplierId ? { supplierId } : { supplier: supplier.trim() || undefined }), reference: reference.trim() || undefined, unitCost: cost.trim() || undefined, ...(supplierId ? { terms } : {}) }) }, commandKey.current);
       if (res?.doc_no) setNote({ id: res.id, no: res.doc_no });
-      try { if (supplier.trim()) sessionStorage.setItem("lifta.supplier", supplier.trim()); } catch { /* ignore */ }
+      try { if (supplier.trim()) sessionStorage.setItem("lifta.supplier", supplier.trim()); sessionStorage.setItem("lifta.supplierId", supplierId); } catch { /* ignore */ }
       setReference(""); setCost("");
       if (photoId) {
         try { await api("/api/vision/references", { method: "POST", body: JSON.stringify({ productId: part.id, imageId: photoId }) }); } catch { /* the receipt is already recorded */ }
@@ -256,15 +259,21 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
             <div className="counter-step counter-grn" data-tour="counter-grn">
               <h2><span>3</span> {t("Goods received note")} <small>({t("optional")})</small></h2>
               <div className="ws-grid2">
-                <label className="ws-field">{t("Supplier")}<input value={supplier} maxLength={100} list="counter-suppliers" disabled={busy} onChange={(e) => setSupplier(e.target.value)} placeholder="Lanka Spares" /><datalist id="counter-suppliers">{[...new Set(items.map((p) => (p.supplier || "").trim()).filter(Boolean))].sort().map((s) => <option key={s} value={s} />)}</datalist></label>
+                <SupplierPick id={supplierId} name={supplier} disabled={busy} onChange={pickSupplier} />
                 <label className="ws-field">{t("Supplier invoice or delivery no.")}<input value={reference} maxLength={60} disabled={busy} onChange={(e) => setReference(e.target.value)} placeholder="DN-1234" /></label>
               </div>
               <label className="ws-field">{t("Cost price per unit (LKR)")} <small>({t("optional")})</small><input value={cost} inputMode="decimal" maxLength={12} disabled={busy} onChange={(e) => setCost(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="1350.00" /></label>
+              {supplierId && (
+                <div className="ws-field" role="group" aria-label={t("Payment")}>{t("Payment")}
+                  <div className="ws-seg">{([["PAID", t("Paid now")], ["CREDIT", t("On credit")]] as [string, string][]).map(([k, l]) => <button type="button" key={k} className={terms === k ? "on" : ""} aria-pressed={terms === k} disabled={busy} onClick={() => setTerms(k as "PAID" | "CREDIT")}>{l}</button>)}</div>
+                  {terms === "CREDIT" && !cost.trim() && <small className="stock-error">{t("Enter the cost price so we know how much is owed.")}</small>}
+                </div>
+              )}
               <small className="stock-help">{t("What the supplier charged for one. Only the owner can see this price later.")} {t("A GRN number is made for this entry. You can print the note after saving.")}</small>
             </div>
           )}
           {part && mode === "receive" && (
-            <button className="button primary counter-confirm" disabled={busy || !(quantity > 0)} onClick={() => void receive()}>
+            <button className="button primary counter-confirm" disabled={busy || !(quantity > 0) || (mode === "receive" && !!supplierId && terms === "CREDIT" && !cost.trim())} onClick={() => void receive()}>
               {busy ? t("Saving…") : t("Add {q} × {name} to stock", { q: amount(quantity), name: part.name })}
             </button>
           )}

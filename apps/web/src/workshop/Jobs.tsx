@@ -7,6 +7,7 @@ import { PhotoSlot, PhotoStrip } from "./Photos";
 import { Rows, groupByVehicle } from "./Rows";
 import { DateChips, SummaryBar, cap, ALL, inRange, useSaved, type Range } from "./DateRange";
 import { Quotes } from "./Quotes";
+import { CustomerSuggest } from "./Customers";
 import { Empty, Loading, dateOnly, kmText, lkr, regKey, useCommand, useDebounced, useLoad, useWs, type Job, type Vehicle } from "./common";
 
 /** Work hub: one place for the three kinds of work. Jobs are the repairs in the workshop; estimates and quotations come before a job. */
@@ -110,7 +111,7 @@ export function NewJob({ reg: start }: { reg?: string }) {
         {openJobs.length > 0 && <p className="ws-warn" role="status">{t("This vehicle already has an open job. Check it before you start another.")} <button type="button" className="button secondary small" onClick={() => go({ name: "job", id: openJobs[0].id })}>{t("Open it")}</button></p>}
         <div className="ws-grid2">
           <label className="ws-field">{t("Customer name")} *<input required value={f.customer} onChange={(e) => set("customer", e.target.value)} /></label>
-          <label className="ws-field">{t("Contact number")}<input inputMode="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} placeholder="07X XXX XXXX" /></label>
+          <label className="ws-field">{t("Contact number")}<input inputMode="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} placeholder="07X XXX XXXX" /><CustomerSuggest phone={f.phone} onPick={(c) => setF((x) => ({ ...x, customer: c.name, phone: c.phone, address: x.address || c.address || "", registration: x.registration || c.vehicles[0]?.registration || "", vehicle: x.vehicle || c.vehicles[0]?.make || "" }))} /></label>
           <label className="ws-field">{t("Customer address")} <small>({t("optional")})</small><textarea rows={2} value={f.address} onChange={(e) => set("address", e.target.value)} /></label>
           <label className="ws-field">{t("Make and model")}<input value={f.vehicle} onChange={(e) => set("vehicle", e.target.value)} placeholder="Toyota Prius" /></label>
           <label className="ws-field">{t("Odometer (km)")}<input inputMode="numeric" value={f.odometer} onChange={(e) => set("odometer", e.target.value.replace(/\D/g, ""))} /></label>

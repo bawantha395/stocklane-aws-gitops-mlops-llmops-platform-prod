@@ -8,6 +8,7 @@ import { Building2, FileText, Landmark, Percent, Wrench } from "lucide-react";
 import QRCode from "qrcode";
 import { BizLogo } from "../BizLogo";
 import { StoresSection } from "./StoresSection";
+import { StoreRoomSection } from "./StoreRoom";
 import { PlatformSection } from "./PlatformSection";
 import { PermissionsSection } from "./PermissionsSection";
 import { StaffSection } from "./StaffSection";
@@ -23,7 +24,7 @@ function qrBits(url?: string) {
 export function Settings() {
   const { business, reloadBusiness, owner } = useWs();
   const logo = useLogo(), fileRef = useRef<HTMLInputElement>(null), [logoBusy, setLogoBusy] = useState(false);
-  const [f, setF] = useState({ ...business, qr_url: business.qr_url || "", tax_rate: String(business.tax_rate), mechanic_discount_pct: String(business.mechanic_discount_pct ?? 10), payment_terms_days: String(business.payment_terms_days ?? 0), warranty: business.warranty || "", invoice_prefix: business.invoice_prefix || "INV", default_reorder_level: String(business.default_reorder_level ?? 5), mechanics: [...(business.mechanics || [])], labour_items: (business.labour_items || []).map((l) => ({ description: l.description, amount: String(l.amount) })) });
+  const [f, setF] = useState({ ...business, qr_url: business.qr_url || "", tax_rate: String(business.tax_rate), mechanic_discount_pct: String(business.mechanic_discount_pct ?? 10), payment_terms_days: String(business.payment_terms_days ?? 0), warranty: business.warranty || "", invoice_prefix: business.invoice_prefix || "INV", default_reorder_level: String(business.default_reorder_level ?? 5), sinhala: !!business.sinhala, default_markup_pct: business.default_markup_pct == null ? "" : String(business.default_markup_pct), mechanics: [...(business.mechanics || [])], labour_items: (business.labour_items || []).map((l) => ({ description: l.description, amount: String(l.amount) })) });
   const [msg, setMsg] = useState(""), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   useEffect(() => { if (msg) toast(msg); }, [msg]);
   const command = useCommand();
@@ -40,7 +41,7 @@ export function Settings() {
   };
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError("");
-    try { await command<Business>("/api/workshop/settings", { ...f, qr_bits: qrBits(f.qr_url), tax_rate: num(f.tax_rate), mechanic_discount_pct: num(f.mechanic_discount_pct), payment_terms_days: num(f.payment_terms_days), default_reorder_level: num(f.default_reorder_level), mechanics: f.mechanics.map((m) => m.trim()).filter(Boolean), labour_items: f.labour_items.filter((l) => l.description.trim()).map((l) => ({ description: l.description.trim(), amount: num(l.amount) })) }, "PUT"); reloadBusiness(); setMsg(t("Saved. New invoices use these details; old invoices keep the details they were issued with.")); }
+    try { await command<Business>("/api/workshop/settings", { ...f, qr_bits: qrBits(f.qr_url), tax_rate: num(f.tax_rate), mechanic_discount_pct: num(f.mechanic_discount_pct), payment_terms_days: num(f.payment_terms_days), default_reorder_level: num(f.default_reorder_level), sinhala: !!f.sinhala, ...(business.default_markup_pct !== undefined ? { default_markup_pct: f.default_markup_pct === "" ? 0 : num(f.default_markup_pct) } : {}), mechanics: f.mechanics.map((m) => m.trim()).filter(Boolean), labour_items: f.labour_items.filter((l) => l.description.trim()).map((l) => ({ description: l.description.trim(), amount: num(l.amount) })) }, "PUT"); reloadBusiness(); setMsg(t("Saved. New invoices use these details; old invoices keep the details they were issued with.")); }
     catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   };
   const uploadLogo = async (file: File) => {
@@ -130,11 +131,18 @@ export function Settings() {
             {f.labour_items.length < 30 && <button type="button" className="button secondary small" onClick={() => setF((x) => ({ ...x, labour_items: [...x.labour_items, { description: "", amount: "" }] }))}>{t("+ Add labour")}</button>}
             <small className="ws-hint">{t("Shows on the bill: as the labour line when you tap it on a job. Tap-to-add buttons on every job page.")}</small>
             <label className="ws-field">{t("Default reorder level for new parts")}<input inputMode="decimal" value={f.default_reorder_level} onChange={(e) => set("default_reorder_level", e.target.value)} /></label>
+            {business.default_markup_pct !== undefined && <>
+              <label className="ws-field">{t("Default markup on cost (%)")}<input inputMode="decimal" value={f.default_markup_pct} onChange={(e) => set("default_markup_pct", e.target.value.replace(/[^0-9.]/g, ""))} /></label>
+              <small className="ws-hint">{t("Suggested selling price = cost + this %, rounded up to the next 5 rupees. Nothing changes by itself: you choose in Price review. A part can have its own markup.")}</small>
+            </>}
+            <label className="ws-check"><input type="checkbox" checked={!!f.sinhala} onChange={(e) => setF((x) => ({ ...x, sinhala: e.target.checked }))} /> {t("Allow Sinhala")}</label>
+            <small className="ws-hint">{t("Off: everyone sees English only. On: a language button (EN / සිං) shows for staff, and order messages can be sent in Sinhala.")}</small>
             <small className="ws-hint">{t("Not printed. A new part shows in Running low when its stock is at or below this number. You can still change it per part.")}</small>
           </section>
         </div>
 
         <div className="ws-set-col">
+          <StoreRoomSection />
           <StoresSection />
           <StaffSection />
           <PermissionsSection />
