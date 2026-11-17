@@ -1,4 +1,5 @@
 """Parts that come back after the bill, a returning customer who still owes, and the per-item stock movement report."""
+from clock import today
 from datetime import date, timedelta
 
 from test_job_stock import new_job, use
@@ -59,7 +60,7 @@ def test_history_shows_payment_status_and_owing_is_found(api):
 def test_stock_movement_report_splits_came_in_out_returned(api):
     p, inv = invoiced(api, 3)
     ok(api('POST', '/api/workshop/invoices/%s/return' % inv['id'], {'lines': [{'index': 0, 'quantity': 1}], 'reason': 'Wrong part'}))
-    a, b = date.today() - timedelta(days=1), date.today() + timedelta(days=2)
+    a, b = today() - timedelta(days=1), today() + timedelta(days=2)
     q = {'from': a.isoformat() + 'T00:00:00+05:30', 'until': b.isoformat() + 'T00:00:00+05:30'}
     row = next(r for r in ok(api('GET', '/api/inventory/analysis', query=q))['rows'] if r['id'] == p['id'])
     assert row['came_in_quantity'] == 10 and row['taken_quantity'] == 3 and row['returned_quantity'] == 1 and row['closing_quantity'] == 8
@@ -105,7 +106,7 @@ def test_cost_price_mechanic_types_owner_reads(api):
     assert {m['id']: m for m in ok(api('GET', '/api/inventory/movements'))}[first['id']]['unit_cost'] == 1250
     # margin in the owner's stock report
     from datetime import date, timedelta
-    rep = ok(api('GET', '/api/inventory/analysis', query={'from': date.today().isoformat() + 'T00:00:00+05:30', 'until': (date.today() + timedelta(days=2)).isoformat() + 'T00:00:00+05:30'}))
+    rep = ok(api('GET', '/api/inventory/analysis', query={'from': today().isoformat() + 'T00:00:00+05:30', 'until': (today() + timedelta(days=2)).isoformat() + 'T00:00:00+05:30'}))
     row = [r for r in rep['rows'] if r['id'] == p['id']][0]
     assert row['last_cost'] == 1350.5 and row['margin'] == row['selling_price'] - 1350.5
     # printed note: price only on the owner's request
@@ -203,7 +204,7 @@ def test_fully_refunded_bill_is_not_owing_and_overdue_counts(api):
 def age_bill(inv_id, days, invoice_type=None):
     """Make a bill look `days` old (and optionally change its type) the way real older data would."""
     from stocklane_api import core
-    at = (date.today() - timedelta(days=days)).isoformat() + 'T06:00:00+00:00'
+    at = (today() - timedelta(days=days)).isoformat() + 'T06:00:00+00:00'
     expr, vals = 'SET created_at = :a', {':a': at}
     if invoice_type:
         expr, vals = 'SET created_at = :a, invoice_type = :t', {':a': at, ':t': invoice_type}
@@ -247,12 +248,12 @@ def test_part_lines_remember_part_no_and_the_day_they_were_added(api):
     p, job = product(api, 10), new_job(api, 'CAB-6001')
     j = ok(use(api, job, p['id'], 2))
     line = j['parts'][0]
-    assert line['added_at'] == date.today().isoformat() and line['part_no']
+    assert line['added_at'] == today().isoformat() and line['part_no']
     # a later save (client sends only name, qty, price, product_id) keeps both and stamps a new free-text line
     body = [{'name': line['name'], 'quantity': 2, 'unit_price': line['unit_price'], 'product_id': line['product_id']}, {'name': 'Gasket', 'quantity': 1, 'unit_price': 500}]
     saved = ok(api('PATCH', '/api/workshop/jobs/%s' % job['id'], {'revision': j['revision'], 'parts': body}, role='MECHANIC'))
     assert saved['parts'][0]['part_no'] == line['part_no'] and saved['parts'][0]['added_at'] == line['added_at']
-    assert saved['parts'][1]['added_at'] == date.today().isoformat() and 'part_no' not in saved['parts'][1]
+    assert saved['parts'][1]['added_at'] == today().isoformat() and 'part_no' not in saved['parts'][1]
 
 
 def test_bill_shows_part_number_even_for_older_lines(api):
@@ -273,7 +274,7 @@ def test_job_shows_parts_that_came_back_after_the_bill(api):
     assert 'returned' not in job['parts'][0]
     ok(api('POST', '/api/workshop/invoices/%s/return' % inv['id'], {'lines': [{'index': 0, 'quantity': 1}], 'reason': 'Wrong part'}))
     job = ok(api('GET', '/api/workshop/jobs/%s' % inv['job_id']))
-    assert job['parts'][0]['returned'] == 1 and job['parts'][0]['returned_at'] == date.today().isoformat() and job['parts'][0]['quantity'] == 3
+    assert job['parts'][0]['returned'] == 1 and job['parts'][0]['returned_at'] == today().isoformat() and job['parts'][0]['quantity'] == 3
 
 
 def test_void_after_parts_came_back_does_not_return_them_to_stock_twice(api):

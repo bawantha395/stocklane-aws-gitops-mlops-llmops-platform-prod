@@ -1,4 +1,5 @@
 """The money path end to end: settings -> job -> bill -> payment -> void -> archive -> restore, plus the report and PDFs."""
+from clock import today
 import base64
 import json
 from datetime import date, timedelta
@@ -48,7 +49,7 @@ def test_full_money_flow(api):
 
     rows = ok(api('GET', '/api/workshop/invoices', role='MECHANIC'))
     assert [r['status'] for r in rows] == ['PAID'] and 'parts' not in rows[0]
-    report = ok(api('GET', '/api/workshop/report', query={'from': (date.today() - timedelta(days=30)).isoformat(), 'until': (date.today() + timedelta(days=1)).isoformat()}))
+    report = ok(api('GET', '/api/workshop/report', query={'from': (today() - timedelta(days=30)).isoformat(), 'until': (today() + timedelta(days=1)).isoformat()}))
     assert json.dumps(report).find('5490') >= 0
     dash = ok(api('GET', '/api/workshop/dashboard', role='MECHANIC'))
     assert dash['open_count'] == 0

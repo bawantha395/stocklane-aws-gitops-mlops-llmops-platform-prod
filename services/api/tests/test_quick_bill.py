@@ -1,4 +1,5 @@
 """Quick bill: a counter sale or small job billed in one call, safe to retry, and never leaving a half-made job behind."""
+from clock import today
 from test_money_flow import ok
 from test_stock_count import product, stock
 
@@ -46,6 +47,6 @@ def test_report_shows_each_mechanic_with_labour_average_and_hours(api):
     from datetime import date, timedelta
     p = product(api, 10)
     ok(qb(api, {'lines': [{'productId': p['id'], 'quantity': 1}], 'labour': [{'description': 'Fitting', 'amount': 500}], 'mechanic': 'Nuwan'}, key='quick-bill-key-000000009'))
-    rep = ok(api('GET', '/api/workshop/report', query={'from': (date.today() - timedelta(days=1)).isoformat(), 'until': (date.today() + timedelta(days=1)).isoformat()}))
+    rep = ok(api('GET', '/api/workshop/report', query={'from': (today() - timedelta(days=1)).isoformat(), 'until': (today() + timedelta(days=1)).isoformat()}))
     row = next(m for m in rep['by_mechanic'] if m['mechanic'] == 'Nuwan')
     assert row['jobs'] == 1 and row['labour'] == 500 and row['average'] == row['total'] and row['hours'] is not None and row['hours'] >= 0

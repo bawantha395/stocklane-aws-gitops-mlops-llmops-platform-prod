@@ -1,4 +1,5 @@
 """Estimates: sections and totals, TBC parts, revisions, owner-only status, convert to job, and that nothing else is touched."""
+from clock import today
 from test_money_flow import ok
 
 BASE = {'registration': 'cab-1000', 'insurer': 'Allianz Motor Insurance Lanka Limited', 'insurer_branch': 'Anuradhapura', 'claim_no': 'CL-77',
@@ -96,7 +97,7 @@ def test_quote_part_number_prints_and_carries_to_the_job(api):
     assert q['parts'][0]['part_no'] == 'HL-8100' and 'part_no' not in q['parts'][1]
     q = ok(api('POST', '/api/workshop/quotes/%s/status' % q['id'], {'revision': q['revision'], 'status': 'APPROVED'}))
     job = ok(api('GET', '/api/workshop/jobs/' + ok(api('POST', '/api/workshop/quotes/%s/convert' % q['id'], {'revision': q['revision']}))['job_id']))
-    assert job['parts'][0]['part_no'] == 'HL-8100' and job['parts'][0]['added_at'] == date.today().isoformat()
+    assert job['parts'][0]['part_no'] == 'HL-8100' and job['parts'][0]['added_at'] == today().isoformat()
 
 
 def test_bill_prints_job_no_type_and_chassis(api):
@@ -112,7 +113,7 @@ def test_bill_prints_job_no_type_and_chassis(api):
 def test_quotation_expires_and_home_counts_it(api):
     from datetime import date, timedelta
     def mk(kind, days, status=None):
-        until = (date.today() + timedelta(days=days)).isoformat()
+        until = (today() + timedelta(days=days)).isoformat()
         code, q = api('POST', '/api/workshop/quotes', {'registration': 'CAB-%d' % (days + 50), 'customer': 'Nimal', 'kind': kind, 'valid_until': until,
                                                       'parts': [{'name': 'Door', 'quantity': 1, 'unit_price': 5000}]})
         assert code == 200

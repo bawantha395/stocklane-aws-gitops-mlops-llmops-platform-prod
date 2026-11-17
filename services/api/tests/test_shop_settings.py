@@ -1,4 +1,5 @@
 """Shop settings (bill number prefix, labour list, mechanics, logo), per-line discounts, and the stock/forecast fixes."""
+from clock import today
 import base64
 import io
 from datetime import date
@@ -39,7 +40,7 @@ def test_invoice_number_uses_the_prefix(api):
     job = new_job(api)
     j = ok(api('PATCH', '/api/workshop/jobs/' + job['id'], {'revision': job['revision'], 'parts': [{'name': 'Oil', 'quantity': 1, 'unit_price': 100}]}, role='OWNER'))
     inv = ok(api('POST', '/api/workshop/jobs/%s/invoice' % j['id'], {'revision': j['revision']}, role='OWNER'))
-    assert inv['invoice_number'].startswith('GM-%s-' % date.today().strftime('%Y%m%d')) or inv['invoice_number'].startswith('GM-')
+    assert inv['invoice_number'].startswith('GM-%s-' % today().strftime('%Y%m%d')) or inv['invoice_number'].startswith('GM-')
 
 
 def test_logo_upload_replace_remove(api):
@@ -116,7 +117,7 @@ def test_forecast_demand_is_taken_minus_returned(api):
     p, job = product(api, 10), new_job(api)
     j = ok(use(api, job, p['id'], 4))
     ok(use(api, j, p['id'], 3, 'return'))
-    snap = inventory.history_snapshot(date.today().isoformat(), True, 'owner')
+    snap = inventory.history_snapshot(today().isoformat(), True, 'owner')
     assert stock(api, p['id']) == 9
     print(repr(snap)[:1500])
     assert 1 in [x for x in _numbers(snap) if not isinstance(x, bool)] or Decimal(1) in [x for x in _numbers(snap) if isinstance(x, Decimal)]

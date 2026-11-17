@@ -1,4 +1,5 @@
 """Stock count corrections: the shelf count moves the books, stays in the ledger, and is never counted as demand."""
+from clock import today
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -46,7 +47,7 @@ def test_books_stay_balanced_and_demand_is_untouched(api):
     ok(api('POST', '/api/inventory/movements', {'kind': 'STOCK_OUT', 'productId': p['id'], 'quantity': 2}, role='MECHANIC'))
     ok(api('POST', '/api/inventory/movements', {'kind': 'COUNT', 'productId': p['id'], 'quantity': 5}))  # 8 -> 5
     ok(api('POST', '/api/inventory/movements', {'kind': 'COUNT', 'productId': p['id'], 'quantity': 6}))  # 5 -> 6
-    row = next(r for r in inventory.analysis((date.today() - timedelta(days=1)).isoformat() + 'T00:00:00+05:30', (date.today() + timedelta(days=2)).isoformat() + 'T00:00:00+05:30')['rows'] if r['id'] == p['id'])
+    row = next(r for r in inventory.analysis((today() - timedelta(days=1)).isoformat() + 'T00:00:00+05:30', (today() + timedelta(days=2)).isoformat() + 'T00:00:00+05:30')['rows'] if r['id'] == p['id'])
     assert row['available_now'] == 6
     assert row['taken_quantity'] == 2  # only the real stock-out is demand
     assert row['adjusted_quantity'] == Decimal(-2)
