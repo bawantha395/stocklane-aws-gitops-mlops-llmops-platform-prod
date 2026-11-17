@@ -49,11 +49,31 @@ def need(base, token, method, path, body=None, expect=200):
 
 def read_only(base, token):
     for path in ('/api/workshop/settings', '/api/workshop/jobs', '/api/workshop/invoices', '/api/workshop/vehicles', '/api/workshop/dashboard',
-                 '/api/workshop/service-due', '/api/workshop/report', '/api/inventory/products'):
+                 '/api/workshop/service-due', '/api/workshop/report', '/api/inventory/products', '/api/workshop/messages', '/api/workshop/messages/count',
+                 '/api/workshop/messages/templates', '/api/workshop/cockpit', '/api/workshop/alerts', '/api/workshop/slow-stock'):
         need(base, token, 'GET', path)
     data = need(base, token, 'GET', '/api/workshop/export')  # only the newest version of the API has this route
     if data:
         check('export has the expected parts', all(k in data for k in ('jobs', 'invoices', 'vehicles', 'stock_parts')))
+
+
+def public_page(base, token, job_id=None):
+    """The customer's link needs no sign-in. A wrong link must answer 404 and nothing else; with a job, a real link must show it and then stop after revoke."""
+    def open_(link):
+        try:
+            with urllib.request.urlopen(base.rstrip('/') + '/api/public/track/' + link, timeout=30) as r:
+                return r.status, json.loads(r.read() or b'null')
+        except urllib.error.HTTPError as e:
+            return e.code, None
+    check('a wrong customer link answers 404 with no sign-in', open_('main~not-a-real-link')[0] == 404)
+    if job_id:
+        made = need(base, token, 'POST', '/api/workshop/jobs/%s/link' % job_id, {})
+        if made:
+            status, page = open_(made['link']['token'])
+            check('a real customer link shows the job', status == 200 and page and page['job']['registration'] == 'ZZSMOKE1', status)
+            check('the page holds no cost or staff fields', page is not None and not any(w in json.dumps(page).lower() for w in ('cost', 'profit', 'created_by')))
+            need(base, token, 'POST', '/api/workshop/jobs/%s/link/revoke' % job_id, {})
+            check('a switched-off link answers 404', open_(made['link']['token'])[0] == 404)
 
 
 def money_flow(base, token):
@@ -64,6 +84,7 @@ def money_flow(base, token):
     vehicle = need(base, token, 'GET', '/api/workshop/vehicles/ZZSMOKE1')
     if vehicle:
         check('a second job with another name does not change the vehicle owner', vehicle['owner'] == 'Smoke Test', vehicle.get('owner'))
+    public_page(base, token, job['id'])
     staged = need(base, token, 'POST', '/api/workshop/jobs/%s/stage' % job['id'], {'stage': 'READY'})
     if staged:
         check('a stage change keeps the revision', staged['stage'] == 'READY' and staged['revision'] == job['revision'], staged.get('revision'))
@@ -88,6 +109,7 @@ def main():
     parser.add_argument('--write', action='store_true', help='also run the full money flow (needs an OWNER token)')
     args = parser.parse_args()
     read_only(args.base, args.token)
+    public_page(args.base, args.token)
     if args.write:
         money_flow(args.base, args.token)
     print('\n%s' % ('ALL CHECKS PASSED' if not failures else 'FAILED: ' + ', '.join(failures)))
