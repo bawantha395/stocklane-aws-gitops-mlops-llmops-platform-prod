@@ -15,6 +15,7 @@ import { ToastHost, ConfirmHost, askConfirm, applyTheme, getTheme, toast } from 
 import { setBusinessName, setDefaultReorder, useBusinessName } from "./businessName";
 import { t, useLang, setLang, setSinhalaAllowed, useSinhalaAllowed } from "./i18n";
 import { Walkthrough } from "./Walkthrough";
+import { NumPadHost } from "./NumPad";
 import { OfflineBar } from "./OfflineBar";
 import { flush as flushOffline } from "./offline";
 import { MechanicHome } from "./MechanicHome";
@@ -89,6 +90,8 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [wsNow, setWsNow] = useState("home");
   const [isDesk, setIsDesk] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 761px)").matches);
+  // by default a computer has the store room (take out and put in by hand) and a phone has the parts counter (camera and QR); the owner can switch the other one on in Settings
+  const roomOn = mods.storeRoom && (isDesk || mods.roomPhone), counterOn = mods.counter && (!isDesk || mods.counterWeb);
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 761px)"), on = () => setIsDesk(mq.matches), page = (e: Event) => setWsNow(String((e as CustomEvent).detail || "home"));
     mq.addEventListener("change", on); window.addEventListener("lifta:ws-page", page);
@@ -260,7 +263,7 @@ function App() {
       setSession(s);
       try { const dl = sessionStorage.getItem("lifta.deeplink"); if (dl) { sessionStorage.removeItem("lifta.deeplink"); openWorkshop({ name: "job", id: dl }); } } catch { /* ignore */ }
       setStatus(v);
-      api<{ name: string; default_reorder_level?: number; sinhala?: boolean; store_room_on?: boolean; counter_on?: boolean }>("/api/workshop/settings").then((b) => { setModules(b); setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); setSinhalaAllowed(!!b.sinhala); }).catch(() => undefined);
+      api<{ name: string; default_reorder_level?: number; sinhala?: boolean; store_room_on?: boolean; counter_on?: boolean; store_room_phone?: boolean; counter_web?: boolean }>("/api/workshop/settings").then((b) => { setModules(b); setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); setSinhalaAllowed(!!b.sinhala); }).catch(() => undefined);
       const key = "stocklane.tasks.v2." + s.name;
       if (storageKey.current !== key) {
         storageKey.current = key;
@@ -751,9 +754,9 @@ function App() {
     { key: "home", full: t("Home"), short: t("Home"), sub: "", Icon: Home, main: true },
     ...(can("jobs_view") ? [{ group: t("WORKSHOP MANAGEMENT") }, { key: "workshop" as View, full: t("Jobs & Invoices"), short: t("Jobs"), sub: t("Job cards, vehicles and bills"), Icon: Wrench, main: true }] : []),
     { group: t("STOCK MANAGEMENT") },
-    ...(mods.counter && canAny("stock_in", "stock_out") ? [{ key: "counter" as View, full: t("Parts counter"), short: t("Counter"), sub: t("A part came in or went out"), Icon: ScanLine, main: true }] : []),
+    ...(counterOn && canAny("stock_in", "stock_out") ? [{ key: "counter" as View, full: t("Parts counter"), short: t("Counter"), sub: t("A part came in or went out"), Icon: ScanLine, main: true }] : []),
     { key: "stock", full: t("Parts list"), short: t("Parts"), sub: owner ? t("All parts, photos and QR labels") : t("See what is in stock"), Icon: Package, main: true },
-    ...(mods.storeRoom ? [{ key: "shelf" as View, full: t("Store room"), short: t("Store room"), sub: t("Where every part sits"), Icon: Warehouse }] : []),
+    ...(roomOn ? [{ key: "shelf" as View, full: t("Store room"), short: t("Store room"), sub: t("Where every part sits"), Icon: Warehouse }] : []),
     { key: "activity", full: t("History"), short: t("History"), sub: t("Every part in and out"), Icon: Activity },
     ...(can("orders") ? [{ key: "orders" as View, full: t("To order"), short: t("To order"), sub: t("Parts to buy, and WhatsApp orders"), Icon: ListChecks }] : []),
     ...(can("suppliers_view") ? [{ key: "suppliers" as View, full: t("Suppliers"), short: t("Suppliers"), sub: t("Who you buy parts from"), Icon: Truck }] : []),
@@ -766,7 +769,6 @@ function App() {
   ];
   // the pages inside Jobs & Invoices, listed under it in the side menu (laptop); phones use the tabs on the page
   const wsSubs: { key: string; label: string; page: WsPage; tour?: string }[] = can("jobs_view") ? [
-    { key: "home", label: t("Summary"), page: { name: "home" } },
     { key: "jobs", label: t("Jobs"), page: { name: "jobs" }, tour: "ws-tab-jobs" },
     { key: "estimates", label: t("Estimates"), page: { name: "jobs", tab: "ESTIMATE" } as WsPage, tour: "ws-tab-quotes" },
     { key: "vehicles", label: t("Vehicles"), page: { name: "vehicles" }, tour: "ws-tab-vehicles" },
@@ -778,7 +780,7 @@ function App() {
     ...(can("alerts") ? [{ key: "alerts", label: t("Alerts"), page: { name: "alerts" } as WsPage }] : []),
     ...(owner ? [{ key: "archive", label: t("Archive"), page: { name: "archive" } as WsPage, tour: "ws-tab-archive" }] : []),
   ] : [];
-  const pickNav = (key: View | "settings" | "tour") => { if (key === "tour") { setMenuOpen(false); setChooser(true); } else if (key === "settings") { setMenuOpen(false); openWorkshop({ name: "settings" }); } else navigate(key); };
+  const pickNav = (key: View | "settings" | "tour") => { if (key === "tour") { setMenuOpen(false); setChooser(true); } else if (key === "settings") { setMenuOpen(false); openWorkshop({ name: "settings" }); } else if (key === "workshop") openWorkshop({ name: "home" }); else navigate(key); };
   const moreActive = view === "stock" || view === "activity" || view === "analysis" || view === "suppliers" || view === "orders" || view === "prices" || view === "shelf";
   return (
     <div className="stock-shell" data-dock={dockHidden ? "hidden" : "shown"} data-hdr={hdrHidden ? "hidden" : "shown"}>
@@ -885,6 +887,7 @@ function App() {
       <PracticeCoach />
       <main className="stock-main">
         <OfflineBar />
+        <NumPadHost />
         <header className="stock-header">
           <a className="m-brand" href="#" onClick={(e) => { e.preventDefault(); navigate("home"); }}>
             <Logo size={30} /> <b>Lifta<span>.</span></b>
@@ -954,7 +957,7 @@ function App() {
           </div>
         )}
         {view === "home" && session && !owner && (
-          <MechanicHome disabled={busy} low={can("orders") || can("stock_count") ? lowItems.slice(0, 8) : undefined} lowTotal={lowItems.length} onOrder={can("orders") ? () => navigate("orders") : undefined} onCount={mods.storeRoom && can("stock_count") ? () => navigate("shelf") : undefined} onLow={(id) => { setSelected(id); navigate("find"); }} onFind={() => navigate("find")} onIn={mods.counter && can("stock_in") ? () => openCounter("receive") : undefined} onOut={mods.counter && can("stock_out") ? () => openCounter("give") : undefined} onJob={can("jobs") ? () => openWorkshop({ name: "new" }) : undefined} />
+          <MechanicHome disabled={busy} low={can("orders") || can("stock_count") ? lowItems.slice(0, 8) : undefined} lowTotal={lowItems.length} onOrder={can("orders") ? () => navigate("orders") : undefined} onCount={roomOn && can("stock_count") ? () => navigate("shelf") : undefined} onLow={(id) => { setSelected(id); navigate("find"); }} onFind={() => navigate("find")} onIn={counterOn && can("stock_in") ? () => openCounter("receive") : undefined} onOut={counterOn && can("stock_out") ? () => openCounter("give") : undefined} onJob={can("jobs") ? () => openWorkshop({ name: "new" }) : undefined} />
         )}
         {view === "home" && !(session && !owner) && (
           <>

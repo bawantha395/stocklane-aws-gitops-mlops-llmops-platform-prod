@@ -29,7 +29,7 @@ METHODS = ('CASH', 'CARD', 'BANK', 'OTHER')
 CHANGED = 'Someone changed this just now. Reload it and try again.'
 DEFAULT_BUSINESS = {'name': 'Workshop Suite', 'address': '', 'phone': '', 'email': '', 'reg_no': '', 'bank': '',
                     'footer': 'Thank you for your business.', 'tax_name': 'VAT', 'tax_rate': ZERO, 'mechanic_discount_pct': Decimal('10'),
-                    'payment_terms_days': 0, 'warranty': '', 'qr_url': '', 'qr_bits': '', 'invoice_prefix': 'INV', 'default_reorder_level': 5, 'sinhala': False, 'store_room_on': True, 'counter_on': True, 'default_markup_pct': ZERO,
+                    'payment_terms_days': 0, 'warranty': '', 'qr_url': '', 'qr_bits': '', 'invoice_prefix': 'INV', 'default_reorder_level': 5, 'sinhala': False, 'store_room_on': True, 'counter_on': True, 'store_room_phone': False, 'counter_web': False, 'default_markup_pct': ZERO,
                     'labour_items': [], 'mechanics': [], 'logo': None}
 
 
@@ -268,7 +268,7 @@ def shop_lists(b):
             raise bad('"%s" is in the mechanics list twice' % name)
         seen.add(name.lower())
         names.append(name)
-    return {'invoice_prefix': prefix, 'default_reorder_level': level, 'labour_items': labour, 'mechanics': names, 'sinhala': b.get('sinhala') is True, 'store_room_on': b.get('store_room_on') is not False, 'counter_on': b.get('counter_on') is not False, 'default_markup_pct': markup_pct(b.get('default_markup_pct'), 'Default markup')}
+    return {'invoice_prefix': prefix, 'default_reorder_level': level, 'labour_items': labour, 'mechanics': names, 'sinhala': b.get('sinhala') is True, 'store_room_on': b.get('store_room_on') is not False, 'counter_on': b.get('counter_on') is not False, 'store_room_phone': b.get('store_room_phone') is True, 'counter_web': b.get('counter_web') is True, 'default_markup_pct': markup_pct(b.get('default_markup_pct'), 'Default markup')}
 
 
 def save_logo(key, who, body):
@@ -322,9 +322,9 @@ def save_business(key, who, body):
         stored = get('WSET', 'business') or {}
         if 'default_markup_pct' not in b:  # someone who cannot see cost cannot send it: keep what is stored
             b = dict(b, default_markup_pct=stored.get('default_markup_pct'))
-        for flag in ('store_room_on', 'counter_on'):  # a screen that does not send a switch keeps it as it was
+        for flag, default in (('store_room_on', True), ('counter_on', True), ('store_room_phone', False), ('counter_web', False)):  # a screen that does not send a switch keeps it as it was
             if flag not in b:
-                b = dict(b, **{flag: stored.get(flag, True)})
+                b = dict(b, **{flag: stored.get(flag, default)})
         item = {'pk': 'WSET', 'sk': 'business', 'logo': stored.get('logo'), **shop_lists(b), 'payment_terms_days': int(terms), 'warranty': lines_text(b.get('warranty'), 'Warranty note', 200), 'qr_url': text(b.get('qr_url'), 'QR link', 200), 'qr_bits': qr_bits(b.get('qr_url'), b.get('qr_bits')), 'name': text(b.get('name'), 'Business name', 60, True),
                 'address': lines_text(b.get('address'), 'Address', 200), 'phone': text(b.get('phone'), 'Phone', 60),
                 'email': text(b.get('email'), 'Email', 80), 'reg_no': text(b.get('reg_no'), 'Registration / tax number', 60),
@@ -1090,7 +1090,7 @@ def quick_bill(key, who, body, owner=True):
         raise bad('Add at least one part or labour line first')
     kind = invoice_type(b.get('invoice_type'))
     j = create_job(step('job'), who, {'registration': b.get('registration') or 'WALK-IN', 'customer': b.get('customer') or 'Walk-in customer', 'phone': b.get('phone'),
-                                      'summary': text(b.get('note'), 'Note', 200) or 'Quick bill', 'invoice_type': kind})
+                                      'summary': text(b.get('note'), 'Note', 200) or 'Quick bill', 'invoice_type': kind, 'mechanic': b.get('mechanic') or ''})
     try:
         if lines:
             j = use_stock_batch(j['id'], step('stock'), who, {'lines': lines})
@@ -1426,6 +1426,7 @@ def report(start='', end=''):
     sums = {k: ZERO for k in ('parts_total', 'labour_total', 'discount', 'tax', 'total')}
     by_day = {(a + timedelta(days=n)).isoformat(): ZERO for n in range((b - a).days + 1)}
     by_mechanic, by_method, top_parts, top_labour, cars = {}, {}, {}, {}, set()
+    job_start = {j['id']: j.get('created_at') for j in query('WJOB')}
     count, period_unpaid, received = 0, ZERO, ZERO
     outside = {'lines': 0, 'sales': ZERO, 'cost': ZERO, 'sales_with_cost': ZERO, 'without_cost': 0}
     by_shop = {}
@@ -1480,9 +1481,16 @@ def report(start='', end=''):
         sums['total'] += i['total']
         by_day[created] += i['total']
         name = i.get('mechanic') or 'Not set'
-        row = by_mechanic.setdefault(name.lower(), {'mechanic': name, 'jobs': 0, 'total': ZERO})
+        row = by_mechanic.setdefault(name.lower(), {'mechanic': name, 'jobs': 0, 'total': ZERO, 'labour': ZERO, 'hours_sum': 0.0, 'hours_n': 0})
         row['jobs'] += 1
         row['total'] += i['total']
+        row['labour'] += labour_net
+        began = job_start.get(i.get('job_id'))
+        if began:  # how long the job took from the car coming in to the bill
+            took = (datetime.fromisoformat(i['created_at']) - datetime.fromisoformat(began)).total_seconds() / 3600
+            if 0 <= took < 24 * 60:
+                row['hours_sum'] += took
+                row['hours_n'] += 1
         for p in kept:
             e = top_parts.setdefault(p['name'].lower(), {'name': p['name'], 'quantity': ZERO, 'amount': ZERO})
             e['quantity'] += p['quantity']
@@ -1517,7 +1525,9 @@ def report(start='', end=''):
             'voids': sorted(voids, key=lambda r: r['at'], reverse=True)[:30], 'void_count': len(voids),
             'profit': profit,
             'by_day': [{'date': d, 'billed': v} for d, v in by_day.items()],
-            'by_mechanic': sorted(by_mechanic.values(), key=lambda r: -r['total']),
+            'by_mechanic': [{k: v for k, v in dict(r, average=(r['total'] / r['jobs']).quantize(MONEY, ROUND_HALF_UP),
+                                                 hours=round(r['hours_sum'] / r['hours_n'], 1) if r['hours_n'] else None).items() if k not in ('hours_sum', 'hours_n')}
+                            for r in sorted(by_mechanic.values(), key=lambda r: -r['total'])],
             'by_method': sorted(({'method': k, 'amount': v} for k, v in by_method.items()), key=lambda r: -r['amount']),
             'top_parts': sorted(top_parts.values(), key=lambda r: -r['amount'])[:10],
             'top_labour': sorted(top_labour.values(), key=lambda r: -r['amount'])[:10], 'unpaid_list': unpaid_list[:20],

@@ -30,7 +30,7 @@ export function Customers() {
         <label className="ws-check"><input type="checkbox" checked={owingOnly} onChange={(e) => setOwingOnly(e.target.checked)} /> {t("Only customers who owe")}</label>
         {can("customers_edit") && <button className="button secondary" onClick={() => go({ name: "customer", id: "new" })}>+ {t("New customer")}</button>}
       </div>
-      {owingOnly && data && <p className="ws-owed">{t("Customers owe")} <b>LKR {lkr(owedTotal)}</b> · {shown?.length || 0} {t("customers")}</p>}
+      {owingOnly && data && <p className="ws-owed">{t("Customers owe")} <b>LKR {lkr(owedTotal)}</b> · {shown?.length || 0} {t("customers")}{can("messages") && <> <button type="button" className="button secondary small" onClick={() => go({ name: "messages" })}>{t("Send payment reminders")}</button></>}</p>}
       {!data || !shown ? <Loading error={error} /> : shown.length === 0 ? <Empty>{term ? "No customer matches." : "No customers yet. A customer is added by itself when you create a job with a phone number."}</Empty> : (
         <div className="ws-cust-list">
           {shown.map((c) => (

@@ -7,7 +7,7 @@ import { Num, Loading, addDays, lkr, today, useLoad, useWs } from "./common";
 type Rep = {
   from: string; until: string; invoices: number; vehicles: number; parts_total: number; labour_total: number; discount: number; tax: number; total: number; received: number;
   unpaid: number; average: number; outstanding_all_time: number; ageing: { d0_7: number; d8_30: number; d31_60: number; d60_plus: number };
-  by_day: { date: string; billed: number }[]; by_mechanic: { mechanic: string; jobs: number; total: number }[]; by_method: { method: string; amount: number }[];
+  by_day: { date: string; billed: number }[]; by_mechanic: { mechanic: string; jobs: number; total: number; labour?: number; average?: number; hours?: number | null }[]; by_method: { method: string; amount: number }[];
   top_parts: { name: string; quantity: number; amount: number }[]; top_labour: { name: string; times: number; amount: number }[];
   unpaid_list: { id: string; invoice_number: string; registration: string; customer: string; days: number; balance: number }[];
   received_gross?: number; refunds?: number; returns?: number; void_count?: number;
@@ -96,13 +96,13 @@ function Bars({ title, rows }: { title: string; rows: { label: string; value: nu
   );
 }
 
-function Block({ title, rows, head }: { title: string; head: [string, string, string?]; rows: [string, string, string?][] }) {
+function Block({ title, rows, head }: { title: string; head: string[]; rows: (string | undefined)[][] }) {
   if (!rows.length) return null;
   return (
     <section className="ws-card">
       <h3>{title}</h3>
-      <div className="ws-table-wrap"><table className="ws-table"><thead><tr><th>{head[0]}</th><th className="r">{head[1]}</th>{head[2] && <th className="r">{head[2]}</th>}</tr></thead>
-        <tbody>{rows.map((r, i) => <tr key={i}><td>{r[0]}</td><td className="r">{r[1]}</td>{r[2] != null && <td className="r">{r[2]}</td>}</tr>)}</tbody></table></div>
+      <div className="ws-table-wrap"><table className="ws-table"><thead><tr>{head.map((h, k) => <th key={k} className={k ? "r" : ""}>{h}</th>)}</tr></thead>
+        <tbody>{rows.map((r, i) => <tr key={i}>{head.map((_, k) => <td key={k} className={k ? "r" : ""}>{r[k]}</td>)}</tr>)}</tbody></table></div>
     </section>
   );
 }
@@ -147,7 +147,7 @@ export function Reports() {
             {!!data.refund_list?.length && <Block title={t("Refunds")} head={[t("Invoice"), t("Reason"), "LKR"]} rows={data.refund_list.map((r): [string, string, string] => [r.invoice_number + " · " + r.registration, r.reason + " (" + r.by.split("@")[0] + ")", lkr(r.amount)])} />}
             {!!data.return_list?.length && <Block title={t("Parts returned")} head={[t("Invoice"), t("Reason"), "LKR"]} rows={data.return_list.map((r): [string, string, string] => [r.invoice_number + " · " + r.registration, r.reason + " (" + r.by.split("@")[0] + ")", lkr(r.amount)])} />}
             {!!data.voids?.length && <Block title={t("Voided invoices")} head={[t("Invoice"), t("Reason"), "LKR"]} rows={data.voids.map((r): [string, string, string] => [r.invoice_number + " · " + r.registration, (r.reason || "-") + " (" + r.by.split("@")[0] + ")", lkr(r.total)])} />}
-            <Block title="By mechanic" head={["Mechanic", "Jobs", "Billed"]} rows={data.by_mechanic.map((m) => [m.mechanic, String(m.jobs), lkr(m.total)])} />
+            <Block title={t("By mechanic")} head={[t("Mechanic"), t("Jobs"), t("Billed"), t("Labour"), t("Per job"), t("Hours per job")]} rows={data.by_mechanic.map((m) => [m.mechanic, String(m.jobs), lkr(m.total), lkr(m.labour || 0), lkr(m.average || 0), m.hours == null ? "-" : String(m.hours)])} />
             <Donut title={t("Payments by method")} rows={data.by_method.map((m) => ({ label: m.method.charAt(0) + m.method.slice(1).toLowerCase(), value: m.amount }))} />
             <Bars title={t("Top parts")} rows={data.top_parts.map((p) => ({ label: p.name, value: p.amount, note: "×" + p.quantity }))} />
             {!!data.outside?.lines && <Block title={t("Bought outside")} head={[t("Shop"), t("Parts"), t("Paid")]} rows={[...data.outside.by_shop.map((x): [string, string, string] => [x.shop, String(x.lines), lkr(x.cost)]), [t("Margin on these parts"), "", lkr(data.outside.margin)] as [string, string, string], ...(data.outside.without_cost ? [[t("Cost not entered"), String(data.outside.without_cost), ""] as [string, string, string]] : [])]} />}

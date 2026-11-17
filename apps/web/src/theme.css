@@ -430,3 +430,19 @@ html .stock-shell .bl, html .stock-shell .bl * { color: #fff !important; }
 .sm-pos .sm-rack { flex: 0 0 auto !important; width: auto !important; min-width: 72px; padding: 0 !important; border-width: 1px !important; border-radius: 12px !important; background: var(--surface, #fff); }
 .sm-pos .sm-rack-head { min-height: 56px; padding: 6px 12px; border-bottom: 0 !important; }
 .sm-pos .sm-rack-head small:not(.ws-count) { display: none !important; }
+
+/* laptop side menu: the row under the pointer grows a little, like the macOS Dock */
+@media (min-width: 761px) { .stock-sidebar > button { transform-origin: 0 50%; transform: scale(var(--dock, 1)); transition: transform .08s ease-out; } }
+@media (prefers-reduced-motion: reduce) { .stock-sidebar > button { transform: none; } }
+
+/* number pad for quantity boxes (phone) */
+.numpad { position: fixed; left: 0; right: 0; bottom: 0; z-index: 400; padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); background: var(--surface, #fff); border-top: 1px solid var(--line); box-shadow: 0 -8px 30px rgba(0, 0, 0, .18); border-radius: 18px 18px 0 0; }
+.numpad-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.numpad-top span { flex: 1; font-size: 13px; color: var(--muted, #667); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.numpad-top b { font-size: 28px; min-width: 3ch; text-align: right; }
+.numpad-done { height: 44px; padding: 0 18px; border: 0; border-radius: 12px; background: #0f5c3f; color: #fff; font-weight: 700; font-size: 16px; }
+.numpad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.numpad-grid button { height: 58px; border: 1px solid var(--line); border-radius: 14px; background: rgba(var(--sh), .05); font-size: 26px; font-weight: 600; color: var(--ink); display: grid; place-items: center; touch-action: manipulation; }
+.numpad-grid button:active { background: rgba(var(--sh), .16); }
+
+.ws-sub { margin-left: 26px; font-size: 13px; }

@@ -283,3 +283,14 @@ def test_the_store_room_and_counter_can_be_switched_off_and_stay_so(api):
     ok(api('PUT', '/api/workshop/settings', body))  # a screen that does not send the switches keeps them
     t3 = ok(api('GET', '/api/workshop/settings'))
     assert t3['store_room_on'] is False and t3['counter_on'] is True
+
+
+def test_phone_and_computer_extras_default_off_and_stay_when_not_sent(api):
+    s = ok(api('GET', '/api/workshop/settings'))
+    assert s['store_room_phone'] is False and s['counter_web'] is False
+    ok(api('PUT', '/api/workshop/settings', dict(s, counter_web=True)))
+    t2 = ok(api('GET', '/api/workshop/settings'))
+    assert t2['counter_web'] is True and t2['store_room_phone'] is False
+    body = {k: v for k, v in t2.items() if k not in ('store_room_phone', 'counter_web')}
+    ok(api('PUT', '/api/workshop/settings', body))
+    assert ok(api('GET', '/api/workshop/settings'))['counter_web'] is True

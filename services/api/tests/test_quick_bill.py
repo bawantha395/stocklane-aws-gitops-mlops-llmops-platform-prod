@@ -40,3 +40,12 @@ def test_labour_only_and_discount_limit_for_a_mechanic(api):
     assert inv['total'] == 1000 and inv['status'] == 'PAID'
     assert qb(api, {'labour': [{'description': 'Wash', 'amount': 1000}], 'discount': 600}, key='quick-bill-key-000000007')[0] == 400  # a mechanic may give up to 10%
     assert [j for j in ok(api('GET', '/api/workshop/jobs')) if j['status'] == 'OPEN'] == []
+
+
+def test_report_shows_each_mechanic_with_labour_average_and_hours(api):
+    from datetime import date, timedelta
+    p = product(api, 10)
+    ok(qb(api, {'lines': [{'productId': p['id'], 'quantity': 1}], 'labour': [{'description': 'Fitting', 'amount': 500}], 'mechanic': 'Nuwan'}, key='quick-bill-key-000000009'))
+    rep = ok(api('GET', '/api/workshop/report', query={'from': (date.today() - timedelta(days=1)).isoformat(), 'until': (date.today() + timedelta(days=1)).isoformat()}))
+    row = next(m for m in rep['by_mechanic'] if m['mechanic'] == 'Nuwan')
+    assert row['jobs'] == 1 and row['labour'] == 500 and row['average'] == row['total'] and row['hours'] is not None and row['hours'] >= 0

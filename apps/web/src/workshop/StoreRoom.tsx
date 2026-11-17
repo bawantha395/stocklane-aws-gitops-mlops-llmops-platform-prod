@@ -131,7 +131,7 @@ export function ModulesBox() {
   const [s, setS] = useState<Record<string, unknown> | null>(null), [busy, setBusy] = useState(false), [start, setStart] = useState(getCounterStart());
   useEffect(() => { void api<Record<string, unknown>>("/api/workshop/settings").then(setS).catch(() => undefined); }, []);
   if (!s) return null;
-  const flip = async (k: "store_room_on" | "counter_on", on: boolean) => {
+  const flip = async (k: "store_room_on" | "counter_on" | "store_room_phone" | "counter_web", on: boolean) => {
     setBusy(true);
     try { const next = { ...s, [k]: on }; await api("/api/workshop/settings", { method: "PUT", body: JSON.stringify(next) }, crypto.randomUUID()); setS(next); setModules(next); toast(t("Saved")); }
     catch (e) { toast((e as Error).message, { bad: true }); } finally { setBusy(false); }
@@ -139,7 +139,9 @@ export function ModulesBox() {
   return (
     <div className="ws-modules">
       <label className="stock-check"><input type="checkbox" disabled={busy} checked={s.counter_on !== false} onChange={(e) => void flip("counter_on", e.target.checked)} /> {t("Use the parts counter")}</label>
+      {s.counter_on !== false && <label className="stock-check ws-sub"><input type="checkbox" disabled={busy} checked={s.counter_web === true} onChange={(e) => void flip("counter_web", e.target.checked)} /> {t("Also show the parts counter on the computer")} <small>({t("phones always have it")})</small></label>}
       <label className="stock-check"><input type="checkbox" disabled={busy} checked={s.store_room_on !== false} onChange={(e) => void flip("store_room_on", e.target.checked)} /> {t("Use the store room map")}</label>
+      {s.store_room_on !== false && <label className="stock-check ws-sub"><input type="checkbox" disabled={busy} checked={s.store_room_phone === true} onChange={(e) => void flip("store_room_phone", e.target.checked)} /> {t("Also show the store room on phones")} <small>({t("computers always have it")})</small></label>}
       <label className="ws-field">{t("When the parts counter opens on this device")}
         <select value={counterStartIsAuto() ? "auto" : start} onChange={(e) => { setCounterStart(e.target.value as "auto" | "camera" | "search"); setStart(getCounterStart()); toast(t("Saved")); }}>
           <option value="auto">{t("Automatic: camera on a phone, search on a computer")}</option>
