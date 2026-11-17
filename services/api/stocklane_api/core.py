@@ -45,6 +45,96 @@ def table():
     return _resource
 
 
+# ---------- shops (tenants) ----------
+# Every shop's rows live in the same table under their own key prefix: "T#<shop>#PRODUCT" and so on. The prefix is added and
+# removed here and nowhere else, so the rest of the code keeps using plain keys ("PRODUCT") and can never reach another shop.
+SHOP = re.compile(r'[a-z0-9][a-z0-9-]{1,30}')
+GROUP = 'SHOP_'  # a Cognito group "SHOP_ganga" puts its members in the shop "ganga"
+_shop = None
+
+
+def default_shop():
+    return os.environ.get('DEFAULT_SHOP', 'main')
+
+
+def set_shop(shop):
+    """Choose the shop for this request. Called once by the handler before any data is touched."""
+    global _shop
+    shop = str(shop or '')
+    if not SHOP.fullmatch(shop):
+        raise ApiError(403, 'This sign-in does not belong to a workshop')
+    _shop = shop
+
+
+def shop():
+    if _shop is None:
+        raise ApiError(500, 'No workshop was chosen for this request')
+    return _shop
+
+
+def shop_of(event):
+    """The shop a verified token belongs to: its one SHOP_ group, or the single default shop of this deployment."""
+    mine = sorted(g[len(GROUP):].lower() for g in groups(event) if g.startswith(GROUP))
+    if len(mine) > 1:
+        raise ApiError(403, 'This sign-in belongs to more than one workshop')
+    if mine:
+        return mine[0]
+    if os.environ.get('REQUIRE_SHOP') == '1':
+        raise ApiError(403, 'This sign-in does not belong to a workshop')
+    return default_shop()
+
+
+def shops():
+    """Every shop this deployment serves (for the nightly jobs). The register is the one part of the table outside any shop."""
+    rows, start = [], None
+    while True:
+        args = {'KeyConditionExpression': Key('pk').eq('SHOPS')}
+        if start:
+            args['ExclusiveStartKey'] = start
+        page = table().query(**args)
+        rows += page['Items']
+        start = page.get('LastEvaluatedKey')
+        if not start:
+            break
+    return sorted({r['sk'] for r in rows if not r.get('suspended')} | {default_shop()})
+
+
+def shop_path(path):
+    """A file path in the buckets: the default shop keeps the paths it always had, every other shop gets its own folder."""
+    return path if shop() == default_shop() else 'shops/' + shop() + '/' + path
+
+
+def tpk(pk):
+    return 'T#' + shop() + '#' + pk
+
+
+def _mine(item):
+    """A stored row as the code sees it: the shop prefix is taken off its pk."""
+    if item and isinstance(item.get('pk'), str):
+        prefix = 'T#' + shop() + '#'
+        if item['pk'].startswith(prefix):
+            item['pk'] = item['pk'][len(prefix):]
+    return item
+
+
+class PerShop:
+    """A small in-memory cache that keeps one copy per shop (a warm Lambda serves many shops)."""
+    def __init__(self, **initial):
+        self._initial, self._by = initial, {}
+
+    def _d(self):
+        return self._by.setdefault(shop(), dict(self._initial))
+
+    def __getitem__(self, key):
+        return self._d()[key]
+
+    def __setitem__(self, key, value):
+        self._d()[key] = value
+
+    def update(self, **kw):
+        self._d().update(kw)
+
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -82,12 +172,12 @@ def public(item, drop=('pk', 'sk', 'ttl')):
 
 # ---------- reads ----------
 def get(pk, sk):
-    return table().get_item(Key={'pk': pk, 'sk': sk}).get('Item')
+    return _mine(table().get_item(Key={'pk': tpk(pk), 'sk': sk}).get('Item'))
 
 
 def query(pk, **kw):
     """All items of one partition (pages followed). Optional sk range, direction and limit."""
-    condition = Key('pk').eq(pk)
+    condition = Key('pk').eq(tpk(pk))
     if 'between' in kw:
         condition &= Key('sk').between(*kw.pop('between'))
     if 'gte' in kw:
@@ -106,7 +196,7 @@ def query(pk, **kw):
         if limit:
             args['Limit'] = limit - len(items)
         page = table().query(**args)
-        items += page['Items']
+        items += [_mine(i) for i in page['Items']]
         start = page.get('LastEvaluatedKey')
         if not start or (limit and len(items) >= limit):
             return items
@@ -115,20 +205,20 @@ def query(pk, **kw):
 def batch_get(keys):
     result = []
     for i in range(0, len(keys), 100):
-        chunk = [{'pk': a, 'sk': b} for a, b in keys[i:i + 100]]
+        chunk = [{'pk': tpk(a), 'sk': b} for a, b in keys[i:i + 100]]
         name = table().name
         response = table().meta.client.batch_get_item(RequestItems={name: {'Keys': chunk}})
-        result += response['Responses'][name]
+        result += [_mine(r) for r in response['Responses'][name]]
     return result
 
 
 # ---------- writes ----------
 def put(item, **kw):
-    return {'Put': {'TableName': table().name, 'Item': item, **kw}}
+    return {'Put': {'TableName': table().name, 'Item': dict(item, pk=tpk(item['pk'])), **kw}}
 
 
 def update(pk, sk, expression, values, names=None, condition=None):
-    op = {'TableName': table().name, 'Key': {'pk': pk, 'sk': sk}, 'UpdateExpression': expression,
+    op = {'TableName': table().name, 'Key': {'pk': tpk(pk), 'sk': sk}, 'UpdateExpression': expression,
           'ExpressionAttributeValues': values}
     if names:
         op['ExpressionAttributeNames'] = names
@@ -138,7 +228,7 @@ def update(pk, sk, expression, values, names=None, condition=None):
 
 
 def check(pk, sk, condition, values=None, names=None):
-    op = {'TableName': table().name, 'Key': {'pk': pk, 'sk': sk}, 'ConditionExpression': condition}
+    op = {'TableName': table().name, 'Key': {'pk': tpk(pk), 'sk': sk}, 'ConditionExpression': condition}
     if values:
         op['ExpressionAttributeValues'] = values
     if names:
@@ -147,7 +237,7 @@ def check(pk, sk, condition, values=None, names=None):
 
 
 def delete(pk, sk):
-    return {'Delete': {'TableName': table().name, 'Key': {'pk': pk, 'sk': sk}}}
+    return {'Delete': {'TableName': table().name, 'Key': {'pk': tpk(pk), 'sk': sk}}}
 
 
 def unique(kind, value):
@@ -201,7 +291,7 @@ def remember_email(who, address):
         return
     row = get('PROFILE', who)
     if not row or row.get('email') != address:
-        table().put_item(Item={'pk': 'PROFILE', 'sk': who, 'email': address, 'updated_at': now()})
+        table().put_item(Item={'pk': tpk('PROFILE'), 'sk': who, 'email': address, 'updated_at': now()})
 
 
 def emails():

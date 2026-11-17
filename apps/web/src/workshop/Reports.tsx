@@ -33,9 +33,9 @@ function DayChart({ days }: { days: Rep["by_day"] }) {
   const col = (i: number) => L + i * slot + (slot - bar) / 2;
   return (
     <section className="ws-card" aria-label="Billed per day">
-      <div className="ws-card-head"><h3>Billed per day <small>LKR</small></h3><button className="button secondary small" onClick={() => setTable(!table)}>{table ? "Show chart" : "Show table"}</button></div>
+      <div className="ws-card-head"><h3>{t("Billed per day")} <small>LKR</small></h3><button className="button secondary small" onClick={() => setTable(!table)}>{table ? "Show chart" : "Show table"}</button></div>
       {table ? (
-        <div className="ws-table-wrap"><table className="ws-table"><thead><tr><th>Date</th><th className="r">Billed</th></tr></thead><tbody>{days.map((d) => <tr key={d.date}><td>{d.date}</td><td className="r">{lkr(d.billed)}</td></tr>)}</tbody></table></div>
+        <div className="ws-table-wrap"><table className="ws-table"><thead><tr><th>Date</th><th className="r">{t("Billed")}</th></tr></thead><tbody>{days.map((d) => <tr key={d.date}><td>{d.date}</td><td className="r">{lkr(d.billed)}</td></tr>)}</tbody></table></div>
       ) : (
         <div ref={box} className="ws-chart">
           <svg width={w} height={H} role="img" aria-label={"Billed per day, highest " + lkr(days[peak]?.billed) + " on " + days[peak]?.date}>
@@ -116,7 +116,7 @@ export function Reports() {
         <div className="ws-chips">{ranges().map(([label, a, b]) => <button key={label} className={"ws-chip" + (from === a && until === b ? " chosen" : "")} onClick={() => { setFrom(a); setUntil(b); }}>{label}</button>)}</div>
         <div className="ws-dates">
           <label>From<input type="date" value={from} max={until} onChange={(e) => e.target.value && setFrom(e.target.value)} /></label>
-          <label>Until<input type="date" value={until} min={from} onChange={(e) => e.target.value && setUntil(e.target.value)} /></label>
+          <label>{t("Until")}<input type="date" value={until} min={from} onChange={(e) => e.target.value && setUntil(e.target.value)} /></label>
           <button className="button secondary small" onClick={() => void download("/api/workshop/report.pdf?from=" + from + "&until=" + until, "workshop-report-" + from + "_" + until + ".pdf").catch((e) => setErr(e.message))}>PDF</button>
           {data && <button className="button secondary small" onClick={() => csv("billed-per-day-" + from + "_" + until + ".csv", data.by_day.map((d) => ({ Date: d.date, "Billed (LKR)": d.billed })))}>CSV</button>}
         </div>
@@ -125,10 +125,10 @@ export function Reports() {
       {!data ? !error && <Loading /> : (
         <>
           <div className="ws-kpis">
-            <div className="ws-kpi"><small>Billed</small><b><Num v={data.total} /></b><span>{data.invoices} invoice{data.invoices === 1 ? "" : "s"}, {data.vehicles} vehicle{data.vehicles === 1 ? "" : "s"}</span></div>
-            <div className="ws-kpi"><small>Money received</small><b><Num v={data.received} /></b><span>payments in this period</span></div>
-            <div className="ws-kpi"><small>Parts</small><b><Num v={data.parts_total} /></b><span>Labour {lkr(data.labour_total)}</span></div>
-            <div className="ws-kpi"><small>Average invoice</small><b><Num v={data.average} /></b><span>{data.discount > 0 ? "Discounts " + lkr(data.discount) : "no discounts"}{data.tax > 0 ? ", tax " + lkr(data.tax) : ""}</span></div>
+            <div className="ws-kpi"><small>{t("Billed")}</small><b><Num v={data.total} /></b><span>{data.invoices} invoice{data.invoices === 1 ? "" : "s"}, {data.vehicles} vehicle{data.vehicles === 1 ? "" : "s"}</span></div>
+            <div className="ws-kpi"><small>{t("Money received")}</small><b><Num v={data.received} /></b><span>payments in this period</span></div>
+            <div className="ws-kpi"><small>{t("Parts")}</small><b><Num v={data.parts_total} /></b><span>Labour {lkr(data.labour_total)}</span></div>
+            <div className="ws-kpi"><small>{t("Average invoice")}</small><b><Num v={data.average} /></b><span>{data.discount > 0 ? "Discounts " + lkr(data.discount) : "no discounts"}{data.tax > 0 ? ", tax " + lkr(data.tax) : ""}</span></div>
             <div className="ws-kpi warn"><small>Unpaid (this period)</small><b><Num v={data.unpaid} /></b><span>of the invoices above</span></div>
             <div className="ws-kpi warn"><small>Unpaid (all time)</small><b><Num v={data.outstanding_all_time} /></b><span>every customer</span></div>
           </div>
@@ -142,7 +142,7 @@ export function Reports() {
             <Bars title={t("Unpaid by age")} rows={[{ label: "0 to 7 days", value: data.ageing.d0_7 }, { label: "8 to 30 days", value: data.ageing.d8_30 }, { label: "31 to 60 days", value: data.ageing.d31_60 }, { label: "Over 60 days", value: data.ageing.d60_plus }].filter((r) => r.value > 0)} />
           </div>
           {!!data.unpaid_list.length && (
-            <section className="ws-card"><h3>Unpaid invoices, oldest first</h3>
+            <section className="ws-card"><h3>{t("Unpaid invoices, oldest first")}</h3>
               <div className="ws-list">{data.unpaid_list.map((u) => (
                 <button className="ws-item" key={u.id} onClick={() => go({ name: "invoice", id: u.id })}>
                   <span className="ws-item-main"><strong>{u.registration}</strong><span>{u.customer}</span><small>{u.invoice_number}</small></span>

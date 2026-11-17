@@ -2516,3 +2516,12 @@ button {
 .counter-job select { width: 100%; min-height: 52px; padding: 0 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); font-size: 16px; font-family: inherit; }
 .counter-job h2 small { font-weight: 400; color: var(--muted); font-size: 14px; }
 .counter-job .stock-help { display: block; margin-top: 8px; }
+
+/* phones: the parts search gets its own full row; the two tick boxes sit under it */
+@media (max-width: 640px) {
+  .stock-tools { flex-wrap: wrap; }
+  .stock-tools .search-box { flex: 1 0 100%; }
+}
+.app-crash { max-width: 420px; margin: 18vh auto; padding: 24px; text-align: center; font-family: system-ui, sans-serif; }
+.app-crash h1 { font-size: 22px; margin: 0 0 8px; }
+.app-crash p { color: #555; margin: 0 0 16px; }

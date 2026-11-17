@@ -20,6 +20,7 @@ from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from . import bills, inventory, photos
+from .core import PerShop
 from .core import COLOMBO, bad, batch_get, check, command, conflict, delete, emails, get, missing, now, num, public, put, query, update
 
 LATIN = re.compile(r'[\x20-\x7e]*')
@@ -1165,7 +1166,7 @@ def return_parts(invoice_id, key, who, body):
 
 
 # ---------- suggestions: parts and labour the workshop already uses ----------
-_cache = {'at': 0, 'value': None}
+_cache = PerShop(at=0, value=None)
 
 
 def suggestions():

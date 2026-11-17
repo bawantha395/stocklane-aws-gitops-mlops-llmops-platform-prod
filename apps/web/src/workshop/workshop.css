@@ -820,3 +820,6 @@ button.ws-kpi { text-align: left; cursor: pointer; font: inherit; color: inherit
 .listpick-row.add { color: #0b6b3a; font-weight: 600; border-top: 1px solid #eee; }
 .listpick-note { margin: 0; padding: 10px 12px; color: #666; font-size: .9em; }
 .listpick-err { color: #b00020; display: block; margin-top: 4px; }
+
+.ws-rack .ws-list-row input, .ws-level input, [data-tour="stores"] .ws-list-row input { border: 1px solid #d5d9dd; border-radius: 8px; padding: 8px 10px; background: #fff; }
+[data-tour="stores"] > .button.small:last-child { margin-top: 10px; }

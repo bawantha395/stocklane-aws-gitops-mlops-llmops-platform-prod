@@ -13,7 +13,7 @@ import uuid
 import boto3
 from botocore.exceptions import ClientError
 
-from .core import bad, missing
+from .core import bad, missing, shop_path
 
 ID = re.compile(r'[0-9a-f]{32}')
 FULL_MAX, THUMB_MAX = 900_000, 80_000
@@ -47,7 +47,7 @@ def jpeg(value, field, limit):
 def save(body):
     full, thumb = jpeg(body.get('image'), 'The photo', FULL_MAX), jpeg(body.get('thumb'), 'The thumbnail', THUMB_MAX)
     pid = uuid.uuid4().hex
-    for key, data in (('workshop/photos/%s.jpg' % pid, full), ('workshop/photos/%s-t.jpg' % pid, thumb)):
+    for key, data in ((shop_path('workshop/photos/%s.jpg' % pid), full), (shop_path('workshop/photos/%s-t.jpg' % pid), thumb)):
         s3().put_object(Bucket=bucket(), Key=key, Body=data, ContentType='image/jpeg', CacheControl='private, max-age=31536000')
     return {'id': pid}
 
@@ -55,7 +55,7 @@ def save(body):
 def read(pid, size='thumb'):
     if not ID.fullmatch(pid):
         raise missing('Photo not found')
-    key = 'workshop/photos/%s%s.jpg' % (pid, '-t' if size == 'thumb' else '')
+    key = shop_path('workshop/photos/%s%s.jpg' % (pid, '-t' if size == 'thumb' else ''))
     try:
         body = s3().get_object(Bucket=bucket(), Key=key)['Body'].read()
     except ClientError as error:
@@ -118,7 +118,7 @@ def logo_check(value):
 
 
 def logo_save(raw, version):
-    s3().put_object(Bucket=bucket(), Key='workshop/photos/logo/%s.jpg' % version, Body=raw, ContentType='image/jpeg', CacheControl='private, max-age=31536000')
+    s3().put_object(Bucket=bucket(), Key=shop_path('workshop/photos/logo/%s.jpg' % version), Body=raw, ContentType='image/jpeg', CacheControl='private, max-age=31536000')
 
 
 def logo_bytes(version):
@@ -126,7 +126,7 @@ def logo_bytes(version):
     if not version or not re.fullmatch(r'[0-9a-f]{32}', str(version)):
         return None
     try:
-        return s3().get_object(Bucket=bucket(), Key='workshop/photos/logo/%s.jpg' % version)['Body'].read()
+        return s3().get_object(Bucket=bucket(), Key=shop_path('workshop/photos/logo/%s.jpg' % version))['Body'].read()
     except Exception:  # noqa: BLE001
         return None
 
@@ -134,6 +134,6 @@ def logo_bytes(version):
 def logo_drop(version):
     try:
         if version and re.fullmatch(r'[0-9a-f]{32}', str(version)):
-            s3().delete_object(Bucket=bucket(), Key='workshop/photos/logo/%s.jpg' % version)
+            s3().delete_object(Bucket=bucket(), Key=shop_path('workshop/photos/logo/%s.jpg' % version))
     except Exception:  # noqa: BLE001
         pass

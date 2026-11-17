@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { useEffect, useMemo, useState } from "react";
 import { api, csv, download, type Product } from "./api";
 import { hasForecast, levelOrder, whole, type Row } from "./reorder";
@@ -47,8 +48,8 @@ export function MovementPdf({ range }: { range?: { from: string; to: string } })
   };
   return (
     <div className="report-move" data-tour="stock-movement-pdf">
-      <div><strong>Stock movement PDF</strong><p className="stock-help">For the dates you pick: every item, how many came in, went out and came back, with the opening and closing stock.</p></div>
-      <label>From <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
+      <div><strong>{t("Stock movement PDF")}</strong><p className="stock-help">For the dates you pick: every item, how many came in, went out and came back, with the opening and closing stock.</p></div>
+      <label>{t("From")} <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
       <label>To <input type="date" value={to} min={from} max={end} onChange={(e) => setTo(e.target.value)} /></label>
       <button className="button primary" disabled={busy} onClick={() => void go()}>{busy ? "Preparing…" : "Download PDF"}</button>
       {err && <p role="alert" className="stock-error">{err}</p>}
@@ -75,20 +76,20 @@ export function StockReport() {
   return (
     <section className="report" aria-label="Stock report">
       <div className="report-head">
-        <div><p className="eyebrow">OWNER</p><h1>Stock report</h1><p className="stock-help">What you have, what is running out, and what to order. It updates by itself every night.</p></div>
-        <button className="button secondary" onClick={() => csv("stock-" + today + ".csv", shown.map((l) => ({ Item: l.name, Code: l.sku, Shelf: l.shelf, "In stock": l.stock, Status: LABEL[l.level], "Will last": l.lasts, "Order this week": l.order || "", Supplier: l.supplier, "Last cost": l.cost ?? "", "Selling price": l.price, "Profit each": l.cost == null ? "" : l.price - l.cost })))}>Download list</button>
+        <div><p className="eyebrow">OWNER</p><h1>{t("Stock report")}</h1><p className="stock-help">{t("What you have, what is running out, and what to order. It updates by itself every night.")}</p></div>
+        <button className="button secondary" onClick={() => csv("stock-" + today + ".csv", shown.map((l) => ({ Item: l.name, Code: l.sku, Shelf: l.shelf, "In stock": l.stock, Status: LABEL[l.level], "Will last": l.lasts, "Order this week": l.order || "", Supplier: l.supplier, "Last cost": l.cost ?? "", "Selling price": l.price, "Profit each": l.cost == null ? "" : l.price - l.cost })))}>{t("Download list")}</button>
       </div>
       {error && <p role="alert" className="stock-error">{error}</p>}
       <div className="report-filters" role="group" aria-label="Show">
         {([["all", "All", lines.length], ["out", "Finished", counts.out], ["low", "Order soon", counts.low], ["ok", "Fine", counts.ok]] as [Level | "all", string, number][]).map(([key, label, n]) => (
           <button key={key} className={"report-chip " + key + (filter === key ? " chosen" : "")} onClick={() => setFilter(key)}><b>{n}</b> {label}</button>
         ))}
-        {suppliers.length > 0 && <select className="report-search" aria-label="Supplier" value={sup} onChange={(e) => setSup(e.target.value)}><option value="">All suppliers</option>{suppliers.map((s) => <option key={s} value={s}>{s}</option>)}</select>}
+        {suppliers.length > 0 && <select className="report-search" aria-label="Supplier" value={sup} onChange={(e) => setSup(e.target.value)}><option value="">{t("All suppliers")}</option>{suppliers.map((s) => <option key={s} value={s}>{s}</option>)}</select>}
         <input className="report-search" aria-label="Search items" placeholder="Search an item" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
       <div className="stock-table-wrap">
         <table className="stock-table">
-          <thead><tr><th>Item</th><th>In stock</th><th>Status</th><th>Will last</th><th>Supplier</th><th>Order this week</th><th>Cost and profit</th></tr></thead>
+          <thead><tr><th>Item</th><th>{t("In stock")}</th><th>{t("Status")}</th><th>{t("Will last")}</th><th>{t("Supplier")}</th><th>{t("Order this week")}</th><th>{t("Cost and profit")}</th></tr></thead>
           <tbody>
             {shown.map((l) => (
               <tr key={l.id}>
@@ -98,7 +99,7 @@ export function StockReport() {
                 <td>{l.lasts}</td>
                 <td>{l.supplier || <small>—</small>}</td>
                 <td>{l.order > 0 ? <strong>{whole(l.order)}</strong> : "—"}</td>
-                <td>{l.cost == null ? <small>No cost yet</small> : (
+                <td>{l.cost == null ? <small>{t("No cost yet")}</small> : (
                   <>
                     <strong>{money(l.price - l.cost)}</strong> <small>profit each</small>
                     <small>Cost {money(l.cost)} · sells {money(l.price)}{l.prev != null && l.prev !== l.cost ? " · was " + money(l.prev) + (l.cost > l.prev ? " (up)" : " (down)") : ""}</small>

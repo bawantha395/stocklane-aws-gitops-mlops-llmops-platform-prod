@@ -19,13 +19,15 @@ from decimal import Decimal
 
 import boto3
 
+from .core import PerShop, shop, tpk  # shop (tenant) plumbing
+
 from .core import (COLOMBO, ApiError, bad, batch_get, check, command, conflict, delete, emails, get, missing, now, num,
                    public, put, query, unique, update, dumps)
 
 ZERO = Decimal(0)
 KINDS = {'OPENING', 'RECEIPT', 'ISSUE', 'RETURN', 'STOCK_OUT', 'COUNT'}
 OUT_KINDS = {'ISSUE', 'STOCK_OUT'}
-_cache = {'until': 0, 'value': None}
+_cache = PerShop(until=0, value=None)
 
 
 # ---------- helpers ----------
@@ -75,7 +77,7 @@ def announce(product):
         return
     try:
         boto3.client('lambda').invoke(FunctionName=function, InvocationType='Event',
-                                      Payload=json.dumps({'action': 'index', 'productId': product['id']}).encode())
+                                      Payload=json.dumps({'action': 'index', 'productId': product['id'], 'shop': shop()}).encode())
     except Exception as error:  # the 30-minute reconcile and the reindex action repair a missed call
         print('vision notification skipped:', type(error).__name__)
 
@@ -146,7 +148,7 @@ def remove_person(person_id):
     if not person:
         raise missing('Person not found')
     from .core import table
-    table().update_item(Key={'pk': 'PERSON', 'sk': person_id}, UpdateExpression='SET active = :f',
+    table().update_item(Key={'pk': tpk('PERSON'), 'sk': person_id}, UpdateExpression='SET active = :f',
                         ExpressionAttributeValues={':f': False})
     return {'id': person_id, 'active': False}
 
@@ -274,6 +276,83 @@ def stores_add(key, who, body):
         cond = {'ConditionExpression': 'revision = :r', 'ExpressionAttributeValues': {':r': old['revision']}} if old.get('pk') else {'ConditionExpression': 'attribute_not_exists(pk)'}
         return [put(row, **cond)], [None], stores_view(row)
     return command(key, 'stores-add', who, body, build)
+
+
+def stores_rename(who, body):
+    """Owner: give a rack, one level of a rack, or a category a new name; every part that used the old name follows it.
+
+    Three small steps, each safe to repeat, so a rename that is cut off half way is finished by pressing Save again:
+    the new name joins the list, the parts move over (in batches), the old name leaves the list.
+    """
+    from .core import Retry, transact
+    b = body or {}
+    kind = b.get('kind')
+    row = stores_row()
+    racks = [dict(r, levels=list(r.get('levels') or [])) for r in row.get('racks') or []]
+    cats = list(row.get('categories') or [])
+    moves, field = {}, 'location'  # old value (lower case) -> new value
+    if kind == 'category':
+        old, new = text(b.get('from'), 'Category', 80, True), text(b.get('to'), 'New name', 80, True)
+        if not any(c.lower() == old.lower() for c in cats):
+            raise missing('Category not found')
+        if old.lower() != new.lower() and any(c.lower() == new.lower() for c in cats):
+            raise conflict('"%s" is already on the list' % new)
+        moves, field = {old.lower(): new}, 'category'
+        cats = [new if c.lower() == old.lower() else c for c in cats]
+    elif kind in ('rack', 'level'):
+        rack = next((r for r in racks if r['name'].lower() == str(b.get('rack') or b.get('from') or '').strip().lower()), None)
+        if not rack:
+            raise missing('Rack not found')
+        before = shelf_names([rack])
+        if kind == 'rack':
+            new = text(b.get('to'), 'New name', 40, True)
+            if new.lower() != rack['name'].lower() and any(r['name'].lower() == new.lower() for r in racks):
+                raise conflict('"%s" is already on the list' % new)
+            rack['name'] = new
+        else:
+            old, new = text(b.get('from'), 'Level', 12, True), text(b.get('to'), 'New name', 12, True)
+            if not any(l.lower() == old.lower() for l in rack['levels']):
+                raise missing('Level not found')
+            if old.lower() != new.lower() and any(l.lower() == new.lower() for l in rack['levels']):
+                raise conflict('"%s" is already on %s' % (new, rack['name']))
+            rack['levels'] = [new if l.lower() == old.lower() else l for l in rack['levels']]
+        moves = {a.lower(): z for a, z in zip(before, shelf_names([rack])) if a != z}
+    else:
+        raise bad('Rename a rack, a level or a category')
+    racks, cats = clean_stores({'racks': racks, 'categories': cats})
+    # 1 + 3: the list (the old name is simply replaced; parts are checked against the list only when they are saved)
+    new_row = {'pk': 'STORES', 'sk': 'main', 'racks': racks, 'categories': cats, 'revision': int(row.get('revision') or 0) + 1, 'updated_at': now(), 'updated_by': who}
+    cond = {'ConditionExpression': 'revision = :r', 'ExpressionAttributeValues': {':r': row['revision']}} if row.get('pk') else {'ConditionExpression': 'attribute_not_exists(pk)'}
+    transact([put(new_row, **cond)], ['Someone changed the lists just now. Reload and try again.'])
+    # 2: the parts, archived ones too, so a restored part still points at a real shelf
+    moved, todo = 0, [p for p in query('PRODUCT') if str(p.get(field) or '').lower() in moves]
+    for i in range(0, len(todo), 50):
+        ops = [update('PRODUCT', p['sk'], 'SET #f = :n', {':n': moves[str(p[field]).lower()], ':o': p[field]}, {'#f': field}, '#f = :o') for p in todo[i:i + 50]]
+        try:
+            transact(ops, [None] * len(ops))
+        except Retry:  # a part was edited meanwhile: move this batch one by one, skipping the ones that changed
+            for op in ops:
+                try:
+                    transact([op], [None])
+                except Retry:
+                    continue
+        moved += len(ops)
+    _cache['until'] = 0
+    return dict(stores_view(new_row), moved=moved)
+
+
+def stores_standard(key, who, names):
+    """Owner: add the standard part categories that are not on the list yet."""
+    def build():
+        old = stores_row()
+        cats = list(old.get('categories') or [])
+        have = {c.lower() for c in cats}
+        cats += [n for n in names if n.lower() not in have]
+        racks, cats = clean_stores({'racks': old.get('racks') or [], 'categories': cats})
+        row = {'pk': 'STORES', 'sk': 'main', 'racks': racks, 'categories': cats, 'revision': int(old.get('revision') or 0) + 1, 'updated_at': now(), 'updated_by': who}
+        cond = {'ConditionExpression': 'revision = :r', 'ExpressionAttributeValues': {':r': old['revision']}} if old.get('pk') else {'ConditionExpression': 'attribute_not_exists(pk)'}
+        return [put(row, **cond)], [None], stores_view(row)
+    return command(key, 'stores-standard', who, {'names': names}, build)
 
 
 def listed(location, category, keep=()):

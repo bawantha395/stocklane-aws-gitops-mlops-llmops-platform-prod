@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useEffect, useState } from "react";
 import { autoPrintOn } from "./Bill";
 import { connectPrinter, disconnectPrinter, onPrinterChange, paperColumns, printerConnected, printerName, printerSupported, sendToPrinter, setPaperColumns, testBytes } from "./printer";
@@ -13,15 +14,15 @@ export function PrinterPanel() {
     <details className="ws-printer">
       <summary className={connected ? "on" : ""}>{connected ? "Printer: " + printerName() : "Printer"}</summary>
       <div className="ws-printer-menu">
-        {!supported ? <small>This browser prints through the normal print preview. For direct receipt printing use Chrome or Edge.</small> : !connected ? (
+        {!supported ? <small>{t("This browser prints through the normal print preview. For direct receipt printing use Chrome or Edge.")}</small> : !connected ? (
           <>
             <button className="button secondary small" onClick={() => void run(() => connectPrinter("usb"))}>USB printer</button>
-            <button className="button secondary small" onClick={() => void run(() => connectPrinter("serial"))}>Serial or Bluetooth</button>
+            <button className="button secondary small" onClick={() => void run(() => connectPrinter("serial"))}>{t("Serial or Bluetooth")}</button>
           </>
         ) : (
           <>
-            <button className="button secondary small" onClick={() => void run(() => sendToPrinter(testBytes(cols)))}>Test print</button>
-            <button className="button secondary small" onClick={() => void disconnectPrinter()}>Disconnect</button>
+            <button className="button secondary small" onClick={() => void run(() => sendToPrinter(testBytes(cols)))}>{t("Test print")}</button>
+            <button className="button secondary small" onClick={() => void disconnectPrinter()}>{t("Disconnect")}</button>
           </>
         )}
         <label>Paper

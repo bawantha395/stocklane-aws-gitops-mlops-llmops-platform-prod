@@ -8,10 +8,11 @@ import json
 import re
 import traceback
 
-from . import forecast, inventory, photos, quotes, workshop
+from . import core, forecast, inventory, photos, platform, quotes, workshop
 from .core import ApiError, actor, bad, dumps, groups, remember_email, require
 
 OWNER, STAFF = ('OWNER',), ('OWNER', 'MECHANIC')
+PLATFORM = ('PLATFORM',)  # the person who runs this deployment: opens and closes workshops, sees none of their data
 ROUTES = []
 
 
@@ -25,10 +26,14 @@ def q(event, name, default=''):
 
 def session(e, p, b, k):
     remember_email(actor(e), q(e, 'email'))
-    return {'name': actor(e), 'roles': ['ROLE_' + g for g in sorted(groups(e))]}
+    return {'name': actor(e), 'roles': ['ROLE_' + g for g in sorted(groups(e))], 'shop': core.shop()}
 
 
 route('GET', '/api/inventory/session', None, session)
+route('GET', '/api/platform/shops', PLATFORM, lambda e, p, b, k: platform.shops())
+route('POST', '/api/platform/shops', PLATFORM, lambda e, p, b, k: platform.create(b))
+route('POST', '/api/platform/shops/([a-z0-9-]+)/suspend', PLATFORM, lambda e, p, b, k: platform.suspend(p[0], b))
+route('POST', '/api/inventory/stores/standard', OWNER, lambda e, p, b, k: inventory.stores_standard(k, actor(e), platform.STANDARD_CATEGORIES))
 route('GET', '/api/inventory/products', STAFF, lambda e, p, b, k: inventory.products('OWNER' in groups(e)))
 route('GET', '/api/inventory/products/archived', OWNER, lambda e, p, b, k: inventory.archived_products())
 route('GET', '/api/inventory/catalogue', STAFF, lambda e, p, b, k: inventory.catalogue())
@@ -38,6 +43,7 @@ route('POST', '/api/inventory/products/([^/]+)/archive', OWNER, lambda e, p, b, 
 route('GET', '/api/inventory/movements/([^/]+)/note.pdf', STAFF, lambda e, p, b, k: ('pdf',) + workshop.stock_note_pdf(p[0], 'OWNER' in groups(e) and q(e, 'cost') == '1'))
 route('GET', '/api/inventory/stores', STAFF, lambda e, p, b, k: inventory.stores_view())
 route('PUT', '/api/inventory/stores', OWNER, lambda e, p, b, k: inventory.stores_save(k, actor(e), b))
+route('POST', '/api/inventory/stores/rename', OWNER, lambda e, p, b, k: inventory.stores_rename(actor(e), b))
 route('POST', '/api/inventory/stores/add', OWNER, lambda e, p, b, k: inventory.stores_add(k, actor(e), b))
 route('POST', '/api/inventory/documents', STAFF, lambda e, p, b, k: (lambda r: r if 'OWNER' in groups(e) else inventory.hide_cost(r))(inventory.record_document(k, actor(e), b)))
 route('POST', '/api/inventory/movements/([^/]+)/cost', OWNER, lambda e, p, b, k: inventory.set_cost(k, p[0], actor(e), b))
@@ -120,7 +126,11 @@ def reply(status, payload, headers=None):
 def scheduled(event):
     job = event.get('job')
     if job == 'forecast-export':
-        return forecast.export_history()
+        out = {}
+        for shop in core.shops():  # one export per shop, each from its own rows
+            core.set_shop(shop)
+            out[shop] = forecast.export_history()
+        return out
     raise ValueError('Unknown job')
 
 
@@ -146,7 +156,12 @@ def handler(event, _context=None):
             match = pattern.match(path)
             if verb != method or not match:
                 continue
-            if roles:
+            if roles == PLATFORM:  # the register of shops is outside every shop
+                require(event, *roles)
+            else:
+                core.set_shop(core.shop_of(event))  # before any data is read: everything below sees this shop only
+                platform.admit(core.shop())
+            if roles and roles != PLATFORM:
                 require(event, *roles)
             elif not groups(event):
                 raise ApiError(403, 'Staff access is required')

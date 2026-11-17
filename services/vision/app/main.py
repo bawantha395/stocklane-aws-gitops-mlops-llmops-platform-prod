@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import urllib.error
 import urllib.parse
@@ -24,6 +25,7 @@ from . import dataset_export, model, textract
 from .bedrock import PROMPT_VERSION, BedrockUnavailable, failure, propose
 from .config import Settings
 from .qr import product_qr
+from . import storage
 from .storage import Store
 
 DRAFT_FIELDS = ('name', 'brand', 'partNumber', 'category', 'grade', 'capacity', 'unit')
@@ -39,6 +41,14 @@ def staff(request: Request, owner=False):
         raise HTTPException(403, 'Owner access is required')
     if not groups.intersection({'OWNER', 'MECHANIC'}):
         raise HTTPException(403, 'Staff access is required')
+    # the shop this sign-in belongs to: its one SHOP_ group, or this deployment's single default shop (same rule as the API)
+    mine = sorted(g[5:].lower() for g in groups if g.startswith('SHOP_'))
+    if len(mine) > 1 or (not mine and os.environ.get('REQUIRE_SHOP') == '1'):
+        raise HTTPException(403, 'This sign-in does not belong to one workshop')
+    try:
+        storage.set_shop(mine[0] if mine else storage.default_shop())
+    except PermissionError as error:
+        raise HTTPException(403, str(error)) from None
     return claims.get('username') or claims.get('sub') or 'unknown'
 
 
@@ -55,7 +65,16 @@ def index_product(product, image_id=None):
 
 
 def reconcile():
-    """Give every confirmed photo a vector for the current model. Safe to repeat."""
+    """Every shop in turn: give every confirmed photo a vector for the current model. Safe to repeat."""
+    total, version = 0, None
+    for shop in store.shops():
+        storage.set_shop(shop)
+        result = reconcile_shop()
+        total, version = total + result['indexed'], result['modelVersion']
+    return {'indexed': total, 'modelVersion': version}
+
+
+def reconcile_shop():
     encoder = model.encoder(settings)
     if encoder is None:
         return {'indexed': 0, 'modelVersion': None}
@@ -80,6 +99,7 @@ def reconcile():
 def weekly_export():
     if not settings.model_bucket:
         return {'exported': False, 'reason': 'No models bucket'}
+    storage.set_shop(storage.default_shop())  # the shared photo model is trained from the first shop's confirmed photos for now
     return dataset_export.export(store, boto3.client('s3'), settings.model_bucket)
 
 

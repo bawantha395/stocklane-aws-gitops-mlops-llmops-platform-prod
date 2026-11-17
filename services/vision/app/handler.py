@@ -13,6 +13,7 @@ _http = Mangum(main.create_app(), lifespan='off')
 def handler(event, context):
     action = event.get('action') if isinstance(event, dict) else None
     if action == 'index':
+        main.storage.set_shop(event.get('shop') or main.storage.default_shop())
         product = main.store.product(event['productId'])
         if product and product.get('image_id') and not product.get('archived'):
             main.index_product(product)

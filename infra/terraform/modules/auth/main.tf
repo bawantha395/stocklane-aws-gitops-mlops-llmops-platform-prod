@@ -23,7 +23,7 @@ resource "aws_cognito_user_pool_domain" "main" {
 }
 
 resource "aws_cognito_user_group" "staff" {
-  for_each     = toset(["OWNER", "MECHANIC"])
+  for_each     = toset(["OWNER", "MECHANIC", "PLATFORM"]) # PLATFORM = runs this deployment: opens and closes workshops
   user_pool_id = aws_cognito_user_pool.main.id
   name         = each.key
 }

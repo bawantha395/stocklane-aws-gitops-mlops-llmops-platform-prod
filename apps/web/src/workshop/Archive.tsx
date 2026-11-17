@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useState } from "react";
 import { askConfirm } from "../ui";
 import { Empty, Loading, dateOnly, lkr, useCommand, useLoad, useWs, type Job } from "./common";
@@ -22,7 +23,7 @@ export function Archive() {
   return (
     <div className="ws-archive">
       <div className="ws-section-head"><h3>Deleted jobs ({data.jobs.length})</h3></div>
-      <p className="muted">Deleted jobs are kept here, hidden from jobs, the vehicle history and reports. Restore one if it was a mistake.</p>
+      <p className="muted">{t("Deleted jobs are kept here, hidden from jobs, the vehicle history and reports. Restore one if it was a mistake.")}</p>
       {problem && <p role="alert" className="stock-error">{problem}</p>}
       <div className="ws-list">
         {data.jobs.map((j) => (
@@ -31,10 +32,10 @@ export function Archive() {
               <span className="ws-item-main"><strong>{j.registration}</strong><span>{j.customer}{j.vehicle ? " · " + j.vehicle : ""}</span><small>{j.archive_reason || "No reason noted"}</small></span>
               <span className="ws-item-side"><b>{lkr(j.total)}</b><small>{j.archived_by} · {j.archived_at ? dateOnly(j.archived_at) : ""}</small></span>
             </button>
-            <span className="ws-request-actions"><button className="button secondary small" disabled={busy === j.id} onClick={() => void restore(j)}>Restore</button></span>
+            <span className="ws-request-actions"><button className="button secondary small" disabled={busy === j.id} onClick={() => void restore(j)}>{t("Restore")}</button></span>
           </div>
         ))}
-        {!data.jobs.length && <Empty>Nothing deleted. Deleted jobs appear here.</Empty>}
+        {!data.jobs.length && <Empty>{t("Nothing deleted. Deleted jobs appear here.")}</Empty>}
       </div>
       <div className="ws-section-head"><h3>Log</h3></div>
       <div className="ws-card ws-logcard">
@@ -45,7 +46,7 @@ export function Archive() {
             <small>{a.actor_email || a.actor}{a.reason ? ": " + a.reason : ""}</small>
           </div>
         ))}
-        {!data.log.length && <Empty>No entries yet.</Empty>}
+        {!data.log.length && <Empty>{t("No entries yet.")}</Empty>}
       </div>
     </div>
   );

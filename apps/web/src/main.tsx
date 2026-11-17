@@ -1,50 +1,8 @@
-import { ListPick } from "./ListPick";
-const LiveCam = React.lazy(() => import("./Camera").then((m) => ({ default: m.Camera })));
+import { Crash } from "./Crash";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createPortal } from "react-dom";
-import QRCode from "qrcode";
-import {
-  Camera,
-  Package,
-  ArrowDownLeft,
-  ArrowUpRight,
-  Activity,
-  Plus,
-  Printer,
-  Search,
-  RefreshCw,
-  LogOut,
-  Check,
-  X,
-  ScanLine,
-  Home,
-  ArrowRight,
-  ArrowLeft,
-  ClipboardCheck,
-  ListChecks,
-  Wrench,
-  Menu as MenuIcon,
-  FileText,
-  PlusCircle,
-  X as CloseIcon,
-  Compass,
-} from "lucide-react";
-import {
-  api,
-  ApiError,
-  auth,
-  config,
-  headers,
-  openPdf,
-  userEmail,
-  shrink,
-  signOut,
-  type Product,
-  type Match,
-  type Draft,
-  type Movement,
-} from "./api";
+import { Camera, Package, ArrowDownLeft, ArrowUpRight, Activity, Plus, Printer, Search, RefreshCw, LogOut, Check, X, ScanLine, Home, ArrowRight, ArrowLeft, ClipboardCheck, ListChecks, Wrench, Menu as MenuIcon, FileText, PlusCircle, X as CloseIcon, Compass } from "lucide-react";
+import { api, ApiError, auth, openPdf, userEmail, shrink, signOut, type Match, type Draft, type Movement } from "./api";
 import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/manrope";
 import "./stock.css";
@@ -52,12 +10,12 @@ import "./glass.css";
 import "./theme.css";
 import "./tokens.css";
 import { ToastHost, ConfirmHost, askConfirm, applyTheme, getTheme, toast } from "./ui";
-import { getDefaultReorder, setBusinessName, setDefaultReorder, useBusinessName } from "./businessName";
+import { setBusinessName, setDefaultReorder, useBusinessName } from "./businessName";
 import { t, useLang, setLang } from "./i18n";
 import { Walkthrough } from "./Walkthrough";
 import { MechanicHome } from "./MechanicHome";
 import { SetupWizard, setupDone } from "./SetupWizard";
-import { isPractice, samplePhotoBlob, usePractice, startPractice, probe } from "./practice";
+import { usePractice, startPractice, probe } from "./practice";
 import { PracticeCoach } from "./PracticeCoach";
 import { Logo } from "./Logo";
 import { BizLogo } from "./BizLogo";
@@ -78,22 +36,11 @@ import { ReorderCard } from "./ReorderCard";
 import { Counter, type Mode as CounterMode } from "./Counter";
 import { saveNav, loadNav, markNativePick, lostNativePick, clearNativePick } from "./resume";
 import { dock } from "./dock";
-import { suggestFields, type Field, type Suggestion } from "./suggestions";
-import {
-  emptyTask,
-  complete,
-  validQuantity,
-  plannedOut,
-  type Direction,
-  type StockTask,
-  type TaskLine,
-} from "./task";
+import { emptyTask, complete, validQuantity, plannedOut, type Direction, type StockTask, type TaskLine } from "./task";
 
-type Item = Product & {
-  part_number?: string;
-  location?: string;
-  archived?: boolean;
-};
+import { Item, uid, aiMessage, number, when, useCommand, Photo } from "./partsShared";
+import { ItemPhoto, LabelDialog } from "./LabelDialog";
+import { ProductEditor } from "./ProductEditor";
 type Session = { name: string; roles: string[] };
 type View =
   | "home"
@@ -106,152 +53,6 @@ type View =
   | "activity"
   | "counter"
   | "workshop";
-const uid = () => crypto.randomUUID();
-function aiMessage(ai?: { status: string; code?: string; message?: string; detail?: string; provider?: string; model?: string }) {
-  if (!ai || ai.status === "not_needed") return "";
-  if (ai.status === "used") return "";
-  if (ai.status === "not_configured") return "AI suggestions are switched off.";
-  if (ai.status === "limit_reached") return "Today's AI suggestion limit is reached.";
-  const why =
-    ai.code === "AI_PROVIDER_QUOTA"
-      ? " (the AWS Bedrock quota for this account is not approved yet)"
-      : ai.code === "AI_ACCESS_DENIED"
-        ? " (Bedrock model access is not enabled)"
-        : ai.detail
-          ? " (" + ai.detail + ")"
-          : "";
-  return "AI suggestions are not available right now" + why + ".";
-}
-function prettyModel(ai?: { provider?: string; model?: string }) {
-  if (ai?.provider === "bedrock") return "Amazon Bedrock";
-  const m = (ai?.model || "").replace(/^models\//, "");
-  if (!m) return ai?.provider === "gemini" ? "Gemini" : "AI";
-  return m.split("-").map((w) => (/^\d/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(" ");
-}
-const number = (n: number) =>
-  new Intl.NumberFormat("en", { maximumFractionDigits: 3 }).format(Number(n));
-const when = (s: string) =>
-  new Date(s).toLocaleString("en-GB", { timeZone: "Asia/Colombo" });
-function useCommand() {
-  const pending = useRef({ body: "", key: "" });
-  return async <T,>(path: string, body: unknown, method = "POST") => {
-    const fingerprint = path + method + JSON.stringify(body);
-    if (pending.current.body !== fingerprint)
-      pending.current = { body: fingerprint, key: uid() };
-    const value = await api<T>(
-      path,
-      { method, body: JSON.stringify(body) },
-      pending.current.key,
-    );
-    pending.current = { body: "", key: "" };
-    return value;
-  };
-}
-async function printLabel(item: Item) {
-  const popup = window.open("", "_blank");
-  if (!popup) throw new Error("Allow a new window to print the label.");
-  try {
-    const data = await QRCode.toDataURL("stocklane:v1:" + item.id, {
-      width: 260,
-      margin: 2,
-    });
-    const doc = popup.document;
-    doc.title = "Stock label — " + item.sku;
-    const style = doc.createElement("style");
-    style.textContent =
-      "body{font:14px sans-serif;text-align:center;margin:12mm}img{width:45mm;height:45mm}h1{font-size:18px}p{margin:5px}button{margin:20px;padding:12px}@media print{button{display:none}}";
-    doc.head.append(style);
-    const img = doc.createElement("img");
-    img.src = data;
-    img.alt = "Product QR";
-    doc.body.append(img);
-    for (const text of [
-      item.name,
-      item.brand,
-      item.part_number || item.sku,
-      item.location || "",
-    ]) {
-      const p = doc.createElement("p");
-      p.textContent = text;
-      doc.body.append(p);
-    }
-    const button = doc.createElement("button");
-    button.textContent = "Print / Save as PDF";
-    button.onclick = () => popup.print();
-    doc.body.append(button);
-  } catch (error) {
-    popup.close();
-    throw error;
-  }
-}
-function Photo({ id, zoom = false, peek = false, caption = "" }: { id: string; zoom?: boolean; peek?: boolean; caption?: string }) {
-  const [url, setUrl] = useState("");
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
-  }, [open]);
-  useEffect(() => {
-    let active = true;
-    let object = "";
-    apiPhoto(id)
-      .then((blob) => {
-        object = URL.createObjectURL(blob);
-        if (active) setUrl(object);
-        else URL.revokeObjectURL(object);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-      if (object) URL.revokeObjectURL(object);
-    };
-  }, [id]);
-  return url ? (
-    peek ? (
-      <>
-        {/* quick look from inside a list row: a tap on the picture opens it large; a tap anywhere else still picks the row */}
-        <span role="button" tabIndex={0} className="photo-peek" aria-label={t("Quick look")} onClick={(e) => { e.stopPropagation(); e.preventDefault(); setOpen(true); }}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); setOpen(true); } }}>
-          <img className="item-photo" src={url} alt="" />
-        </span>
-        {open && createPortal(
-          <div className="photo-viewer" role="dialog" aria-modal="true" aria-label={caption || "Photo"} onClick={(e) => { e.stopPropagation(); setOpen(false); }}>
-            <button type="button" className="photo-viewer-close" aria-label="Close photo" onClick={(e) => { e.stopPropagation(); setOpen(false); }}><X /></button>
-            <img src={url} alt={caption} onClick={(e) => e.stopPropagation()} />
-            {caption && <p className="photo-viewer-cap">{caption}</p>}
-          </div>, document.body)}
-      </>
-    ) : zoom ? (
-      <>
-        <button type="button" className="photo-zoom-btn" aria-label="View the photo full screen" onClick={() => setOpen(true)}>
-          <img className="item-photo" src={url} alt="Uploaded photo" />
-        </button>
-        {open && createPortal(
-          <div className="photo-viewer" role="dialog" aria-modal="true" aria-label="Photo" onClick={() => setOpen(false)}>
-            <button type="button" className="photo-viewer-close" aria-label="Close photo" onClick={() => setOpen(false)}><X /></button>
-            <img src={url} alt="Uploaded photo, full size" onClick={(e) => e.stopPropagation()} />
-          </div>, document.body)}
-      </>
-    ) : (
-      <img className="item-photo" src={url} alt="Approved item reference" />
-    )
-  ) : (
-    <span className="photo-placeholder">
-      <Package />
-    </span>
-  );
-}
-async function apiPhoto(id: string) {
-  if (isPractice()) { const b = samplePhotoBlob(); if (b) return b; throw new Error("Photo unavailable"); }
-  const r = await fetch(
-    (config.apiBase || "") + "/api/vision/images/" + encodeURIComponent(id),
-    { headers: await headers() },
-  );
-  if (!r.ok) throw new Error("Photo unavailable");
-  return r.blob();
-}
 function App() {
   const [view, setView] = useState<View>(() => (loadNav().view as View) || "home");
   const [counterMode, setCounterMode] = useState<CounterMode>(() => (loadNav().mode as CounterMode) || "receive");
@@ -389,6 +190,8 @@ function App() {
     ["OPENING", "RECEIPT", "RETURN", "COUNT_IN"].includes(kind) ? "IN" : "OUT";
   const actorEmail = (m: Movement) =>
     m.actor_email || (m.actor?.includes("@") ? m.actor : t("Staff member"));
+  // an error must show where the person is looking, not only at the top of a long page
+  useEffect(() => { if (error) toast(error, { bad: true }); }, [error]);
   const tell = (message: string) => setNotice(message);
   const persist = (next: Record<Direction, StockTask>) => {
     // Persist before submitting: a reload retries with the same command identity.
@@ -819,6 +622,12 @@ function App() {
     }
   };
   const archive = async (p: Item, value: boolean) => {
+    document.querySelectorAll("details[open]").forEach((d) => d.removeAttribute("open"));
+    if (value && Number(p.quantity) !== 0) {
+      // the reason used to appear only at the top of the page, out of sight: say it where the person is looking
+      toast(t("{name} still has {n} in stock. Record them as went out (Parts counter) first, then archive.", { name: p.name, n: String(p.quantity) }), { bad: true });
+      return;
+    }
     if (
       !(await askConfirm(
         value ? "Stock must be zero. The history stays." : "It comes back to the parts list.",
@@ -833,9 +642,9 @@ function App() {
       await refresh();
       if (showArchived)
         setArchived(await api<Item[]>("/api/inventory/products/archived"));
-      tell(value ? "Item archived." : "Item restored.");
+      toast(value ? t("Item archived.") : t("Item restored."));
     } catch (e) {
-      setError((e as Error).message);
+      toast((e as Error).message, { bad: true });
     }
   };
   // Every word typed must appear somewhere in the part's details; part numbers match with or without dashes and spaces.
@@ -1308,8 +1117,8 @@ function App() {
                     >
                       <ScanLine size={32} />
                       <span>
-                        <strong>Scan QR label</strong>
-                        <small>Use your phone camera</small>
+                        <strong>{t("Scan QR label")}</strong>
+                        <small>{t("Use your phone camera")}</small>
                       </span>
                       <ArrowRight />
                     </button>
@@ -1485,7 +1294,7 @@ function App() {
                       </div>
                     </div>
                     <div className="available-stock">
-                      <span>Available now</span>
+                      <span>{t("Available now")}</span>
                       <b>
                         {number(active.quantity)}{" "}
                         <small>
@@ -1661,7 +1470,7 @@ function App() {
                   {!task.lines.length ? (
                     <div className="draft-empty">
                       <ListChecks size={40} />
-                      <h3>Your list starts here</h3>
+                      <h3>{t("Your list starts here")}</h3>
                       <p>
                         Scan an item, check the quantity,
                         <br />
@@ -1782,7 +1591,7 @@ function App() {
             <div className="stock-title">
               <div>
                 <p className="eyebrow">CATALOGUE & SHELVES</p>
-                <h1>Parts list</h1>
+                <h1>{t("Parts list")}</h1>
                 <p>
                   Find exact parts. Keep their labels and shelf details
                   together.
@@ -1855,7 +1664,7 @@ function App() {
                         <small>{p.unit === "LITRE" ? "litres" : "units"}</small>
                         {Number(p.quantity) <= Number(p.reorder_level) &&
                           !p.archived && (
-                            <span className="low-stock">Low stock</span>
+                            <span className="low-stock">{t("Low stock")}</span>
                           )}
                       </span>
                       <i className="stock-bar" aria-hidden="true">
@@ -1951,7 +1760,7 @@ function App() {
             <div className="stock-title">
               <div>
                 <p className="eyebrow">CONFIRMED MOVEMENTS</p>
-                <h1>Stock activity</h1>
+                <h1>{t("Stock activity")}</h1>
                 <p>
                   A clear history of what changed, when and who recorded it.
                   Asia/Colombo.
@@ -1976,7 +1785,7 @@ function App() {
                   <option value="OUT">{t("All going out")}</option>
                 </select>
               </label>
-              <button className="button secondary small" onClick={() => { setActivitySearch(""); setActivityKind("ALL"); setActivityRange(ALL); }}>Clear filters</button>
+              <button className="button secondary small" onClick={() => { setActivitySearch(""); setActivityKind("ALL"); setActivityRange(ALL); }}>{t("Clear filters")}</button>
             </section>
             <DateChips value={activityRange} onChange={setActivityRange} />
             {owner && <MovementPdf range={bounds(activityRange)} />}
@@ -1988,10 +1797,10 @@ function App() {
                   <tr>
                     <th>Time</th>
                     <th>Item</th>
-                    <th>In / Out</th>
-                    <th>Movement</th>
-                    <th>Quantity</th>
-                    <th>Recorded by email</th>
+                    <th>{t("In / Out")}</th>
+                    <th>{t("Movement")}</th>
+                    <th>{t("Quantity")}</th>
+                    <th>{t("Recorded by email")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2060,7 +1869,7 @@ function App() {
                 </tbody>
               </table>
               {!visibleMoves.length && (
-                <div className="stock-empty"><h3>No history yet</h3><p>Every part you receive or give out will be listed here, with who did it and when.</p></div>
+                <div className="stock-empty"><h3>{t("No history yet")}</h3><p>{t("Every part you receive or give out will be listed here, with who did it and when.")}</p></div>
               )}
             </section>
           </>
@@ -2124,502 +1933,7 @@ function App() {
     </div>
   );
 }
-function ItemPhoto({ item, peek = false }: { item: Item; peek?: boolean }) {
-  return item.image_id ? (
-    <Photo id={item.image_id} peek={peek} caption={item.name} />
-  ) : (
-    <span className="photo-placeholder">
-      <Package size={28} />
-    </span>
-  );
-}
-function LabelDialog({ item, onClose }: { item: Item; onClose: () => void }) {
-  const [data, setData] = useState("");
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
-    QRCode.toDataURL("stocklane:v1:" + item.id, { width: 360, margin: 3 })
-      .then((value) => {
-        if (active) setData(value);
-      })
-      .catch(() => setError("QR generation failed. Reopen Print QR to retry."));
-    return () => {
-      active = false;
-    };
-  }, [item.id]);
-  return (
-    <div className="stock-modal-shade">
-      <section
-        className="stock-modal stock-label-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Printable QR label"
-      >
-        <button
-          className="stock-close"
-          aria-label="Close label"
-          onClick={onClose}
-        >
-          <X />
-        </button>
-        <h2>Product QR label</h2>
-        <p>Print and attach this label to the item or its storage bin.</p>
-        {data && (
-          <img
-            className="stock-qr-preview"
-            src={data}
-            alt="Generated Lifta product QR"
-          />
-        )}
-        <h3>{item.name}</h3>
-        <p>
-          {item.brand} · Part no. {item.part_number || "Not set"} · System no. {item.sku}
-          <br />
-          {item.location}
-        </p>
-        {error && <p role="alert">{error}</p>}
-        <div className="stock-form-actions">
-          <a
-            className="button secondary"
-            href={data}
-            download={item.sku + "-qr.png"}
-          >
-            Download PNG
-          </a>
-          <button
-            className="button primary"
-            disabled={!data}
-            onClick={() =>
-              void printLabel(item).catch((e) => setError(e.message))
-            }
-          >
-            <Printer size={18} /> Print / Save PDF
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-function ProductEditor({
-  item,
-  draft,
-  aiNote = "",
-  imageId,
-  inTask = false,
-  products,
-  onClose,
-  onSaved,
-  onAddedAnother,
-  owner = false,
-}: {
-  owner?: boolean;
-  onAddedAnother?: (message: string) => void | Promise<void>;
-  item: Item | null;
-  draft: Draft | null;
-  aiNote?: string;
-  imageId: string;
-  inTask?: boolean;
-  products: Item[];
-  onClose: () => void;
-  onSaved: (p: Item | null, message: string) => void;
-}) {
-  const d = draft?.fields || {};
-  const [suggested] = useState(() =>
-    item ? {} : suggestFields(
-      d as Partial<Record<Field, string>>,
-      { ...(draft?.suggestions || {}), ...(draft?.labelSuggestions || {}) } as Partial<Record<Field, string>>,
-      products,
-    ),
-  );
-  // Where a suggestion came from: the AI, the label text read directly, or the shop's own history.
-  const sourceOf = (field: Field): "ai" | "label" | "history" => {
-    const s = suggested[field];
-    if (!s) return "history";
-    if (draft?.labelSuggestions?.[field] === s.value) return "label";
-    if (draft?.suggestions?.[field] === s.value) return "ai";
-    return field === "name" && s.why === "built from the label" ? "label" : "history";
-  };
-  const FILLABLE: Field[] = ["name", "brand", "partNumber", "category", "grade", "capacity"];
-  const prefillOk = (f: Field) => !item && FILLABLE.includes(f) && !!suggested[f] && sourceOf(f) !== "history";
-  const pre = (f: Field) => (prefillOk(f) ? suggested[f]!.value : "");
-  const [name, setName] = useState(item?.name || pre("name")),
-    [brand, setBrand] = useState(item?.brand || pre("brand")),
-    [part, setPart] = useState(item?.part_number || pre("partNumber")),
-    [category, setCategory] = useState(item?.category || pre("category")),
-    [spec, setSpec] = useState(item?.grade || pre("grade")),
-    [size, setSize] = useState(item?.capacity || pre("capacity")),
-    [location, setLocation] = useState(item?.location || ""),
-    [supplierName, setSupplierName] = useState(item?.supplier || ""),
-    [quantity, setQuantity] = useState(0),
-    [unit, setUnit] = useState(item?.unit || "UNIT"),
-    [reorder, setReorder] = useState(item ? Number(item.reorder_level) : getDefaultReorder()),
-    [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  // Fields still showing a value the AI or the label filled in; editing or clearing one removes its badge.
-  const [filled, setFilled] = useState<Partial<Record<Field, "ai" | "label">>>(() =>
-    Object.fromEntries(FILLABLE.filter(prefillOk).map((f) => [f, sourceOf(f) as "ai" | "label"])),
-  );
-  const [moreOpen, setMoreOpen] = useState(() => !!(pre("grade") || pre("capacity")));
-  const sku = useRef("ITEM-" + uid().slice(0, 8).toUpperCase());
-  const command = useCommand();
-  // A photo can be added while registering: it is stored now and attached to the new item on save.
-  const [photoId, setPhotoId] = useState(imageId), [photoBusy, setPhotoBusy] = useState(false), [savedNote, setSavedNote] = useState("");
-  const addAnother = useRef(false), formEl = useRef<HTMLFormElement>(null);
-  const [shootPhoto, setShootPhoto] = useState(false);
-  const pickPhoto = async (f?: File) => {
-    if (!f) return;
-    setPhotoBusy(true); setError("");
-    try {
-      const form = new FormData(); form.append("file", await shrink(f));
-      const found = await api<Match>("/api/vision/match", { method: "POST", body: form });
-      setPhotoId(found.imageId);
-    } catch (x) { setError((x as Error).message); }
-    finally { setPhotoBusy(false); }
-  };
-  const fieldState: Record<Field, [string, (v: string) => void]> = {
-    name: [name, setName], brand: [brand, setBrand], partNumber: [part, setPart], category: [category, setCategory],
-    grade: [spec, setSpec], capacity: [size, setSize], location: [location, setLocation], unit: [unit, setUnit],
-  };
-  const edit = (field: Field, value: string) => {
-    fieldState[field][1](value);
-    setFilled((f) => { if (!f[field]) return f; const next = { ...f }; delete next[field]; return next; });
-  };
-  const clearAll = () => { (Object.keys(filled) as Field[]).forEach((f) => fieldState[f][1]("")); setFilled({}); };
-  // the shop's own shelf and category lists (Settings); while there are none the two boxes stay free text
-  type Stores = { racks: { name: string; levels: string[] }[]; categories: string[]; shelves: string[] };
-  const [stores, setStores] = useState<Stores>({ racks: [], categories: [], shelves: [] });
-  useEffect(() => { api<Stores>("/api/inventory/stores").then(setStores).catch(() => { /* free text */ }); }, []);
-  const addStore = async (body: Record<string, unknown>) => setStores(await api<Stores>("/api/inventory/stores/add", { method: "POST", body: JSON.stringify(body) }, crypto.randomUUID()));
-  const addCategory = async (name: string) => { await addStore({ kind: "category", name }); return name; };
-  const addShelf = async (text: string) => {
-    const m = /^(.*?)\s*-\s*([^-]+)$/.exec(text), rackName = (m ? m[1] : text).trim(), level = m ? m[2].trim() : "";
-    const rack = stores.racks.find((r) => r.name.toLowerCase() === rackName.toLowerCase());
-    if (rack && level) await addStore({ kind: "level", rack: rack.name, level });
-    else if (rack) throw new Error(t("{rack} is already there. Add a level, like {rack}-A", { rack: rack.name }));
-    else await addStore({ kind: "rack", name: rackName, levels: level ? [level] : [] });
-    return level ? (rack ? rack.name : rackName) + "-" + level : rackName;
-  };
-  const nAi = Object.values(filled).filter((x) => x === "ai").length;
-  const nLabel = Object.values(filled).filter((x) => x === "label").length;
-  const open = (Object.entries(suggested) as [Field, Suggestion][]).filter(
-    ([field, s]) => !prefillOk(field) && field !== "unit" && fieldState[field][0] !== s.value && !fieldState[field][0].trim(),
-  );
-  const hint = (field: Field) => {
-    if (field === "unit") {
-      const u = suggested.unit;
-      if (!u) return null;
-      const label = u.value === "LITRE" ? t("Measured litres") : t("Piece / sealed unit / defined set");
-      if (unit !== u.value)
-        return <span className="field-suggestion">{sourceOf("unit") === "ai" ? t("AI suggests") : t("Suggested")}: <b>{label}</b> <button type="button" onClick={() => setUnit(u.value)}>{t("Use")}</button></span>;
-      return sourceOf("unit") === "ai" ? <span className="field-suggestion muted">{t("AI agrees")}: {label}</span> : null;
-    }
-    const s = open.find(([f]) => f === field)?.[1];
-    return s ? (
-      <span className="field-suggestion">
-        {t("Suggested")}: <b>{s.value}</b> <button type="button" onClick={() => fieldState[field][1](s.value)}>{t("Use")}</button>
-      </span>
-    ) : null;
-  };
-  const badge = (field: Field) => filled[field] ? (
-    <>
-      <span className={"fill-badge " + filled[field]}>{filled[field] === "ai" ? "AI" : t("Label")}</span>
-      <button type="button" className="fill-clear" aria-label={t("Clear")} onClick={() => edit(field, "")}>×</button>
-    </>
-  ) : null;
-  const modelName = prettyModel(draft?.ai);
-  let banner = "", bannerKind = "";
-  if (!item && draft) {
-    if (draft.ai?.status === "used") {
-      bannerKind = "used";
-      banner = nAi && nLabel ? t("AI filled the blue fields ({model}). The green ones are read straight from the label. Please check them.", { model: modelName })
-        : nAi ? t("AI filled the blue fields ({model}). Please check them.", { model: modelName })
-        : nLabel ? t("Filled from the label text (green). Please check them.")
-        : t("Nothing could be read from this photo. Type the details from the label.");
-    } else {
-      banner = (aiNote ? aiNote + " " : "") + (nLabel ? t("Filled from the label text (green). Please check them.") : t("Nothing could be read from this photo. Type the details from the label."));
-    }
-  }
-  const duplicate = products.find(
-    (p) =>
-      p.id !== item?.id &&
-      part.trim() &&
-      p.brand.trim().toLowerCase() === brand.trim().toLowerCase() &&
-      p.part_number?.trim().toLowerCase() === part.trim().toLowerCase(),
-  );
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (duplicate) {
-      setError(
-        "This manufacturer and part number already exist. Use the existing product.",
-      );
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const data = {
-        name,
-        brand,
-        category,
-        grade: spec,
-        capacity: size,
-        partNumber: part,
-        location,
-        supplier: supplierName.trim(),
-        reorderLevel: reorder,
-      };
-      let result: Item;
-      if (item)
-        result = await command<Item>(
-          "/api/inventory/products/" + item.id,
-          data,
-          "PATCH",
-        );
-      else
-        result = await command<Item>("/api/inventory/products", {
-          ...data,
-          sku: sku.current,
-          barcode: null,
-          unit,
-          openingQuantity: quantity,
-          sellingPrice: 0,
-          imageId: photoId || null,
-        });
-      let message = item
-        ? "Catalogue updated. QR identity and stock history retained."
-        : inTask
-          ? "Item registered with zero stock. Add its quantity to your receipt."
-          : "Item registered. Print its QR label to start scanning.";
-      if (!item && draft && draft.source !== "barcode") {
-        try {
-          await api("/api/vision/drafts/" + draft.id, {
-            method: "PATCH",
-            body: JSON.stringify({ status: "APPROVED", productId: result.id }),
-          });
-        } catch {
-          message +=
-            " AI draft resolution is pending; stock was already recorded.";
-        }
-      }
-      if (addAnother.current && !item && !draft && !inTask && onAddedAnother) {
-        // Keep the form open for the next part: the shelf, brand, category and unit usually stay the same.
-        addAnother.current = false;
-        await onAddedAnother(message);
-        setSavedNote(t("Saved {name}. Add the next one.", { name: result.name }));
-        setName(""); setPart(""); setQuantity(0); setPhotoId(""); setSpec(""); setSize("");
-        sku.current = "ITEM-" + uid().slice(0, 8).toUpperCase();
-        setTimeout(() => (formEl.current?.querySelector("input:not([type=file])") as HTMLInputElement | null)?.focus(), 30);
-        return;
-      }
-      onSaved(result, message);
-    } catch (x) {
-      setError((x as Error).message);
-    } finally {
-      addAnother.current = false;
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="stock-modal-shade">
-      <section
-        className="stock-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="product-title"
-      >
-        <button
-          className="stock-close"
-          aria-label="Close"
-          disabled={busy}
-          onClick={onClose}
-        >
-          <X />
-        </button>
-        <h2 id="product-title">
-          {item ? "Edit catalogue item" : "Register a new item"}
-        </h2>
-        <p>
-          {draft
-            ? t("Check the filled fields, fix anything wrong, then save. Nothing is saved until you press Save item.")
-            : "Use the visible manufacturer and part number where available."}
-        </p>
-        {photoId && <Photo id={photoId} zoom />}
-        {!item && (
-          <div className="reg-photo">
-            <button type="button" className="button secondary" disabled={photoBusy || busy} onClick={() => setShootPhoto(true)}>
-              <Camera size={18} /> {photoBusy ? t("Uploading…") : photoId ? t("Retake photo") : t("Take photo")}
-            </button>{" "}
-            <label className={"button secondary" + (photoBusy || busy ? " disabled" : "")}>
-              {t("Upload photo")}
-              <input type="file" accept="image/*" hidden disabled={photoBusy || busy} onChange={(e) => { void pickPhoto(e.target.files?.[0]); e.target.value = ""; }} />
-            </label>
-            <small>{t("Optional. Helps Lifta recognise this part later.")}</small>
-          </div>
-        )}
-        {shootPhoto && (
-          <React.Suspense fallback={null}>
-            <LiveCam onQR={() => {}} onPhoto={(f) => { setShootPhoto(false); void pickPhoto(f); }} onClose={() => setShootPhoto(false)} />
-          </React.Suspense>
-        )}
-        {savedNote && <p className="reg-saved" role="status"><Check size={16} /> {savedNote}</p>}
-        {banner && (
-          <div className={"ai-note" + (bannerKind ? " " + bannerKind : "")} role="status">
-            <span>{banner}</span>
-            {Object.keys(filled).length > 0 && <button type="button" className="stock-link" onClick={clearAll}>{t("Clear all")}</button>}
-          </div>
-        )}
-        <form ref={formEl} onSubmit={(e) => void save(e)}>
-          {inTask && (
-            <p className="stock-help">
-              Save the item first, then confirm how many came in.
-            </p>
-          )}
-          <div className="stock-form-grid">
-            {(
-              [
-                ["Item name", name, setName, true, "name"],
-                ["Manufacturer / brand", brand, setBrand, true, "brand"],
-                ["Actual manufacturer part number", part, setPart, true, "partNumber"],
-                ["Category", category, setCategory, true, "category"],
-                ["Shelf / location", location, setLocation, false, "location"],
-              ] as const
-            ).map(([label, value, , required, field]) => (
-              <label className={"stock-field" + (filled[field] ? " filled-" + filled[field] : "")} key={label}>
-                {t(label)}
-                <span className="input-wrap">{(field === "category" && stores.categories.length > 0) || (field === "location" && stores.shelves.length > 0) ? (
-                  <ListPick label={t(label)} value={value} required={required} maxLength={field === "category" ? 80 : 180}
-                    options={field === "category" ? stores.categories : stores.shelves} onChange={(v) => edit(field, v)}
-                    onAdd={owner ? (field === "category" ? addCategory : addShelf) : undefined} placeholder={field === "location" ? t("Pick a shelf") : t("Pick a category")} />
-                ) : <input
-                  required={required}
-                  maxLength={
-                    label === "Manufacturer / brand"
-                      ? 100
-                      : label === "Category"
-                        ? 80
-                        : 180
-                  }
-                  value={value}
-                  list={field === "category" ? "category-options" : field === "brand" ? "brand-options" : undefined}
-                  autoComplete={field === "category" || field === "brand" ? "off" : undefined}
-                  onChange={(e) => edit(field, e.target.value)}
-                />}{badge(field)}</span>
-                {hint(field)}
-              </label>
-            ))}
-            <datalist id="category-options">
-              {[...new Set(products.filter((p) => !p.archived).map((p) => (p.category || "").trim()).filter(Boolean))].sort().map((c) => <option key={c} value={c} />)}
-            </datalist>
-            <datalist id="supplier-options">
-              {[...new Set(products.map((p) => (p.supplier || "").trim()).filter(Boolean))].sort().map((s) => <option key={s} value={s} />)}
-            </datalist>
-            <datalist id="brand-options">
-              {[...new Set(products.filter((p) => !p.archived).map((p) => (p.brand || "").trim()).filter(Boolean))].sort().map((b) => <option key={b} value={b} />)}
-            </datalist>
-            {!item && (
-              <>
-                <label className="stock-field">
-                  Counting unit
-                  <select
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                  >
-                    <option value="UNIT">
-                      Piece / sealed unit / defined set
-                    </option>
-                    <option value="LITRE">Measured litres</option>
-                  </select>
-                  {hint("unit")}
-                </label>
-                {!inTask && (
-                  <label className="stock-field">
-                    Initial physical quantity
-                    <input
-                      type="number"
-                      required
-                      min={0}
-                      step={unit === "LITRE" ? 0.001 : 1}
-                      value={quantity}
-                      onChange={(e) => setQuantity(Number(e.target.value))}
-                    />
-                  </label>
-                )}
-              </>
-            )}
-            <details className="product-more" open={moreOpen} onToggle={(e) => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}>
-              <summary>{t("More details")}</summary>
-              <label className="stock-field">
-                {t("Usual supplier")} <small>({t("optional")})</small>
-                <span className="input-wrap"><input value={supplierName} maxLength={100} list="supplier-options" autoComplete="off" placeholder="Lanka Spares" onChange={(e) => setSupplierName(e.target.value)} /></span>
-                <small className="stock-help">{t("Part came in fills this in for you.")}</small>
-              </label>
-              <label className={"stock-field" + (filled.grade ? " filled-" + filled.grade : "")}>
-                {t("Specification")}
-                <span className="input-wrap"><input
-                  maxLength={80}
-                  value={spec}
-                  onChange={(e) => edit("grade", e.target.value)}
-                />{badge("grade")}</span>
-                {hint("grade")}
-              </label>
-              <label className={"stock-field" + (filled.capacity ? " filled-" + filled.capacity : "")}>
-                {t("Size / pack description")}
-                <span className="input-wrap"><input
-                  maxLength={60}
-                  value={size}
-                  onChange={(e) => edit("capacity", e.target.value)}
-                />{badge("capacity")}</span>
-                {hint("capacity")}
-              </label>
-              <label className="stock-field">
-                Low-stock threshold
-                <input
-                  type="number"
-                  min="0"
-                  step={unit === "LITRE" ? 0.001 : 1}
-                  required
-                  value={reorder}
-                  onChange={(e) => setReorder(Number(e.target.value))}
-                />
-              </label>
-            </details>
-          </div>
-          {duplicate && (
-            <p className="stock-error">
-              Existing item: {duplicate.name}. Close this form and select it
-              instead.
-            </p>
-          )}
-          {error && (
-            <p className="stock-error" role="alert">
-              {error}
-            </p>
-          )}
-          <div className="stock-form-actions sticky-actions">
-            <button
-              type="button"
-              className="button secondary"
-              disabled={busy}
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            {!item && !draft && !inTask && onAddedAnother && (
-              <button className="button secondary" disabled={busy || !!duplicate} onClick={() => { addAnother.current = true; }}>
-                {t("Save and add another")}
-              </button>
-            )}
-            <button className="button primary" disabled={busy || !!duplicate}>
-              {busy ? t("Saving…") : item ? "Save changes" : t("Save item")}
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
-  );
-}
-
 applyTheme(getTheme());
 // A job card QR opens /?job=<id>. Keep the id before sign-in can redirect away, then open that job once the session is ready.
 try { const jobId = new URLSearchParams(location.search).get("job"); if (jobId && /^[0-9a-f-]{36}$/i.test(jobId)) { sessionStorage.setItem("lifta.deeplink", jobId); history.replaceState(null, "", location.pathname); } } catch { /* ignore */ }
-createRoot(document.getElementById("root")!).render(<><App /><ToastHost /><ConfirmHost /></>);
+createRoot(document.getElementById("root")!).render(<><Crash><App /></Crash><ToastHost /><ConfirmHost /></>);

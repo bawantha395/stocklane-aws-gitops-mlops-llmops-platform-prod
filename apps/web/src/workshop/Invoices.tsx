@@ -90,7 +90,7 @@ function ReturnParts({ inv, onClose, onDone }: { inv: Invoice; onClose: () => vo
         </>
       )}
       <label className="ws-field">{t("Reason")} *<input required value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Wrong part, customer cancelled" /></label>
-      <label className="ws-field">{t("Given back by")}<select value={method} onChange={(e) => setMethod(e.target.value)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK">Bank transfer</option><option value="OTHER">Other</option></select></label>
+      <label className="ws-field">{t("Given back by")}<select value={method} onChange={(e) => setMethod(e.target.value)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK">{t("Bank transfer")}</option><option value="OTHER">{t("Other")}</option></select></label>
       {credit > 0 && (() => {
         const newTotal = Math.max(num(inv.total) - credit, 0), giveBack = Math.max(paid - newTotal, 0);
         return <p className="ws-return-sum">{t("Bill goes down by about")} <b>LKR {lkr(credit)}</b><br />
@@ -165,10 +165,10 @@ export function InvoicePage({ id }: { id: string }) {
       )}
       {inv.status !== "VOID" && balance > 0 && (
         <form className="ws-card ws-pay" onSubmit={pay}>
-          <h3>Take a payment <small>Balance LKR {lkr(balance)}</small></h3>
+          <h3>{t("Take a payment")} <small>Balance LKR {lkr(balance)}</small></h3>
           <div className="ws-grid2">
             <label className="ws-field">Amount (LKR)<input inputMode="decimal" value={amount} placeholder={String(balance)} onChange={(e) => setAmount(e.target.value)} /></label>
-            <label className="ws-field">Paid by<select value={method} onChange={(e) => setMethod(e.target.value)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK">Bank transfer</option><option value="OTHER">Other</option></select></label>
+            <label className="ws-field">{t("Paid by")}<select value={method} onChange={(e) => setMethod(e.target.value)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK">{t("Bank transfer")}</option><option value="OTHER">{t("Other")}</option></select></label>
           </div>
           <label className="ws-field">Note<input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional, e.g. advance" /></label>
           <div className="ws-actions"><button className="button primary" disabled={busy}>{t("Save payment")}</button></div>

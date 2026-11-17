@@ -21,10 +21,10 @@ def api():
             KeySchema=[{'AttributeName': 'pk', 'KeyType': 'HASH'}, {'AttributeName': 'sk', 'KeyType': 'RANGE'}])
         counter = iter(range(10 ** 6))
 
-        def call(method, path, body=None, role='OWNER', who='owner@example.com', query=None):
+        def call(method, path, body=None, role='OWNER', who='owner@example.com', query=None, shop=None, key=None):
             import json
-            event = {'requestContext': {'http': {'method': method}, 'authorizer': {'jwt': {'claims': {'cognito:groups': role, 'username': who}}}},
-                     'rawPath': path, 'headers': {'idempotency-key': 'key-%016d' % next(counter)}, 'queryStringParameters': query or {},
+            event = {'requestContext': {'http': {'method': method}, 'authorizer': {'jwt': {'claims': {'cognito:groups': role + (' SHOP_' + shop if shop else ''), 'username': who}}}},
+                     'rawPath': path, 'headers': {'idempotency-key': key or 'key-%016d' % next(counter)}, 'queryStringParameters': query or {},
                      'body': json.dumps(body) if body is not None else ''}
             r = handler.handler(event)
             return r['statusCode'], json.loads(r['body'])

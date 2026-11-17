@@ -41,10 +41,13 @@ resource "aws_iam_role_policy" "api" {
   policy = jsonencode({ Version = "2012-10-17", Statement = concat([
     { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.api.arn}:*" },
     { Effect = "Allow", Action = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:BatchGetItem"], Resource = var.table_arn },
-    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${var.models_bucket.arn}/forecast/*"] },
-    { Effect = "Allow", Action = ["s3:ListBucket"], Resource = var.models_bucket.arn, Condition = { StringLike = { "s3:prefix" = ["forecast/*"] } } },
-    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${var.media_bucket.arn}/workshop/photos/*"] },
-    { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = var.kms_key_arn }
+    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${var.models_bucket.arn}/forecast/*", "${var.models_bucket.arn}/shops/*/forecast/*"] }, # shops/<shop>/ = every shop after the first
+    { Effect = "Allow", Action = ["s3:ListBucket"], Resource = var.models_bucket.arn, Condition = { StringLike = { "s3:prefix" = ["forecast/*", "shops/*/forecast/*"] } } },
+    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${var.media_bucket.arn}/workshop/photos/*", "${var.media_bucket.arn}/shops/*/workshop/photos/*"] },
+    { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = var.kms_key_arn },
+    # opening a workshop: its SHOP_ group and its first owner, in this user pool only
+    { Effect = "Allow", Action = ["cognito-idp:CreateGroup", "cognito-idp:AdminCreateUser", "cognito-idp:AdminAddUserToGroup", "cognito-idp:AdminListGroupsForUser"],
+    Resource = "arn:${data.aws_partition.current.partition}:cognito-idp:${var.region}:*:userpool/${var.user_pool_id}" }
     ], local.with_vision ? [
     { Effect = "Allow", Action = ["lambda:InvokeFunction"], Resource = aws_lambda_function.vision[0].arn }
   ] : []) })
@@ -61,7 +64,8 @@ resource "aws_lambda_function" "api" {
   memory_size      = 256
   timeout          = 29
   environment {
-    variables = merge(local.table_env, local.with_vision ? { VISION_FUNCTION = local.vision_name } : {})
+    # USER_POOL_ID lets the platform owner invite a new workshop's first owner (Workshops screen)
+    variables = merge(local.table_env, { USER_POOL_ID = var.user_pool_id }, local.with_vision ? { VISION_FUNCTION = local.vision_name } : {})
   }
   logging_config {
     log_format = "JSON"
@@ -92,7 +96,7 @@ resource "aws_iam_role_policy" "vision" {
   policy = jsonencode({ Version = "2012-10-17", Statement = concat([
     { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.vision[0].arn}:*" },
     { Effect = "Allow", Action = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:BatchWriteItem"], Resource = var.table_arn },
-    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${var.media_bucket.arn}/images/*", "${var.models_bucket.arn}/*"] },
+    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${var.media_bucket.arn}/images/*", "${var.media_bucket.arn}/shops/*/images/*", "${var.models_bucket.arn}/*"] },
     { Effect = "Allow", Action = ["s3:ListBucket"], Resource = var.models_bucket.arn },
     { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = var.kms_key_arn },
     { Effect = "Allow", Action = ["textract:DetectDocumentText"], Resource = "*" }

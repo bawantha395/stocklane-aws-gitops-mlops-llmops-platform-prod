@@ -4,9 +4,11 @@ REF#<model version>/<product>#<image>  one vector per confirmed photo (float32 b
 REFS/<product>#<image>                 the same photo without a vector (all versions share it)
 DRAFT/<id>                             AI/label drafts waiting for a person
 """
+import contextvars
 import hashlib
 import io
 import json
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -16,6 +18,39 @@ import boto3
 import numpy as np
 from boto3.dynamodb.conditions import Key
 from boto3.dynamodb.types import Binary
+
+# ---------- shops (tenants) ----------
+# The API function keeps every shop's rows under "T#<shop>#..." in the shared table; this service reads and writes the same way.
+SHOP = re.compile(r'[a-z0-9][a-z0-9-]{1,30}')
+_shop = contextvars.ContextVar('shop', default=None)
+
+
+def default_shop():
+    return os.environ.get('DEFAULT_SHOP', 'main')
+
+
+def set_shop(shop):
+    shop = str(shop or '')
+    if not SHOP.fullmatch(shop):
+        raise PermissionError('This sign-in does not belong to a workshop')
+    _shop.set(shop)
+
+
+def shop():
+    value = _shop.get()
+    if value is None:
+        raise PermissionError('No workshop was chosen for this request')
+    return value
+
+
+def pk(name):
+    return 'T#' + shop() + '#' + name
+
+
+def path(name):
+    """The default shop keeps the file paths it always had; every other shop has its own folder."""
+    return name if shop() == default_shop() else 'shops/' + shop() + '/' + name
+
 
 FIELDS = ['id', 'sku', 'name', 'category', 'brand', 'grade', 'capacity', 'barcode', 'unit', 'image_id']
 
@@ -27,6 +62,20 @@ class Store:
         self.s3 = boto3.client('s3')
         self._vectors = {}
 
+    def shops(self):
+        """Every shop this deployment serves (the register sits outside any shop), for the scheduled jobs."""
+        rows, start = [], None
+        while True:
+            args = {'KeyConditionExpression': Key('pk').eq('SHOPS')}
+            if start:
+                args['ExclusiveStartKey'] = start
+            page = self.table.query(**args)
+            rows += page['Items']
+            start = page.get('LastEvaluatedKey')
+            if not start:
+                break
+        return sorted({r['sk'] for r in rows if not r.get('suspended')} | {default_shop()})
+
     # ---------- photos ----------
     def save_image(self, data):
         from .encoder import decode
@@ -36,25 +85,25 @@ class Store:
         im.save(out, format='JPEG', quality=94)
         normalized = out.getvalue()
         image_id = hashlib.sha256(normalized).hexdigest() + '.jpg'
-        self.s3.put_object(Bucket=self.s.media_bucket, Key='images/' + image_id, Body=normalized, ContentType='image/jpeg')
+        self.s3.put_object(Bucket=self.s.media_bucket, Key=path('images/' + image_id), Body=normalized, ContentType='image/jpeg')
         return image_id
 
     def image(self, image_id):
         if not re.fullmatch(r'[a-f0-9]{64}\.jpg', image_id):
             raise ValueError('Invalid image reference')
         try:
-            return self.s3.get_object(Bucket=self.s.media_bucket, Key='images/' + image_id)['Body'].read()
+            return self.s3.get_object(Bucket=self.s.media_bucket, Key=path('images/' + image_id))['Body'].read()
         except self.s3.exceptions.NoSuchKey:
             raise FileNotFoundError(image_id) from None
 
     # ---------- catalogue (owned by the API function, read here) ----------
     def product(self, product_id):
-        return self.table.get_item(Key={'pk': 'PRODUCT', 'sk': str(product_id)}).get('Item')
+        return self.table.get_item(Key={'pk': pk('PRODUCT'), 'sk': str(product_id)}).get('Item')
 
     def products_with_photos(self):
         items, start = [], None
         while True:
-            args = {'KeyConditionExpression': Key('pk').eq('PRODUCT')}
+            args = {'KeyConditionExpression': Key('pk').eq(pk('PRODUCT'))}
             if start:
                 args['ExclusiveStartKey'] = start
             page = self.table.query(**args)
@@ -68,7 +117,7 @@ class Store:
         from collections import Counter
         categories, brands, start = Counter(), Counter(), None
         while True:
-            args = {'KeyConditionExpression': Key('pk').eq('PRODUCT')}
+            args = {'KeyConditionExpression': Key('pk').eq(pk('PRODUCT'))}
             if start:
                 args['ExclusiveStartKey'] = start
             page = self.table.query(**args)
@@ -90,15 +139,15 @@ class Store:
         blob = Binary(np.asarray(embedding, dtype=np.float32).tobytes())
         encoded = json.dumps(card, default=str)
         with self.table.batch_writer() as batch:
-            batch.put_item(Item={'pk': 'REF#' + version, 'sk': key, 'product_id': product['id'], 'image_id': image_id,
+            batch.put_item(Item={'pk': pk('REF#' + version), 'sk': key, 'product_id': product['id'], 'image_id': image_id,
                                  'embedding': blob, 'product': encoded})
-            batch.put_item(Item={'pk': 'REFS', 'sk': key, 'product_id': product['id'], 'image_id': image_id, 'product': encoded})
-        self._vectors.pop(version, None)
+            batch.put_item(Item={'pk': pk('REFS'), 'sk': key, 'product_id': product['id'], 'image_id': image_id, 'product': encoded})
+        self._vectors.pop((shop(), version), None)
 
     def references(self):
         items, start = [], None
         while True:
-            args = {'KeyConditionExpression': Key('pk').eq('REFS')}
+            args = {'KeyConditionExpression': Key('pk').eq(pk('REFS'))}
             if start:
                 args['ExclusiveStartKey'] = start
             page = self.table.query(**args)
@@ -110,7 +159,7 @@ class Store:
     def indexed_keys(self, version):
         items, start = set(), None
         while True:
-            args = {'KeyConditionExpression': Key('pk').eq('REF#' + version), 'ProjectionExpression': 'sk'}
+            args = {'KeyConditionExpression': Key('pk').eq(pk('REF#' + version)), 'ProjectionExpression': 'sk'}
             if start:
                 args['ExclusiveStartKey'] = start
             page = self.table.query(**args)
@@ -120,12 +169,12 @@ class Store:
                 return items
 
     def _load(self, version):
-        cached = self._vectors.get(version)
+        cached = self._vectors.get((shop(), version))
         if cached and time.monotonic() < cached[0]:
             return cached[1]
         rows, start = [], None
         while True:
-            args = {'KeyConditionExpression': Key('pk').eq('REF#' + version)}
+            args = {'KeyConditionExpression': Key('pk').eq(pk('REF#' + version))}
             if start:
                 args['ExclusiveStartKey'] = start
             page = self.table.query(**args)
@@ -134,7 +183,7 @@ class Store:
             if not start:
                 break
         matrix = np.vstack([np.frombuffer(bytes(r['embedding']), dtype=np.float32) for r in rows]) if rows else np.zeros((0, 1280), np.float32)
-        self._vectors[version] = (time.monotonic() + 120, (rows, matrix))
+        self._vectors[(shop(), version)] = (time.monotonic() + 120, (rows, matrix))
         return rows, matrix
 
     def candidates(self, version, embedding):
@@ -152,12 +201,12 @@ class Store:
 
     # ---------- drafts and the daily AI allowance ----------
     def add_draft(self, row):
-        self.table.put_item(Item={'pk': 'DRAFT', 'sk': row['id'], **row, 'ttl': int(time.time()) + 180 * 86400})
+        self.table.put_item(Item={'pk': pk('DRAFT'), 'sk': row['id'], **row, 'ttl': int(time.time()) + 180 * 86400})
 
     def drafts(self):
         items, start = [], None
         while True:
-            args = {'KeyConditionExpression': Key('pk').eq('DRAFT')}
+            args = {'KeyConditionExpression': Key('pk').eq(pk('DRAFT'))}
             if start:
                 args['ExclusiveStartKey'] = start
             page = self.table.query(**args)
@@ -169,16 +218,16 @@ class Store:
         return [{k: v for k, v in d.items() if k not in ('pk', 'sk', 'ttl')} for d in items[:100]]
 
     def draft(self, draft_id):
-        return self.table.get_item(Key={'pk': 'DRAFT', 'sk': draft_id}).get('Item')
+        return self.table.get_item(Key={'pk': pk('DRAFT'), 'sk': draft_id}).get('Item')
 
     def resolve_draft(self, draft_id, status, product_id):
-        self.table.update_item(Key={'pk': 'DRAFT', 'sk': draft_id}, UpdateExpression='SET #s = :s, product_id = :p',
+        self.table.update_item(Key={'pk': pk('DRAFT'), 'sk': draft_id}, UpdateExpression='SET #s = :s, product_id = :p',
                                ExpressionAttributeNames={'#s': 'status'}, ExpressionAttributeValues={':s': status, ':p': product_id})
 
     def spend_allowance(self):
         """Count one AI request for today (UTC); returns how many were used including this one."""
         day = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-        result = self.table.update_item(Key={'pk': 'LIMIT', 'sk': day}, UpdateExpression='ADD used :one SET #ttl = :t',
+        result = self.table.update_item(Key={'pk': pk('LIMIT'), 'sk': day}, UpdateExpression='ADD used :one SET #ttl = :t',
                                         ExpressionAttributeNames={'#ttl': 'ttl'},  # TTL is a DynamoDB reserved word
                                         ExpressionAttributeValues={':one': Decimal(1), ':t': int(time.time()) + 172800},
                                         ReturnValues='UPDATED_NEW')

@@ -32,7 +32,7 @@ export function Dashboard() {
             {(found.data || []).slice(0, 6).map((v) => (
               <button className="ws-item" key={v.id} onClick={() => go({ name: "vehicle", id: v.id })}>
                 <span className="ws-item-main"><strong>{v.registration}</strong><span>{v.owner}{v.make ? " · " + v.make : ""}</span><small>{v.phone}</small></span>
-                <span className="ws-item-side"><small>Vehicle file</small></span>
+                <span className="ws-item-side"><small>{t("Vehicle file")}</small></span>
               </button>
             ))}
             <button className="ws-item ws-item-new" onClick={() => go({ name: "new", reg: q.trim().toUpperCase() })}>+ New job for {q.trim().toUpperCase()}</button>
@@ -63,7 +63,7 @@ export function Dashboard() {
                     <span className="ws-item-main"><strong>{r.registration}</strong><span>{r.customer}</span><small>{r.requested_by}: {r.reason}</small></span>
                     <span className="ws-item-side"><small>{dateOnly(r.requested_at)}</small></span>
                   </button>
-                  <span className="ws-request-actions"><button className="button primary small" onClick={() => setAsk({ r, reject: false })}>Approve</button><button className="button secondary small" onClick={() => setAsk({ r, reject: true })}>Reject</button></span>
+                  <span className="ws-request-actions"><button className="button primary small" onClick={() => setAsk({ r, reject: false })}>{t("Approve")}</button><button className="button secondary small" onClick={() => setAsk({ r, reject: true })}>{t("Reject")}</button></span>
                 </div>
               ))}
             </section>
@@ -75,7 +75,7 @@ export function Dashboard() {
             <Rows groups={[{ key: onlyReady ? "ready" : "open", title: onlyReady ? t("Ready for pickup") : t("Open jobs"), items: [...(onlyReady ? (data.ready_jobs || []) : data.open_jobs)].sort((a, b) => (b.created_at < a.created_at ? -1 : 1)) }]} idOf={(j) => j.id} latest={undefined}
               render={(j) => <JobItem j={j} onOpen={() => go({ name: "job", id: j.id })} />} />
           ) : (
-            <><div className="ws-section-head"><h3>{t("Open jobs")}</h3></div><div className="ws-cards"><Empty>No open jobs. Press New job when a vehicle comes in.</Empty></div></>
+            <><div className="ws-section-head"><h3>{t("Open jobs")}</h3></div><div className="ws-cards"><Empty>{t("No open jobs. Press New job when a vehicle comes in.")}</Empty></div></>
           )}
         </>
       )}

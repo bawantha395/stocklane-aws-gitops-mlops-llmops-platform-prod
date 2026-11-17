@@ -8,12 +8,13 @@ from datetime import date, datetime, timedelta, timezone
 import boto3
 from botocore.exceptions import ClientError
 
+from .core import PerShop, shop_path
 from .core import COLOMBO, dumps
 from . import inventory
 
 USABLE = {'forecast', 'not_moving'}
 KNOWN = USABLE | {'needs_more_history', 'unreliable'}
-_cache = {'until': 0, 'value': None}
+_cache = PerShop(until=0, value=None)
 
 
 def projection(model, products, today=None):
@@ -64,7 +65,7 @@ def read_model():
         return None
     if time.monotonic() > _cache['until']:
         try:
-            body = boto3.client('s3').get_object(Bucket=bucket, Key='forecast/current.json')['Body']
+            body = boto3.client('s3').get_object(Bucket=bucket, Key=shop_path('forecast/current.json'))['Body']
             raw = body.read(12 * 1024 * 1024 + 1)
             if len(raw) > 12 * 1024 * 1024:
                 raise ValueError('Forecast artifact too large')
@@ -98,9 +99,9 @@ def export_history(who='nightly-export'):
     if len(raw) > 12 * 1024 * 1024:
         raise ValueError('History snapshot is too large; choose a shorter period')
     digest = hashlib.sha256(raw).hexdigest()
-    key = 'forecast/datasets/' + digest + '/history.json'
+    key = shop_path('forecast/datasets/' + digest + '/history.json')
     s3 = boto3.client('s3')
     s3.put_object(Bucket=bucket, Key=key, Body=raw, ContentType='application/json')
-    s3.put_object(Bucket=bucket, Key='forecast/datasets/latest.json', ContentType='application/json',
+    s3.put_object(Bucket=bucket, Key=shop_path('forecast/datasets/latest.json'), ContentType='application/json',
                   Body=dumps({'key': key, 'sha256': digest, 'asOf': data['asOf']}).encode())
     return {'exported': True, 'key': key}

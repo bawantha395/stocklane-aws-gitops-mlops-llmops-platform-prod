@@ -26,7 +26,7 @@ export function VisitCard({ v, open = false, onOpenJob, showCustomer = false }: 
         <div className="ws-visit-body">
           {v.parts?.map((p, i) => <div className="ws-visit-line" key={"p" + i}><span>{p.quantity} x {p.name}</span><b>{lkr(p.quantity * p.unit_price)}</b></div>)}
           {v.labour?.map((l, i) => <div className="ws-visit-line labour" key={"l" + i}><span>Labour: {l.description}</span><b>{lkr(l.amount)}</b></div>)}
-          {!lines && <p className="muted">No lines yet.</p>}
+          {!lines && <p className="muted">{t("No lines yet.")}</p>}
           <div className="ws-visit-foot">
             {v.invoice_number && <small>{v.invoice_number}</small>}
             {v.mechanic && <small>Mechanic: {v.mechanic}</small>}
@@ -62,7 +62,7 @@ export function PastRepairs({ regKey, skipJob }: { regKey: string; skipJob?: str
   if (!data || !list.length) return null;
   return (
     <section className="ws-past" aria-label="Earlier repairs">
-      <div className="ws-section-head"><h3>Earlier repairs of {data.registration}</h3><button className="button secondary small" onClick={() => go({ name: "vehicle", id: data.id })}>Full file</button></div>
+      <div className="ws-section-head"><h3>Earlier repairs of {data.registration}</h3><button className="button secondary small" onClick={() => go({ name: "vehicle", id: data.id })}>{t("Full file")}</button></div>
       <p className="muted">{data.visits} visit{data.visits === 1 ? "" : "s"}, LKR {lkr(data.spent)} invoiced{data.last_km != null ? ", last seen at " + kmText(data.last_km) : ""}.</p>
       {list.slice(0, 4).map((v, i) => <VisitCard key={v.id} v={v} open={i === 0} onOpenJob={() => go({ name: "job", id: v.id })} />)}
     </section>
@@ -124,14 +124,14 @@ export function VehiclePage({ id }: { id: string }) {
         <button className="button primary small" onClick={() => go({ name: "new", reg: v.registration })}>+ New job</button>
         <button className="button secondary small" onClick={() => go({ name: "quote", id: "new", kind: "ESTIMATE", reg: v.registration })}>+ {t("New estimate")}</button>
         <button className="button secondary small" onClick={() => go({ name: "quote", id: "new", kind: "QUOTATION", reg: v.registration })}>+ {t("New quotation")}</button>
-        <button className="button secondary small" onClick={() => void download("/api/workshop/vehicles/" + id + "/history.pdf", "history-" + id + ".pdf").catch((e) => setMsg(e.message))}>History PDF</button>
+        <button className="button secondary small" onClick={() => void download("/api/workshop/vehicles/" + id + "/history.pdf", "history-" + id + ".pdf").catch((e) => setMsg(e.message))}>{t("History PDF")}</button>
         <button className="button secondary small" onClick={startEdit}>{t("Edit details")}</button>
         <button data-tour="vehicle-new-owner" className="button secondary small" onClick={() => { setNw({ owner: "", phone: "" }); setSold(true); setEdit(false); setMsg(""); }}>{t("New owner")}</button>
       </div>
       <section className="ws-card">
         <div className="ws-card-head">
           <div className="ws-vtitle"><Face id={v.front_photo} />{v.plate_photo && <Photo id={v.plate_photo} className="ws-face plate" />}<span><h2>{v.registration}</h2><p>{v.make || "Model not set"}</p></span></div>
-          {due && <span className="ws-pill unpaid">Service due</span>}
+          {due && <span className="ws-pill unpaid">{t("Service due")}</span>}
         </div>
         {!edit ? (
           <>
@@ -147,11 +147,11 @@ export function VehiclePage({ id }: { id: string }) {
         ) : (
           <form onSubmit={save} className="ws-form">
             <p className="muted">{t("Fixing a typo or a new number? Save here. The open jobs of this vehicle follow; bills already issued keep what was printed. Vehicle sold? Use New owner.")}</p>
-            <label className="ws-field">Owner<input value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })} /></label>
-            <label className="ws-field">Contact number<input inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></label>
-            <label className="ws-field">Make and model<input value={f.make} onChange={(e) => setF({ ...f, make: e.target.value })} /></label>
-            <label className="ws-field">Notes about this vehicle<textarea rows={3} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></label>
-            <div className="ws-actions"><button type="button" className="button secondary" onClick={() => setEdit(false)}>Cancel</button><button className="button primary">Save</button></div>
+            <label className="ws-field">{t("Owner")}<input value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })} /></label>
+            <label className="ws-field">{t("Contact number")}<input inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></label>
+            <label className="ws-field">{t("Make and model")}<input value={f.make} onChange={(e) => setF({ ...f, make: e.target.value })} /></label>
+            <label className="ws-field">{t("Notes about this vehicle")}<textarea rows={3} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></label>
+            <div className="ws-actions"><button type="button" className="button secondary" onClick={() => setEdit(false)}>{t("Cancel")}</button><button className="button primary">Save</button></div>
           </form>
         )}
         {sold && (
@@ -164,19 +164,19 @@ export function VehiclePage({ id }: { id: string }) {
         )}
         {msg && <p role="alert" className="stock-error">{msg}</p>}
         <dl className="ws-facts">
-          <div><dt>Visits</dt><dd>{v.visits}</dd></div>
-          <div><dt>Invoiced</dt><dd>LKR {lkr(v.spent)}</dd></div>
-          <div><dt>Last odometer</dt><dd>{kmText(v.last_km)}</dd></div>
-          <div><dt>Next service</dt><dd>{v.next_service_date || "-"}{v.next_service_km ? " / " + kmText(v.next_service_km) : ""}</dd></div>
-          <div><dt>First visit</dt><dd>{v.first_visit || "-"}</dd></div>
-          <div><dt>Usually every</dt><dd>{v.average_gap_days ? v.average_gap_days + " days" : "-"}</dd></div>
+          <div><dt>{t("Visits")}</dt><dd>{v.visits}</dd></div>
+          <div><dt>{t("Invoiced")}</dt><dd>LKR {lkr(v.spent)}</dd></div>
+          <div><dt>{t("Last odometer")}</dt><dd>{kmText(v.last_km)}</dd></div>
+          <div><dt>{t("Next service")}</dt><dd>{v.next_service_date || "-"}{v.next_service_km ? " / " + kmText(v.next_service_km) : ""}</dd></div>
+          <div><dt>{t("First visit")}</dt><dd>{v.first_visit || "-"}</dd></div>
+          <div><dt>{t("Usually every")}</dt><dd>{v.average_gap_days ? v.average_gap_days + " days" : "-"}</dd></div>
         </dl>
       </section>
-      <div className="ws-section-head"><h3>Repair history</h3><small>{v.history?.length || 0} job{v.history?.length === 1 ? "" : "s"}</small></div>
+      <div className="ws-section-head"><h3>{t("Repair history")}</h3><small>{v.history?.length || 0} job{v.history?.length === 1 ? "" : "s"}</small></div>
       <div className="ws-list">{timeline.map((r) => r.h
         ? <VisitCard key={r.h.id} v={r.h} open={r.i === 0} showCustomer={showWho} onOpenJob={() => go({ name: "job", id: r.h!.id })} />
         : <div key={"o" + r.at} className="ws-ownerchange"><b>{t("Owner changed")}</b><span>{(r.c!.from_owner || "?") + " \u2192 " + r.c!.to_owner}</span><small>{dateOnly(r.at)}</small></div>)}</div>
-      {!v.history?.length && <Empty>No repairs yet.</Empty>}
+      {!v.history?.length && <Empty>{t("No repairs yet.")}</Empty>}
     </div>
   );
 }
@@ -199,7 +199,7 @@ export function Due() {
               </span>
           </DueCard>
         ))}
-        {!data.length && <Empty>Nothing due. Put a next service date on a job and it shows up here.</Empty>}
+        {!data.length && <Empty>{t("Nothing due. Put a next service date on a job and it shows up here.")}</Empty>}
       </div>
     </>
   );
