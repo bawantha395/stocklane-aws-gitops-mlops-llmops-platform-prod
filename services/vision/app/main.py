@@ -39,7 +39,7 @@ def staff(request: Request, owner=False):
     groups = {g for g in re.split(r'[\s,\[\]]+', str(claims.get('cognito:groups', ''))) if g}
     if owner and 'OWNER' not in groups:
         raise HTTPException(403, 'Owner access is required')
-    if not groups.intersection({'OWNER', 'MECHANIC'}):
+    if not groups.intersection({'OWNER', 'ADMIN', 'STOREKEEPER', 'MECHANIC'}):
         raise HTTPException(403, 'Staff access is required')
     # the shop this sign-in belongs to: its one SHOP_ group, or this deployment's single default shop (same rule as the API)
     mine = sorted(g[5:].lower() for g in groups if g.startswith('SHOP_'))

@@ -97,7 +97,7 @@ def test_money_and_two_parts_balance(api, seed):
             if inv['status'] != 'VOID' and inv['paid'] > 0:
                 code = api('POST', '/api/workshop/invoices/%s/refund' % iid, {'amount': rnd.choice([inv['paid'], 1]), 'method': 'CASH', 'reason': 'Customer cancelled'})[0]
         elif action == 'void' and iid:
-            code = api('POST', '/api/workshop/invoices/%s/void' % iid, {})[0]
+            code = api('POST', '/api/workshop/invoices/%s/void' % iid, {'reason': 'Wrong car'})[0]
         elif action == 'cancel' and j['status'] == 'OPEN':
             code = api('POST', '/api/workshop/jobs/%s/cancel' % jid, {'revision': j['revision']})[0]
         assert code < 500, 'server error (%s) at %s' % (code, note)

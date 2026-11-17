@@ -41,7 +41,8 @@ import { emptyTask, complete, validQuantity, plannedOut, type Direction, type St
 import { Item, uid, aiMessage, number, when, useCommand, Photo } from "./partsShared";
 import { ItemPhoto, LabelDialog } from "./LabelDialog";
 import { ProductEditor } from "./ProductEditor";
-type Session = { name: string; roles: string[] };
+import { can, canAny, setPermissions } from "./perms";
+type Session = { name: string; roles: string[]; permissions?: string[] };
 type View =
   | "home"
   | "receive"
@@ -227,6 +228,7 @@ function App() {
       ]);
       setItems(p);
       setMoves(m);
+      setPermissions(s.roles, s.permissions);  // before the session is set, so the first draw already knows
       setSession(s);
       try { const dl = sessionStorage.getItem("lifta.deeplink"); if (dl) { sessionStorage.removeItem("lifta.deeplink"); openWorkshop({ name: "job", id: dl }); } } catch { /* ignore */ }
       setStatus(v);
@@ -701,13 +703,12 @@ function App() {
   }
   const navItems: ({ group: string } | { key: View | "tour"; full: string; short: string; sub: string; Icon: typeof Home; main?: boolean })[] = [
     { key: "home", full: t("Home"), short: t("Home"), sub: "", Icon: Home, main: true },
-    { group: t("WORKSHOP MANAGEMENT") },
-    { key: "workshop", full: t("Jobs & Invoices"), short: t("Jobs"), sub: t("Job cards, vehicles and bills"), Icon: Wrench, main: true },
+    ...(can("jobs_view") ? [{ group: t("WORKSHOP MANAGEMENT") }, { key: "workshop" as View, full: t("Jobs & Invoices"), short: t("Jobs"), sub: t("Job cards, vehicles and bills"), Icon: Wrench, main: true }] : []),
     { group: t("STOCK MANAGEMENT") },
-    { key: "counter", full: t("Parts counter"), short: t("Counter"), sub: t("A part came in or went out"), Icon: ScanLine, main: true },
+    ...(canAny("stock_in", "stock_out") ? [{ key: "counter" as View, full: t("Parts counter"), short: t("Counter"), sub: t("A part came in or went out"), Icon: ScanLine, main: true }] : []),
     { key: "stock", full: t("Parts list"), short: t("Parts"), sub: owner ? t("All parts, photos and QR labels") : t("See what is in stock"), Icon: Package },
     { key: "activity", full: t("History"), short: t("History"), sub: t("Every part in and out"), Icon: Activity },
-    ...(owner ? [{ key: "analysis" as View, full: t("Reports"), short: t("Reports"), sub: t("Stock summary and low stock"), Icon: ClipboardCheck }] : []),
+    ...(can("reports") ? [{ key: "analysis" as View, full: t("Reports"), short: t("Reports"), sub: t("Stock summary and low stock"), Icon: ClipboardCheck }] : []),
     { group: t("HELP") },
     { key: "tour", full: t("Walkthrough"), short: t("Walkthrough"), sub: t("Show me how it works"), Icon: Compass },
   ];
@@ -877,7 +878,7 @@ function App() {
           </div>
         )}
         {view === "home" && session && !owner && (
-          <MechanicHome disabled={busy} onFind={() => navigate("find")} onIn={() => openCounter("receive")} onOut={() => openCounter("give")} onJob={() => openWorkshop({ name: "new" })} />
+          <MechanicHome disabled={busy} onFind={() => navigate("find")} onIn={can("stock_in") ? () => openCounter("receive") : undefined} onOut={can("stock_out") ? () => openCounter("give") : undefined} onJob={can("jobs") ? () => openWorkshop({ name: "new" }) : undefined} />
         )}
         {view === "home" && !(session && !owner) && (
           <>
@@ -1597,15 +1598,15 @@ function App() {
                   together.
                 </p>
               </div>
-              <button
+              {can("item_add") && <button
                 className="button primary"
                 onClick={() => {
                   resetIdentification();
                   setNewItem(true);
                 }}
               >
-                <Plus size={18} /> Register item
-              </button>
+                <Plus size={18} /> {t("Register item")}
+              </button>}
             </div>
             <section className="stock-panel">
               <div className="stock-tools">
@@ -1621,7 +1622,7 @@ function App() {
                 <label className="stock-check">
                   <input type="checkbox" checked={lowOnly} onChange={(e) => setLowOnly(e.target.checked)} /> {t("Low stock only")}
                 </label>
-                {owner && (
+                {can("item_edit") && (
                   <label className="stock-check">
                     <input
                       type="checkbox"
@@ -1688,7 +1689,7 @@ function App() {
                           View item
                         </button>
                       )}
-                      {owner && (
+                      {can("item_edit") && (
                         <details>
                           <summary aria-label={"Actions for " + p.name}>
                             More
@@ -1740,7 +1741,7 @@ function App() {
               owner={owner} photo={(p) => <ItemPhoto item={p as Item} peek />} onChanged={() => void refresh()} />
           </>
         )}
-        {view === "analysis" && owner && <StockReport />}
+        {view === "analysis" && can("reports") && <StockReport />}
         {view === "workshop" && session && <Workshop key={wsStart.n} owner={owner} start={wsStart.page} />}
         {view === "counter" && session && (
           <Counter
@@ -1845,7 +1846,7 @@ function App() {
                         )}
                         {m.kind === "RECEIPT" && (m.supplier || m.reference) && <small>{[m.supplier, m.reference].filter(Boolean).join(" · ")}</small>}
                         {(m.kind === "RETURN" || m.kind === "ISSUE") && (m.reference || (m.note && !m.note.startsWith("Undo"))) && <small>{m.reference || m.note}</small>}
-                        {owner && m.kind === "RECEIPT" && !(m.note || "").startsWith("Undo") && (costEdit?.id === m.id ? (
+                        {can("cost_edit") && m.kind === "RECEIPT" && !(m.note || "").startsWith("Undo") && (costEdit?.id === m.id ? (
                           <small className="cost-edit">
                             <input aria-label={t("Cost price per unit (LKR)")} inputMode="decimal" maxLength={12} autoFocus value={costEdit.value} disabled={costEdit.busy} onChange={(e) => setCostEdit({ id: m.id, value: e.target.value.replace(/[^0-9.]/g, "") })} />
                             <button type="button" className="doc-link" disabled={costEdit.busy || !costEdit.value.trim()} onClick={() => void saveCost(m.id, costEdit.value)}>{t("Save")}</button>

@@ -9,6 +9,8 @@ import QRCode from "qrcode";
 import { BizLogo } from "../BizLogo";
 import { StoresSection } from "./StoresSection";
 import { PlatformSection } from "./PlatformSection";
+import { PermissionsSection } from "./PermissionsSection";
+import { StaffSection } from "./StaffSection";
 import { hue } from "./Cards";
 import { lkr, useCommand, useLoad, useWs, num, type Business } from "./common";
 
@@ -134,6 +136,8 @@ export function Settings() {
 
         <div className="ws-set-col">
           <StoresSection />
+          <StaffSection />
+          <PermissionsSection />
           <PlatformSection />
           <section className="ws-sec">
             <h3><span className="ws-sec-ico"><Landmark size={18} /></span>{t("Getting paid")}</h3>

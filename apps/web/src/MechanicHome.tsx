@@ -1,15 +1,15 @@
 import { ArrowDownLeft, ArrowUpRight, PlusCircle, Search } from "lucide-react";
 import { t, useLang } from "./i18n";
 
-/** The mechanic's Home: four big buttons, nothing else. */
-export function MechanicHome({ onFind, onIn, onOut, onJob, disabled }: { onFind: () => void; onIn: () => void; onOut: () => void; onJob: () => void; disabled: boolean }) {
+/** Home for everyone but the owner: big buttons for what this role may do, nothing else. */
+export function MechanicHome({ onFind, onIn, onOut, onJob, disabled }: { onFind: () => void; onIn?: () => void; onOut?: () => void; onJob?: () => void; disabled: boolean }) {
   useLang();
   const tiles = [
     { cls: "find", Icon: Search, title: t("Find a part"), sub: t("Look up a part, photo or shelf."), go: onFind },
     { cls: "in", Icon: ArrowDownLeft, title: t("Part came in"), sub: t("Scan or photo what came in"), go: onIn },
     { cls: "out", Icon: ArrowUpRight, title: t("Part went out"), sub: t("Scan the part and confirm the quantity"), go: onOut },
     { cls: "job", Icon: PlusCircle, title: t("Start a job"), sub: t("A vehicle comes in for work"), go: onJob },
-  ];
+  ].filter((x) => x.go);  // a tile this role may not use is simply not there
   return (
     <section className="mh" aria-label={t("What are we doing today?")}>
       <h1>{t("What are we doing today?")}</h1>

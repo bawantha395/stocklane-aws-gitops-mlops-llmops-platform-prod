@@ -143,8 +143,8 @@ def stamp_parts(new, old):
         same = next((o for o in left if (o.get('product_id') and o.get('product_id') == line.get('product_id')) or (not line.get('product_id') and not o.get('product_id') and o.get('name') == line['name'])), None)
         if same:
             left.remove(same)
-        for k in ('added_at', 'part_no'):
-            if same and same.get(k):
+        for k in ('added_at', 'part_no', 'cost_each'):
+            if same and same.get(k) is not None and same.get(k) != '':
                 line[k] = same[k]
         given = line.pop('_given', [])
         if line.get('outside') and same:
@@ -588,6 +588,7 @@ def get_job(job_id, who='', owner=False):
     car = get('VEHICLE', current['vehicle_key']) or {}
     out.update({k: car[k] for k in ('front_photo', 'plate_photo') if car.get(k)})
     out['before_photos'] = (get('WJPH', job_id) or {}).get('before', [])
+    out['profit'] = profit_of(current)  # removed from the reply for anyone without the see-cost permission
     return out
 
 
@@ -755,6 +756,9 @@ def use_stock(job_id, key, who, body):
             else:
                 parts.append({'name': line_name(product), 'quantity': qty, 'unit_price': product['selling_price'], 'product_id': product['id'],
                               'part_no': (product.get('part_number') or product['sku'])[:60], 'added_at': today().isoformat()})
+                line = parts[-1]
+            if product.get('last_cost') is not None:
+                line['cost_each'] = product['last_cost']  # what the part cost the shop when it left the shelf (never shown to staff without the permission)
         else:
             if not line:
                 raise conflict('This part was not taken from stock for this job')
@@ -1014,6 +1018,7 @@ def get_invoice(invoice_id):
     i = public(raw)
     i.update(due_days=due_days(raw), overdue_days=overdue_days(raw))
     i['parts'] = [{**p, 'amount': line_total(p)} for p in with_part_nos(i['parts'])]
+    i['profit'] = profit_of(raw)  # removed from the reply for anyone without the see-cost permission
     return i
 
 
@@ -1073,12 +1078,13 @@ def void_invoice(invoice_id, key, who, body):
             raise conflict('This invoice is already voided')
         if current['paid'] > 0:
             raise conflict('This invoice has payments. Void is only for unpaid invoices')
+        reason = text((body or {}).get('reason'), 'Reason', 180, True)  # the owner's report shows who voided what, and why
         j = job(current['job_id'])
-        new = dict(current, status='VOID', revision=int(current['revision']) + 1, voided_by=who, voided_at=now())
+        new = dict(current, status='VOID', revision=int(current['revision']) + 1, voided_by=who, voided_at=now(), voided_reason=reason)
         reopened = clean({k: v for k, v in j.items() if k not in ('invoice_id', 'invoice_number', 'tax_rate')})
         reopened.update(status='OPEN', revision=int(j['revision']) + 1, updated_at=now())
         # a note on the job itself: the bill was voided and the parts are still on the job (stock did not move)
-        reopened['voids'] = list(j.get('voids') or []) + [{'invoice_number': current['invoice_number'], 'at': now(), 'by': who}]
+        reopened['voids'] = list(j.get('voids') or []) + [{'invoice_number': current['invoice_number'], 'at': now(), 'by': who, 'reason': reason}]
         # parts that already came back into stock after the bill are not on the reopened job any more, or cancelling it would return them twice
         if len(j.get('parts', [])) == len(current['parts']):
             kept = []
@@ -1090,7 +1096,7 @@ def void_invoice(invoice_id, key, who, body):
         ops = [put(new, ConditionExpression='revision = :r', ExpressionAttributeValues={':r': current['revision']}),
                put(reopened, ConditionExpression='revision = :r and #s = :done', ExpressionAttributeNames={'#s': 'status'},
                    ExpressionAttributeValues={':r': j['revision'], ':done': 'INVOICED'}), history_put(reopened, business()['tax_rate']),
-               audit('INVOICE_VOIDED', reopened, who, current['invoice_number'])]
+               audit('INVOICE_VOIDED', reopened, who, current['invoice_number'] + ': ' + reason)]
         return ops, [CHANGED, CHANGED, None, None], public(new)
     return command(key, 'void:' + invoice_id, who, body, build)
 
@@ -1241,6 +1247,37 @@ def export_all():
             'stock_movements': [public(m) for m in query('MOVE')]}
 
 
+def profit_of(doc, costs=None):
+    """What a job or a bill earned: parts sold minus what they cost, plus the labour, minus the discount. Tax is not income.
+
+    A stock part's cost is the one stamped when it left the shelf, else the part's last cost today; a bought-outside part's is
+    what was typed. Parts whose cost nobody knows are counted in `unknown` and left out, so the figure is never guessed."""
+    costs = costs if costs is not None else {}
+    sales = cost = known_sales = ZERO
+    unknown = 0
+    for p in doc.get('parts', []):
+        qty = p['quantity'] - (p.get('returned') or ZERO)
+        if qty <= 0:
+            continue
+        sale = line_total(dict(p, quantity=qty))
+        sales += sale
+        each = p.get('outside_cost') if p.get('outside') else p.get('cost_each')
+        if each is None and p.get('product_id'):
+            if p['product_id'] not in costs:
+                row = get('PRODUCT', p['product_id'])
+                costs[p['product_id']] = row.get('last_cost') if row else None
+            each = costs[p['product_id']]
+        if each is None:
+            unknown += 1
+            continue
+        cost += (each * qty).quantize(MONEY, ROUND_HALF_UP)
+        known_sales += sale
+    labour = sum((l['amount'] for l in doc.get('labour', [])), ZERO)
+    discount = doc.get('discount', ZERO)  # the bill discount; line discounts are already inside each line's total
+    return {'parts_sales': sales, 'parts_cost': cost, 'parts_margin': known_sales - cost, 'labour': labour, 'discount': discount,
+            'profit': known_sales - cost + labour - discount, 'unknown': unknown}
+
+
 def report(start='', end=''):
     first = today().replace(day=1)
     start, end = day(start, 'From') or first.isoformat(), day(end, 'Until') or today().isoformat()
@@ -1256,9 +1293,20 @@ def report(start='', end=''):
     outside = {'lines': 0, 'sales': ZERO, 'cost': ZERO, 'sales_with_cost': ZERO, 'without_cost': 0}
     by_shop = {}
     ageing, unpaid_list = {'d0_7': ZERO, 'd8_30': ZERO, 'd31_60': ZERO, 'd60_plus': ZERO}, []
+    refunds, refund_list, voids, returns_total, return_list = ZERO, [], [], ZERO, []
+    profit, costs = {k: ZERO for k in ('parts_sales', 'parts_cost', 'parts_margin', 'labour', 'discount', 'profit')}, {}
+    profit['unknown'] = 0
     for i in winv():
         if i['status'] == 'VOID':
+            if i.get('voided_at') and start <= local_date(i['voided_at']).isoformat() <= end:
+                voids.append({'invoice_number': i['invoice_number'], 'registration': i['registration'], 'customer': i['customer'], 'total': i.get('original_total', i['total']),
+                              'at': i['voided_at'], 'by': i.get('voided_by', ''), 'reason': i.get('voided_reason', ''), 'id': i['id']})
             continue
+        for c in i.get('credits') or []:
+            if start <= local_date(c['at']).isoformat() <= end:
+                returns_total += c['amount']
+                return_list.append({'invoice_number': i['invoice_number'], 'registration': i['registration'], 'amount': c['amount'], 'at': c['at'], 'by': c.get('by', ''),
+                                    'reason': c.get('reason', ''), 'id': i['id']})
         balance = i['total'] - i['paid']
         if balance > 0 and i['status'] != 'REFUNDED':
             days = age_days(i['created_at'])
@@ -1268,6 +1316,10 @@ def report(start='', end=''):
             if start <= local_date(p['at']).isoformat() <= end:
                 received += p['amount']
                 by_method[p['method']] = by_method.get(p['method'], ZERO) + p['amount']
+                if p.get('refund'):
+                    refunds += -p['amount']
+                    refund_list.append({'invoice_number': i['invoice_number'], 'registration': i['registration'], 'amount': -p['amount'], 'method': p['method'],
+                                        'at': p['at'], 'by': p.get('by', ''), 'reason': (p.get('note') or '').replace('Refund: ', '', 1), 'id': i['id']})
         created = local_date(i['created_at']).isoformat()
         if not start <= created <= end:
             continue
@@ -1279,6 +1331,9 @@ def report(start='', end=''):
         parts_net = sum((line_total(p) for p in kept), ZERO)
         labour_net = sum((l['amount'] for l in i['labour']), ZERO)
         count += 1
+        one = profit_of(i, costs)
+        for k in profit:
+            profit[k] += one[k]
         cars.add(i['vehicle_key'])
         period_unpaid += balance
         sums['parts_total'] += parts_net
@@ -1319,6 +1374,11 @@ def report(start='', end=''):
     return {'from': start, 'until': end, 'currency': 'LKR', 'invoices': count, 'vehicles': len(cars), **sums, 'received': received,
             'unpaid': period_unpaid, 'average': (sums['total'] / count).quantize(MONEY, ROUND_HALF_UP) if count else ZERO,
             'outstanding_all_time': sum(ageing.values(), ZERO), 'ageing': ageing,
+            # money in, money given back, and what is left; then what was undone in the period and by whom
+            'received_gross': received + refunds, 'refunds': refunds, 'refund_list': sorted(refund_list, key=lambda r: r['at'], reverse=True)[:30],
+            'returns': returns_total, 'return_list': sorted(return_list, key=lambda r: r['at'], reverse=True)[:30],
+            'voids': sorted(voids, key=lambda r: r['at'], reverse=True)[:30], 'void_count': len(voids),
+            'profit': profit,
             'by_day': [{'date': d, 'billed': v} for d, v in by_day.items()],
             'by_mechanic': sorted(by_mechanic.values(), key=lambda r: -r['total']),
             'by_method': sorted(({'method': k, 'amount': v} for k, v in by_method.items()), key=lambda r: -r['amount']),
@@ -1338,6 +1398,25 @@ def pdf(invoice_id):
     i['due_date'] = (local_date(i['created_at']) + timedelta(days=terms)).isoformat() if terms else ''
     i['tax_name'] = i.get('tax_name', 'VAT')
     return bills.invoice(i), i['invoice_number']
+
+
+def return_note_pdf(invoice_id, credit_id):
+    """The printable note for one return on a bill (RN-<invoice number>-<n>)."""
+    i = invoice(invoice_id)
+    credits = list(i.get('credits') or [])
+    n = next((k for k, c in enumerate(credits) if c['id'] == credit_id), None)
+    if n is None:
+        raise missing('Return not found')
+    c = credits[n]
+    lines_value = sum((l['amount'] for l in c['lines']), ZERO)
+    # the refund this return caused, if any: the refund payment written in the same moment
+    back = next((p for p in i['payments'] if p.get('refund') and p['at'] == c['at']), None)
+    later = sum((x['amount'] for x in credits[n + 1:]), ZERO)
+    note = {'number': 'RN-%s-%d' % (i['invoice_number'], n + 1), 'date': local_date(c['at']).isoformat(), 'invoice_number': i['invoice_number'],
+            'customer': i.get('customer'), 'registration': i.get('registration'), 'vehicle': i.get('vehicle'), 'reason': c.get('reason'), 'by': c.get('by'),
+            'lines': c['lines'], 'tax': c['amount'] - lines_value, 'amount': c['amount'], 'total_now': i['total'] + later,
+            'refunded': -back['amount'] if back else ZERO, 'refund_method': back['method'] if back else ''}
+    return bills.return_note(note, i.get('business') or business()), note['number']
 
 
 def vehicle_pdf(key):

@@ -46,7 +46,9 @@ resource "aws_iam_role_policy" "api" {
     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${var.media_bucket.arn}/workshop/photos/*", "${var.media_bucket.arn}/shops/*/workshop/photos/*"] },
     { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = var.kms_key_arn },
     # opening a workshop: its SHOP_ group and its first owner, in this user pool only
-    { Effect = "Allow", Action = ["cognito-idp:CreateGroup", "cognito-idp:AdminCreateUser", "cognito-idp:AdminAddUserToGroup", "cognito-idp:AdminListGroupsForUser"],
+    { Effect = "Allow", Action = ["cognito-idp:CreateGroup", "cognito-idp:AdminCreateUser", "cognito-idp:AdminAddUserToGroup", "cognito-idp:AdminListGroupsForUser",
+      # the owner's Staff screen: list the shop's people, change a role, switch a sign-in off or back on
+      "cognito-idp:ListUsersInGroup", "cognito-idp:ListGroups", "cognito-idp:AdminRemoveUserFromGroup", "cognito-idp:AdminDisableUser", "cognito-idp:AdminEnableUser", "cognito-idp:AdminUserGlobalSignOut"],
     Resource = "arn:${data.aws_partition.current.partition}:cognito-idp:${var.region}:*:userpool/${var.user_pool_id}" }
     ], local.with_vision ? [
     { Effect = "Allow", Action = ["lambda:InvokeFunction"], Resource = aws_lambda_function.vision[0].arn }

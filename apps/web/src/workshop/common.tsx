@@ -11,7 +11,9 @@ export type Labour = { description: string; amount: number };
 export type Stage = "WAITING" | "IN_PROGRESS" | "PARTS" | "READY";
 export const STAGES: Stage[] = ["WAITING", "IN_PROGRESS", "PARTS", "READY"];
 export const STAGE_LABEL: Record<Stage, string> = { WAITING: "Waiting", IN_PROGRESS: "In progress", PARTS: "Waiting for parts", READY: "Ready for pickup" };
+export type Profit = { parts_sales: number; parts_cost: number; parts_margin: number; labour: number; discount: number; profit: number; unknown: number };
 export type Job = {
+  profit?: Profit;
   id: string; registration: string; vehicle_key: string; customer: string; address?: string; phone: string; vehicle: string; odometer?: number; summary: string;
   mechanic: string; notes: string; status: "OPEN" | "INVOICED" | "CANCELLED" | "ARCHIVED"; revision: number; invoice_id?: string; invoice_number?: string;
   parts: Part[]; labour: Labour[]; discount: number; tax_rate?: number; parts_total: number; labour_total: number; subtotal: number; tax: number; total: number;
@@ -45,6 +47,7 @@ export type Vehicle = {
 };
 export type Payment = { id: string; amount: number; method: string; note: string; at: string; refund?: boolean };
 export type Invoice = {
+  profit?: Profit; voided_reason?: string;
   id: string; invoice_number: string; job_id: string; registration: string; customer: string; address?: string; phone?: string; vehicle?: string; odometer?: number; summary?: string; mechanic?: string;
   parts: Part[]; labour: Labour[]; parts_total: number; labour_total: number; discount: number; subtotal: number; tax: number; tax_name?: string; tax_rate: number; total: number;
   paid: number; status: "UNPAID" | "PARTIAL" | "PAID" | "REFUNDED" | "VOID"; created_at: string; payments: Payment[]; currency: string; business?: Business; invoice_type?: string; overdue_days?: number; due_days?: number; job_no?: string; chassis?: string;
@@ -127,6 +130,22 @@ export const Loading = ({ error }: { error?: string }) => error ? <p className="
 );
 
 /** Asks for a reason (or a note) before a delete, a request or a rejection. */
+/** Owner (or anyone allowed to see cost): what this job or bill earns. Never sent to anyone else, so it simply is not there for them. */
+export function ProfitCard({ p }: { p?: Profit }) {
+  if (!p) return null;
+  return (
+    <section className="ws-card ws-profit">
+      <h3>{t("Profit on this job")}</h3>
+      <div className="ws-profit-row"><span>{t("Parts sold")}</span><b>{lkr(p.parts_sales)}</b></div>
+      <div className="ws-profit-row"><span>{t("Parts cost")}</span><b>-{lkr(p.parts_cost)}</b></div>
+      <div className="ws-profit-row"><span>{t("Labour")}</span><b>{lkr(p.labour)}</b></div>
+      {num(p.discount) > 0 && <div className="ws-profit-row"><span>{t("Discount")}</span><b>-{lkr(p.discount)}</b></div>}
+      <div className="ws-profit-row total"><span>{t("Profit")}</span><b>{lkr(p.profit)}</b></div>
+      {p.unknown > 0 && <small className="ws-hint">{t("{n} part line(s) have no cost yet, so they are left out. Enter the cost on the delivery or on the bought-outside line.", { n: p.unknown })}</small>}
+    </section>
+  );
+}
+
 export function ReasonDialog({ title, help, label, confirm, required = true, onDone, onClose }: {
   title: string; help?: string; label: string; confirm: string; required?: boolean; onDone: (text: string) => Promise<void>; onClose: () => void;
 }) {

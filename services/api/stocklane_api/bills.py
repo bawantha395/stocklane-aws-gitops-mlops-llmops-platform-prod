@@ -467,3 +467,51 @@ def stock_note(n, business):
         d.line(x0, d.y, x0 + 210, d.y)
         d.text(x0, d.y + 12, label, 8.5, color=MUTED)
     return d.render()
+
+
+def return_note(n, business):
+    """A customer return note: which parts of a bill came back, what they were worth, and how any money was given back.
+    The customer keeps one copy and signs the shop's."""
+    title = 'RETURN NOTE'
+    d = Doc(footer=(business.get('name') or 'Workshop') + ' | ' + n['number'])
+    letterhead(d, business, title, [(n['number'], True), ('Date: ' + n['date'], False)])
+    facts = [('Return note no.', n['number']), ('Date', n['date']), ('Against invoice', n['invoice_number']), ('Customer', n.get('customer') or '-'),
+             ('Vehicle', ' '.join(x for x in (n.get('registration'), n.get('vehicle')) if x) or '-'), ('Reason', n.get('reason') or '-'), ('Taken back by', n.get('by') or '-')]
+    y = d.y + 4
+    for label, value in facts:
+        d.text(MARGIN, y + 10, label, 9, color=MUTED)
+        d.text(200, y + 10, fit(value, 340, 10), 10, True)
+        y += 17
+    d.y = y + 12
+
+    def head():
+        d.rect(MARGIN, d.y, R - MARGIN, 18, GREY)
+        d.text(MARGIN + 6, d.y + 12, 'PART RETURNED', 8, True)
+        d.text(R - 110, d.y + 12, 'QUANTITY', 8, True, 'r')
+        d.text(R - 6, d.y + 12, 'VALUE (LKR)', 8, True, 'r')
+        d.y += 18
+    head()
+    for l in n['lines']:
+        if d.room(24):
+            head()
+        d.text(MARGIN + 6, d.y + 15, fit(l['name'], 330, 10.5), 10.5, True)
+        d.text(R - 110, d.y + 15, q(l['quantity']), 10.5, False, 'r')
+        d.text(R - 6, d.y + 15, m(l['amount']), 10.5, False, 'r')
+        d.y += 24
+        d.line(MARGIN, d.y - 2, R, d.y - 2, 0.4)
+    d.y += 6
+    for label, value, bold in ((('Tax on the returned parts', m(n['tax']), False),) if n['tax'] else ()) + (('Taken off the bill', 'LKR ' + m(n['amount']), True),
+                                                                                                           ('Bill total now', 'LKR ' + m(n['total_now']), False)):
+        d.text(R - 150, d.y + 12, label, 9.5, bold, 'r')
+        d.text(R - 6, d.y + 12, value, 10, bold, 'r')
+        d.y += 16
+    if n.get('refunded'):
+        d.y += 4
+        d.text(R - 6, d.y + 12, 'Money given back: LKR ' + m(n['refunded']) + (' (' + n['refund_method'] + ')' if n.get('refund_method') else ''), 10, True, 'r')
+        d.y += 16
+    d.y += 70
+    d.room(60)
+    for x0, label in ((MARGIN, 'For the workshop (signature)'), (320, 'Customer (signature)')):
+        d.line(x0, d.y, x0 + 210, d.y)
+        d.text(x0, d.y + 12, label, 8.5, color=MUTED)
+    return d.render()

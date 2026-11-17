@@ -43,7 +43,7 @@ def test_full_money_flow(api):
     assert paid['status'] == 'PAID'
     status, _ = api('POST', '/api/workshop/invoices/%s/payments' % inv['id'], {'amount': 1, 'method': 'CASH'}, role='MECHANIC')
     assert status in (400, 409)  # nothing left to pay
-    status, _ = api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {}, role='OWNER')
+    status, _ = api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {'reason': 'Wrong car'}, role='OWNER')
     assert status in (400, 409)  # a bill with payments cannot be voided
 
     rows = ok(api('GET', '/api/workshop/invoices', role='MECHANIC'))
@@ -59,7 +59,7 @@ def test_void_unpaid_bill_reopens_job(api):
     job = new_job(api)
     ok(fill(api, job['id']))
     inv = ok(api('POST', '/api/workshop/jobs/%s/invoice' % job['id'], {'revision': 1}, role='MECHANIC'))
-    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {}))
+    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {'reason': 'Wrong car'}))
     assert ok(api('GET', '/api/workshop/invoices/' + inv['id'], role='MECHANIC'))['status'] == 'VOID'
     assert ok(api('GET', '/api/workshop/jobs/' + job['id'], role='MECHANIC'))['status'] == 'OPEN'
 
@@ -174,13 +174,13 @@ def test_refund_then_void(api):
     assert api('POST', '/api/workshop/invoices/%s/refund' % inv['id'], {'amount': inv['total'] + 1, 'reason': 'x'})[0] == 409
     assert api('POST', '/api/workshop/invoices/%s/refund' % inv['id'], {'amount': 100})[0] == 400
     # void is refused while money is held
-    assert api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {})[0] == 409
+    assert api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {'reason': 'Wrong car'})[0] == 409
     back = ok(api('POST', '/api/workshop/invoices/%s/refund' % inv['id'], {'amount': 100, 'reason': 'Wrong filter'}))
     assert back['status'] == 'PARTIAL' and back['paid'] == inv['total'] - 100 and back['payments'][-1]['amount'] == -100
     full = ok(api('POST', '/api/workshop/invoices/%s/refund' % inv['id'], {'amount': back['paid'], 'reason': 'Customer cancelled'}))
     assert full['paid'] == 0 and full['status'] == 'REFUNDED'
     ok(api('GET', '/api/workshop/invoices/%s/pdf' % inv['id']))
-    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {}))
+    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {'reason': 'Wrong car'}))
     ok(api('GET', '/api/workshop/invoices/' + inv['id']))
 
 

@@ -1,3 +1,4 @@
+import { can } from "../perms";
 import { t } from "../i18n";
 import { toast, askConfirm } from "../ui";
 import { AlertTriangle } from "lucide-react";
@@ -8,7 +9,7 @@ import { billTotals, partAmount } from "./Bill";
 import { PastRepairs } from "./Vehicles";
 import { StockPicker } from "./StockPicker";
 import { printJobCard } from "./jobCardPdf";
-import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job, STAGE_LABEL, type Stage, waLink } from "./common";
+import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job, STAGE_LABEL, type Stage, waLink, ProfitCard } from "./common";
 
 type PartRow = { name: string; quantity: string; unit_price: string; outside?: boolean; outside_cost?: string; outside_shop?: string; product_id?: string; discount_pct?: string; part_no?: string; returned?: number };
 type LabourRow = { description: string; amount: string };
@@ -256,7 +257,7 @@ export function JobPage({ id }: { id: string }) {
         ))}
         {!locked && (
           <div className="ws-add" data-tour="part-chips">
-            <button className="button primary small" disabled={busy} onClick={() => setPicking(true)}>{t("Pick from stock")}</button>
+            {can("job_stock") && <button className="button primary small" disabled={busy} onClick={() => setPicking(true)}>{t("Pick from stock")}</button>}
             <button className="button secondary small" onClick={() => { setParts([...parts, { name: "", quantity: "1", unit_price: "" }]); setDirty(true); }}>+ Add part</button>
             <button className="button secondary small" data-tour="bought-outside" onClick={() => { setParts([...parts, { name: "", quantity: "1", unit_price: "", outside: true, outside_cost: "", outside_shop: "" }]); setDirty(true); }}>+ {t("Bought outside")}</button>
             {sugg?.parts?.slice(0, 5).map((s) => <button key={s.name} className="ws-quick" onClick={() => { setParts([...parts, { name: s.name, quantity: "1", unit_price: String(s.price) }]); setDirty(true); }}>{s.name}</button>)}
@@ -314,6 +315,7 @@ export function JobPage({ id }: { id: string }) {
       <PastRepairs regKey={job.vehicle_key} skipJob={id} />
       {error && <p role="alert" className="stock-error">{error}</p>}
       
+      <ProfitCard p={job.profit} />
       <div className="ws-actionbar">
         {needLines && <p className="ws-need" role="status">{t("Add at least one part or labour line to create the invoice.")}</p>}
         <span className="ws-actionbar-total"><small>{dirty ? "Unsaved changes" : "Total"}</small><b>LKR {lkr(totals.total)}</b></span>
@@ -325,7 +327,7 @@ export function JobPage({ id }: { id: string }) {
             </span>
           )}
           {!locked && <button className="button secondary" disabled={busy || !dirty} onClick={() => void run(async () => { await save(); setSaved("Saved."); })}>{t("Save")}</button>}
-          {!locked && <button data-tour="create-invoice" className="button primary" disabled={busy} onClick={() => { if (!lines.parts.length && !lines.labour.length) { setNeedLines(true); partsRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }); return; } setNeedLines(false); void invoice(); }}>{t("Create invoice")}</button>}
+          {!locked && can("bill") && <button data-tour="create-invoice" className="button primary" disabled={busy} onClick={() => { if (!lines.parts.length && !lines.labour.length) { setNeedLines(true); partsRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }); return; } setNeedLines(false); void invoice(); }}>{t("Create invoice")}</button>}
         </span>
       </div>
       {dialog === "delete" && <ReasonDialog title="Delete this job?" help="It moves to the Archive and disappears from jobs and the vehicle history. You can restore it later." label="Reason" confirm="Delete job"

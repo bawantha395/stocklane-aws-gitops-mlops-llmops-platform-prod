@@ -4,7 +4,15 @@ resource "aws_cognito_user_pool" "main" {
   name                     = var.name
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
-  admin_create_user_config { allow_admin_create_user_only = true }
+  admin_create_user_config {
+    allow_admin_create_user_only = true
+    # the e-mail a new owner or staff member gets (Cognito fills in {username} and {####})
+    invite_message_template {
+      email_subject = "Welcome to Lifta - your sign-in"
+      email_message = "Hello,<br><br>You have been added to a workshop on <b>Lifta</b>.<br><br>Open: ${length(var.app_urls) > 0 ? var.app_urls[0] : ""}<br>E-mail: {username}<br>Temporary password: {####}<br><br>You will choose your own password and set up the authenticator app the first time you sign in. The temporary password stops working after 7 days.<br><br>Lifta"
+      sms_message   = "Lifta sign-in {username} temporary password {####}"
+    }
+  }
   password_policy {
     minimum_length    = 14
     require_lowercase = true
@@ -23,7 +31,7 @@ resource "aws_cognito_user_pool_domain" "main" {
 }
 
 resource "aws_cognito_user_group" "staff" {
-  for_each     = toset(["OWNER", "MECHANIC", "PLATFORM"]) # PLATFORM = runs this deployment: opens and closes workshops
+  for_each     = toset(["OWNER", "ADMIN", "STOREKEEPER", "MECHANIC", "PLATFORM"]) # PLATFORM = runs this deployment: opens and closes workshops
   user_pool_id = aws_cognito_user_pool.main.id
   name         = each.key
 }

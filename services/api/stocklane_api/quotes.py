@@ -204,6 +204,10 @@ def set_status(quote_id, key, who, body):
             raise conflict('This %s was already made into a job' % label(current))
         if num(b.get('revision'), 'Revision') != current['revision']:
             raise conflict(CHANGED)
+        left = validity(current)
+        if status == 'APPROVED' and left is not None and left < 0:
+            # prices move: an offer that ran out is not approved as it stands
+            raise conflict('This %s ran out on %s. Set a new "valid until" date (and check the prices) before approving it' % (label(current), current['valid_until']))
         if status in ('SENT', 'APPROVED') and not current.get('parts') and not current.get('labour'):
             raise bad('Add at least one part or work line first')
         if status in ('SENT', 'APPROVED') and current.get('kind') == 'QUOTATION' and any(p['unit_price'] == 0 for p in current.get('parts', [])):

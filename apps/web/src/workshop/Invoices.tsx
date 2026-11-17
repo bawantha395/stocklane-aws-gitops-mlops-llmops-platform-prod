@@ -1,5 +1,6 @@
+import { can } from "../perms";
+import { openPdf } from "../api";
 import { t } from "../i18n";
-import { askConfirm } from "../ui";
 import { Rows, groupByPeriod } from "./Rows";
 import { InvoiceCard } from "./Cards";
 import { useEffect, useState } from "react";
@@ -7,7 +8,7 @@ import { Bill, autoPrintOn } from "./Bill";
 import { downloadInvoicePdf, shareInvoicePdf } from "./invoicePdf";
 import { printerConnected, receiptBytes, sendToPrinter } from "./printer";
 import { DateChips, SummaryBar, cap, ALL, inRange, useSaved, type Range } from "./DateRange";
-import { lateDays, Empty, Loading, Pill, dateOnly, lkr, num, today, useCommand, useLoad, useWs, waLink, type Invoice } from "./common";
+import { ProfitCard, ReasonDialog, lateDays, Empty, Loading, Pill, dateOnly, lkr, num, today, useCommand, useLoad, useWs, waLink, type Invoice } from "./common";
 
 type Row = Omit<Invoice, "payments" | "parts" | "labour">;
 
@@ -108,6 +109,7 @@ export function InvoicePage({ id }: { id: string }) {
   const [amount, setAmount] = useState(""), [method, setMethod] = useState("CASH"), [note, setNote] = useState("");
   const [returning, setReturning] = useState(false);
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
+  const [voiding, setVoiding] = useState(false);
   const command = useCommand();
   /** One Print action. A connected thermal printer prints straight away. Otherwise the browser print preview opens, and it lays the bill out for whatever paper is chosen (A4 or a narrow roll). */
   const printNow = async () => {
@@ -127,9 +129,10 @@ export function InvoicePage({ id }: { id: string }) {
   }, [ready, id]);
   if (!inv) return <Loading error={loadError} />;
   const balance = num(inv.total) - num(inv.paid);
+  const returnNote = (cid: string) => void run(async () => { await openPdf("/api/workshop/invoices/" + id + "/returns/" + cid + "/pdf", "return-note"); });
   const run = async (work: () => Promise<void>) => { setBusy(true); setError(""); try { await work(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
   const pay = (e: React.FormEvent) => { e.preventDefault(); void run(async () => { await command("/api/workshop/invoices/" + id + "/payments", { amount: num(amount || balance), method, note }); setAmount(""); setNote(""); await reload(); if (autoPrintOn()) setTimeout(() => void printNow(), 400); }); };
-  const voidIt = async () => { if (await askConfirm("The job opens again so you can correct it.", { title: "Void this invoice?", confirm: "Void invoice", danger: true })) void run(async () => { await command("/api/workshop/invoices/" + id + "/void", {}); go({ name: "job", id: inv.job_id }, "Invoice voided. The job is open again."); }); };
+  const voidIt = () => setVoiding(true);
   const shop = inv.business ? { ...business, ...inv.business } : business;
   const shareBill = () => void run(async () => {
     const msg = "Hello " + inv.customer + ", your invoice " + inv.invoice_number + " from " + shop.name + " is LKR " + lkr(inv.total) + (balance > 0 ? ", balance LKR " + lkr(balance) : ", paid in full") + ". Thank you.";
@@ -153,17 +156,21 @@ export function InvoicePage({ id }: { id: string }) {
         <button className="button secondary small" onClick={() => go({ name: "vehicle", id: inv.registration.replace(/[^A-Za-z0-9]/g, "").toUpperCase() })}>{t("Vehicle file")}</button>
         <button className="button secondary small" disabled={busy} onClick={shareBill}>{t("Share bill")}</button>
         {(inv.status === "UNPAID" || inv.status === "PARTIAL") && <button data-tour="remind" className="button secondary small" disabled={!inv.phone} title={inv.phone ? "" : t("No phone number on this bill")} onClick={() => window.open(waLink(inv.phone || "", "Hello " + inv.customer + ", this is a reminder from " + shop.name + ": " + (inv.invoice_type === "INSURANCE" ? "the insurance claim bill " : "invoice ") + inv.invoice_number + " (" + inv.registration + ") has a balance of LKR " + lkr(balance) + (late > 0 ? ", " + late + " days past the due date" : "") + ". Thank you."), "_blank", "noopener")}>{late > 0 ? t("Remind") + " · " + t("Overdue") : t("Remind")}</button>}
-        {owner && inv.status !== "VOID" && (num(inv.paid) > 0 || inv.parts.some((p) => num(p.quantity) > num((p as { returned?: number }).returned))) && <button data-tour="refund" className="button secondary small" disabled={busy} onClick={() => setReturning(!returning)}>{t("Refund")}</button>}
-        {owner && inv.status !== "VOID" && num(inv.paid) === 0 && <button className="button secondary small" disabled={busy} onClick={voidIt}>{t("Void invoice")}</button>}
+        {can("void_refund") && inv.status !== "VOID" && (num(inv.paid) > 0 || inv.parts.some((p) => num(p.quantity) > num((p as { returned?: number }).returned))) && <button data-tour="refund" className="button secondary small" disabled={busy} onClick={() => setReturning(!returning)}>{t("Refund")}</button>}
+        {can("void_refund") && inv.status !== "VOID" && num(inv.paid) === 0 && <button className="button secondary small" disabled={busy} onClick={voidIt}>{t("Void invoice")}</button>}
       </div>
       {error && <p role="alert" className="stock-error">{error}</p>}
       {returning && owner && <ReturnParts inv={inv} onClose={() => setReturning(false)} onDone={async () => { setReturning(false); await reload(); }} />}
+      {voiding && <ReasonDialog title={t("Void this invoice?")} help={t("The job opens again so you can correct it. The reason shows in the owner's report.")} label={t("Why is it voided?")} confirm={t("Void invoice")}
+        onClose={() => setVoiding(false)} onDone={async (reason) => { await command("/api/workshop/invoices/" + id + "/void", { reason }); setVoiding(false); go({ name: "job", id: inv.job_id }, t("Invoice voided. The job is open again.")); }} />}
+      {inv.status === "VOID" && inv.voided_reason && <div className="ws-note" role="status">{t("Voided")}: {inv.voided_reason}</div>}
+      <ProfitCard p={inv.status === "VOID" ? undefined : inv.profit} />
       {!!inv.credits?.length && (
         <section className="ws-card ws-credits"><h3>{t("Returned parts")}</h3>
-          {inv.credits.map((c) => <div key={c.id} className="ws-credit"><span>{dateOnly(c.at)} · {c.lines.map((l) => l.quantity + " x " + l.name).join(", ")} · {c.reason}</span><b>-{lkr(c.amount)}</b></div>)}
+          {inv.credits.map((c) => <div key={c.id} className="ws-credit"><span>{dateOnly(c.at)} · {c.lines.map((l) => l.quantity + " x " + l.name).join(", ")} · {c.reason}</span><b>-{lkr(c.amount)}</b><button type="button" className="button secondary small" disabled={busy} onClick={() => returnNote(c.id)}>{t("Return note")}</button></div>)}
         </section>
       )}
-      {inv.status !== "VOID" && balance > 0 && (
+      {can("bill") && inv.status !== "VOID" && balance > 0 && (
         <form className="ws-card ws-pay" onSubmit={pay}>
           <h3>{t("Take a payment")} <small>Balance LKR {lkr(balance)}</small></h3>
           <div className="ws-grid2">

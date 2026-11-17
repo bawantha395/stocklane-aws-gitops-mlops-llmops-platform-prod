@@ -102,7 +102,7 @@ def test_void_keeps_stock_links_and_cancel_then_returns_stock(api):
     p, job = product(api, 10), new_job(api)
     j = ok(use(api, job, p['id'], 3))
     inv = ok(api('POST', '/api/workshop/jobs/%s/invoice' % j['id'], {'revision': j['revision']}, role='OWNER'))
-    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {}))
+    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {'reason': 'Wrong car'}))
     back = ok(api('GET', '/api/workshop/jobs/' + j['id']))
     assert back['status'] == 'OPEN' and back['parts'][0]['product_id'] == p['id'] and stock(api, p['id']) == 7  # still on the job, stock still out
     ok(use(api, back, p['id'], 1, 'return'))

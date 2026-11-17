@@ -1,3 +1,4 @@
+import { can } from "../perms";
 import { t } from "../i18n";
 import { AlertTriangle, Banknote, CalendarClock, ClipboardCheck, PackageCheck, Receipt, TrendingUp, Wrench } from "lucide-react";
 import { JobCard } from "./Cards";
@@ -7,7 +8,7 @@ import { api } from "../api";
 import { Num, Empty, Loading, ReasonDialog, dateOnly, useCommand, useDebounced, useLoad, useWs, type DeleteRequest, type Job, type Vehicle } from "./common";
 
 type Dash = {
-  today: { date: string; invoices: number; billed: number; received: number }; month: { from: string; invoices: number; billed: number; received: number };
+  sales_hidden?: boolean; today: { date: string; invoices: number; billed: number; received: number }; month: { from: string; invoices: number; billed: number; received: number };
   open_jobs: Job[]; open_count: number; ready_jobs?: Job[]; ready_count?: number; unpaid_count: number; unpaid_total: number; oldest_unpaid_days: number; overdue_count?: number; due_count: number; delete_requests?: DeleteRequest[]; estimates_waiting?: number; quotes_expiring?: number;
 };
 
@@ -35,7 +36,7 @@ export function Dashboard() {
                 <span className="ws-item-side"><small>{t("Vehicle file")}</small></span>
               </button>
             ))}
-            <button className="ws-item ws-item-new" onClick={() => go({ name: "new", reg: q.trim().toUpperCase() })}>+ New job for {q.trim().toUpperCase()}</button>
+            {can("jobs") && <button className="ws-item ws-item-new" onClick={() => go({ name: "new", reg: q.trim().toUpperCase() })}>+ New job for {q.trim().toUpperCase()}</button>}
           </div>
         )}
       </div>
@@ -44,14 +45,14 @@ export function Dashboard() {
           <div className="ws-kpis">
             <button className="ws-kpi" onClick={() => go({ name: "jobs" })}><small><Wrench size={15} /> {t("Open jobs")}</small><b>{data.open_count}</b><span>{t("in the workshop now")}</span></button>
             <button className={"ws-kpi" + (onlyReady ? " on" : "")} aria-pressed={onlyReady} data-tour="home-ready" onClick={() => setOnlyReady((v) => !v)}><small><PackageCheck size={15} /> {t("Ready for pickup")}</small><b>{data.ready_count || 0}</b><span>{onlyReady ? t("tap to show all open jobs") : t("customers to call")}</span></button>
-            <div className="ws-kpi"><small><Receipt size={15} /> {t("Billed today")}</small><b><Num v={data.today.billed} /></b><span>{data.today.invoices} invoice{data.today.invoices === 1 ? "" : "s"}</span></div>
-            <div className="ws-kpi"><small><Banknote size={15} /> {t("Received today")}</small><b><Num v={data.today.received} /></b><span>{t("cash, card and bank")}</span></div>
+            {!data.sales_hidden && <div className="ws-kpi"><small><Receipt size={15} /> {t("Billed today")}</small><b><Num v={data.today.billed} /></b><span>{data.today.invoices} invoice{data.today.invoices === 1 ? "" : "s"}</span></div>}
+            {!data.sales_hidden && <div className="ws-kpi"><small><Banknote size={15} /> {t("Received today")}</small><b><Num v={data.today.received} /></b><span>{t("cash, card and bank")}</span></div>}
             <button className="ws-kpi warn" onClick={() => go({ name: "invoices" })}><small><ClipboardCheck size={15} /> {t("Customers owe")}</small><b><Num v={data.unpaid_total} /></b><span>{data.unpaid_count} invoice{data.unpaid_count === 1 ? "" : "s"}{data.overdue_count ? ", " + data.overdue_count + " " + t("overdue") : ""}{data.oldest_unpaid_days > 7 ? ", oldest " + data.oldest_unpaid_days + " days" : ""}</span></button>
             {low !== null && low.length > 0 && <button className="ws-kpi warn" onClick={() => window.dispatchEvent(new Event("lifta:low"))}><small><AlertTriangle size={15} /> {t("Running low")}</small><b>{low.length}</b><span>{low.slice(0, 2).join(", ")}{low.length > 2 ? " +" + (low.length - 2) : ""}</span></button>}
             {!!data.estimates_waiting && <button className="ws-kpi" onClick={() => go({ name: "jobs", tab: "ESTIMATE" })}><small><ClipboardCheck size={15} /> {t("Estimates waiting approval")}</small><b>{data.estimates_waiting}</b><span>{t("sent, no answer yet")}</span></button>}
             {!!data.quotes_expiring && <button className="ws-kpi warn" onClick={() => go({ name: "jobs", tab: "QUOTATION" })}><small><CalendarClock size={15} /> {t("Quotations expiring")}</small><b>{data.quotes_expiring}</b><span>{t("end within 3 days")}</span></button>}
             <button className="ws-kpi" onClick={() => go({ name: "due" })}><small><CalendarClock size={15} /> {t("Service due")}</small><b>{data.due_count}</b><span>{t("vehicles to call")}</span></button>
-            {owner && <div className="ws-kpi"><small><TrendingUp size={15} /> {t("Billed this month")}</small><b><Num v={data.month.billed} /></b><span>{data.month.invoices} invoice{data.month.invoices === 1 ? "" : "s"}</span></div>}
+            {owner && !data.sales_hidden && <div className="ws-kpi"><small><TrendingUp size={15} /> {t("Billed this month")}</small><b><Num v={data.month.billed} /></b><span>{data.month.invoices} invoice{data.month.invoices === 1 ? "" : "s"}</span></div>}
           </div>
           {owner && !!data.delete_requests?.length && (
             <section className="ws-card ws-requests" aria-label="Delete requests">

@@ -15,6 +15,8 @@ def api():
     from stocklane_api import core, handler
     with mock_aws():
         core._resource = None
+        from stocklane_api import perms, platform
+        perms._cache._by.clear(); platform._open.clear()  # nothing remembered from the test before
         boto3.client('dynamodb').create_table(
             TableName='test-table', BillingMode='PAY_PER_REQUEST',
             AttributeDefinitions=[{'AttributeName': 'pk', 'AttributeType': 'S'}, {'AttributeName': 'sk', 'AttributeType': 'S'}],

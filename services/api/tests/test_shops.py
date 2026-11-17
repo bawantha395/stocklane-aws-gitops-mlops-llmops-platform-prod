@@ -62,6 +62,7 @@ def test_which_shop_a_sign_in_belongs_to(api, monkeypatch):
     assert len(ok(api('GET', '/api/inventory/products', shop='main'))) == 1
     monkeypatch.setenv('REQUIRE_SHOP', '1')  # a shared deployment refuses a sign-in with no shop
     assert api('GET', '/api/inventory/products')[0] == 403
+    ok(api('POST', '/api/platform/shops', {'id': 'ganga', 'name': 'Ganga Motors'}, role='PLATFORM'))  # and admits registered shops only
     assert api('GET', '/api/inventory/products', shop='ganga')[0] == 200
 
 

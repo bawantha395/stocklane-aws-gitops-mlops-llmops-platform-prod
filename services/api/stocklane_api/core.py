@@ -66,6 +66,12 @@ def set_shop(shop):
     _shop = shop
 
 
+def no_shop():
+    """Start of every request: forget the shop of the request before."""
+    global _shop
+    _shop = None
+
+
 def shop():
     if _shop is None:
         raise ApiError(500, 'No workshop was chosen for this request')

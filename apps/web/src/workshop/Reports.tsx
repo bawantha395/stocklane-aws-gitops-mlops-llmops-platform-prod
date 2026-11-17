@@ -9,6 +9,11 @@ type Rep = {
   by_day: { date: string; billed: number }[]; by_mechanic: { mechanic: string; jobs: number; total: number }[]; by_method: { method: string; amount: number }[];
   top_parts: { name: string; quantity: number; amount: number }[]; top_labour: { name: string; times: number; amount: number }[];
   unpaid_list: { id: string; invoice_number: string; registration: string; customer: string; days: number; balance: number }[];
+  received_gross?: number; refunds?: number; returns?: number; void_count?: number;
+  refund_list?: { invoice_number: string; registration: string; amount: number; reason: string; by: string; at: string }[];
+  return_list?: { invoice_number: string; registration: string; amount: number; reason: string; by: string; at: string }[];
+  voids?: { invoice_number: string; registration: string; total: number; reason: string; by: string; at: string }[];
+  profit?: { parts_sales: number; parts_cost: number; parts_margin: number; labour: number; discount: number; profit: number; unknown: number };
   outside?: { lines: number; sales: number; cost: number; margin: number; without_cost: number; by_shop: { shop: string; lines: number; cost: number }[] };
 };
 
@@ -134,6 +139,11 @@ export function Reports() {
           </div>
           <DayChart days={data.by_day} />
           <div className="ws-two">
+            {data.profit && <Block title={t("Profit")} head={[t("Line"), "", "LKR"]} rows={[[t("Parts sold"), "", lkr(data.profit.parts_sales)], [t("Parts cost"), "", "-" + lkr(data.profit.parts_cost)], [t("Labour"), "", lkr(data.profit.labour)], [t("Discount"), "", "-" + lkr(data.profit.discount)], [t("Profit"), data.profit.unknown ? t("{n} without cost", { n: data.profit.unknown }) : "", lkr(data.profit.profit)]]} />}
+            <Block title={t("Money in and back")} head={[t("Line"), "", "LKR"]} rows={[[t("Money received"), "", lkr(data.received_gross ?? data.received)], [t("Refunds"), String(data.refund_list?.length ?? 0), "-" + lkr(data.refunds ?? 0)], [t("Net received"), "", lkr(data.received)], [t("Parts returned"), String(data.return_list?.length ?? 0), lkr(data.returns ?? 0)], [t("Voided invoices"), String(data.void_count ?? 0), ""]]} />
+            {!!data.refund_list?.length && <Block title={t("Refunds")} head={[t("Invoice"), t("Reason"), "LKR"]} rows={data.refund_list.map((r): [string, string, string] => [r.invoice_number + " · " + r.registration, r.reason + " (" + r.by.split("@")[0] + ")", lkr(r.amount)])} />}
+            {!!data.return_list?.length && <Block title={t("Parts returned")} head={[t("Invoice"), t("Reason"), "LKR"]} rows={data.return_list.map((r): [string, string, string] => [r.invoice_number + " · " + r.registration, r.reason + " (" + r.by.split("@")[0] + ")", lkr(r.amount)])} />}
+            {!!data.voids?.length && <Block title={t("Voided invoices")} head={[t("Invoice"), t("Reason"), "LKR"]} rows={data.voids.map((r): [string, string, string] => [r.invoice_number + " · " + r.registration, (r.reason || "-") + " (" + r.by.split("@")[0] + ")", lkr(r.total)])} />}
             <Block title="By mechanic" head={["Mechanic", "Jobs", "Billed"]} rows={data.by_mechanic.map((m) => [m.mechanic, String(m.jobs), lkr(m.total)])} />
             <Donut title={t("Payments by method")} rows={data.by_method.map((m) => ({ label: m.method.charAt(0) + m.method.slice(1).toLowerCase(), value: m.amount }))} />
             <Bars title={t("Top parts")} rows={data.top_parts.map((p) => ({ label: p.name, value: p.amount, note: "×" + p.quantity }))} />

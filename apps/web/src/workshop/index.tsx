@@ -1,3 +1,4 @@
+import { can } from "../perms";
 import { t, useLang } from "../i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -57,7 +58,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
     { key: "home", label: t("Home"), pages: ["home"] },
     { key: "jobs", label: t("Jobs"), pages: ["jobs"] },
     { key: "vehicles", label: t("Vehicles"), pages: ["vehicles", "due"] },
-    { key: "money", label: t("Bills"), pages: owner ? ["invoices", "report"] : ["invoices"] },
+    ...(can("bills_view") || can("reports") ? [{ key: "money", label: t("Bills"), pages: [...(can("bills_view") ? ["invoices"] : []), ...(can("reports") ? ["report"] : [])] as PageName[] }] : []),
     ...(owner ? [{ key: "setup", label: t("Setup"), pages: ["archive", "settings"] as PageName[] }] : []),
   ];
   const tab: PageName = page.name === "job" || page.name === "new" ? "jobs" : page.name === "quote" || page.name === "quotes" ? "jobs" : page.name === "vehicle" ? "vehicles" : page.name === "invoice" ? "invoices" : page.name;
@@ -79,7 +80,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
       <section className="ws" aria-label="Workshop">
         <div className="ws-top">
           <div><p className="eyebrow">{business.name}</p><h1 ref={headRef} className="ws-large">{title}</h1></div>
-          <div className="ws-top-actions"><PrinterPanel /><button className="button primary" onClick={() => go({ name: "new" })}>+ {t("New job")}</button></div>
+          <div className="ws-top-actions"><PrinterPanel />{can("jobs") && <button className="button primary" onClick={() => go({ name: "new" })}>+ {t("New job")}</button>}</div>
         </div>
         {!online && <p className="ws-offline" role="alert">{t("You are offline. Changes will not save until the internet is back.")}</p>}
         <div className={"ws-sticky" + (shrunk ? " shrunk" : "")}>
@@ -89,7 +90,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
         </nav>
         </div>
         {group.pages.length > 1 && <nav className="ws-subs" aria-label="More pages">{group.pages.map((k) => <button key={k} data-tour={k === group.pages[0] ? undefined : "ws-tab-" + k} className={tab === k ? "chosen" : ""} onClick={() => go({ name: k })}>{LABEL[k] || k}</button>)}</nav>}
-        {["home", "jobs", "vehicles", "due", "invoices"].includes(page.name) && <button className="ws-fab" aria-label={t("New job")} onClick={() => go({ name: "new" })}>+</button>}
+        {can("jobs") && ["home", "jobs", "vehicles", "due", "invoices"].includes(page.name) && <button className="ws-fab" aria-label={t("New job")} onClick={() => go({ name: "new" })}>+</button>}
         {crumbs.length > 0 && <div className="ws-crumbs"><button onClick={() => go(crumbs[0]!.to)}>‹ {t("Back")}</button><span>{crumbs[0]!.label}</span></div>}
         {HELP[page.name] && <p className="ws-help">{t(HELP[page.name]!)}</p>}
         <div className="ws-page" ref={pageRef} key={page.name + (page.id || "")}>
@@ -104,7 +105,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
         {page.name === "invoices" && <Invoices />}
         {page.name === "invoice" && page.id && <InvoicePage key={page.id} id={page.id} />}
         {page.name === "archive" && owner && <Archive />}
-        {page.name === "report" && owner && <Reports />}
+        {page.name === "report" && can("reports") && <Reports />}
         {page.name === "settings" && owner && <Settings />}
         </div>
       </section>

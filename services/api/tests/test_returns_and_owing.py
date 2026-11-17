@@ -282,7 +282,7 @@ def test_void_after_parts_came_back_does_not_return_them_to_stock_twice(api):
     assert stock(api, p['id']) == 7
     ok(api('POST', '/api/workshop/invoices/%s/return' % inv['id'], {'lines': [{'index': 0, 'quantity': 1}], 'reason': 'Wrong part'}))
     assert stock(api, p['id']) == 8
-    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {}))
+    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {'reason': 'Wrong car'}))
     job = ok(api('GET', '/api/workshop/jobs/%s' % inv['job_id']))
     assert job['status'] == 'OPEN' and job['parts'][0]['quantity'] == 2 and 'returned' not in job['parts'][0]
     ok(api('POST', '/api/workshop/jobs/%s/cancel' % inv['job_id'], {'revision': job['revision']}))
@@ -319,7 +319,7 @@ def test_stock_movements_point_back_to_the_job_and_bill(api):
 def test_void_a_bill_then_use_and_take_back_parts_keeps_stock_exact(api):
     p, inv = invoiced(api, 3, 'CAB-6201')            # 10 in stock, 3 on the bill -> 7
     assert stock(api, p['id']) == 7
-    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {}))
+    ok(api('POST', '/api/workshop/invoices/%s/void' % inv['id'], {'reason': 'Wrong car'}))
     assert stock(api, p['id']) == 7                  # voiding only reopens the job: the 3 parts are still on it
     job = ok(api('GET', '/api/workshop/jobs/%s' % inv['job_id']))
     assert job['status'] == 'OPEN' and job['parts'][0]['quantity'] == 3

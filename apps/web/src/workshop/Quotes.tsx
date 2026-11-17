@@ -1,3 +1,4 @@
+import { can } from "../perms";
 import { t } from "../i18n";
 import { toast, askConfirm } from "../ui";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -21,7 +22,7 @@ export function Quotes({ lock }: { lock?: "ESTIMATE" | "QUOTATION" } = {}) {
   return (
     <>
       <div className="ws-toolbar ws-qbar">
-        <span className="ws-newq-row">{lock !== "QUOTATION" && <button className="button primary small ws-newq" data-tour="new-estimate" onClick={() => go({ name: "quote", id: "new", kind: "ESTIMATE" })}>+ {t("New estimate")}</button>}
+        <span className="ws-newq-row">{lock !== "QUOTATION" && can("quotes") && <button className="button primary small ws-newq" data-tour="new-estimate" onClick={() => go({ name: "quote", id: "new", kind: "ESTIMATE" })}>+ {t("New estimate")}</button>}
         {lock !== "ESTIMATE" && <button className={"button small ws-newq " + (lock === "QUOTATION" ? "primary" : "secondary")} data-tour="new-quotation" onClick={() => go({ name: "quote", id: "new", kind: "QUOTATION" })}>+ {t("New quotation")}</button>}</span>
         {!lock && <div className="ws-chips ws-qrow" role="group" aria-label={t("Type")}><small className="ws-qlabel">{t("Type")}</small>
           {([["ALL", t("All")], ["ESTIMATE", t("Estimates")], ["QUOTATION", t("Quotations")]] as [string, string][]).map(([k, label]) => (
@@ -244,7 +245,7 @@ function QuoteForm({ start, newKind, reg }: { start?: Quote | null; newKind?: "E
             </span>
           )}
           {!locked && <button className="button secondary" disabled={busy || (!dirty && !!quote)} onClick={onSave}>{t("Save")}</button>}
-          {primary && owner && <button className="button primary" disabled={busy} onClick={advance}>{primary}</button>}
+          {primary && can("quotes_approve") && <button className="button primary" disabled={busy} onClick={advance}>{primary}</button>}
         </span>
       </div>
     </div>
