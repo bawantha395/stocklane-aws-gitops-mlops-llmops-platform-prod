@@ -92,6 +92,7 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [wsNow, setWsNow] = useState("home");
   const [roomBatch, setRoomBatch] = useState(false);
+  const [intent, setIntent] = useState<"give" | "receive" | null>(null);
   const [quick, setQuick] = useState<{ part: Item; mode: "give" | "receive" } | null>(null);
   const [isDesk, setIsDesk] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 761px)").matches);
   // by default a computer has the store room (take out and put in by hand) and a phone has the parts counter (camera and QR); the owner can switch the other one on in Settings
@@ -200,6 +201,9 @@ function App() {
   const task = tasks[direction],
     active = items.find((item) => item.id === selected),
     owner = !!session?.roles.includes("ROLE_OWNER");
+  // "Part came in / went out" from Home: find the part first, then the quick box opens by itself
+  const goFind = (mode: "give" | "receive") => { setSelected(""); setIntent(mode); navigate("find"); };
+  useEffect(() => { if (view !== "find") { setIntent(null); return; } if (intent && active) { setQuick({ part: active, mode: intent }); setIntent(null); } }, [view, intent, active]);
   const visibleMoves = moves.filter((movement) => {
     const query = activitySearch.trim().toLowerCase();
     const incoming = ["OPENING", "RECEIPT", "RETURN", "COUNT_IN"].includes(movement.kind);
@@ -758,8 +762,8 @@ function App() {
     { key: "home", full: t("Home"), short: t("Home"), sub: "", Icon: Home, main: true },
     ...(can("jobs_view") ? [{ group: t("WORKSHOP MANAGEMENT") }, { key: "workshop" as View, full: t("Jobs & Invoices"), short: t("Jobs"), sub: t("Job cards, vehicles and bills"), Icon: Wrench, main: true }] : []),
     { group: t("STOCK MANAGEMENT") },
-    ...(counterOn && canAny("stock_in", "stock_out") ? [{ key: "counter" as View, full: t("Parts counter"), short: t("Counter"), sub: t("A part came in or went out"), Icon: ScanLine, main: true }] : []),
     { key: "stock", full: t("Parts list"), short: t("Parts"), sub: owner ? t("All parts, photos and QR labels") : t("See what is in stock"), Icon: Package, main: true },
+    ...(counterOn && canAny("stock_in", "stock_out") ? [{ key: "counter" as View, full: t("Parts counter"), short: t("Counter"), sub: t("A part came in or went out"), Icon: ScanLine, main: true }] : []),
     ...(roomOn ? [{ key: "shelf" as View, full: t("Store room"), short: t("Store room"), sub: t("Where every part sits"), Icon: Warehouse }] : []),
     { key: "activity", full: t("History"), short: t("History"), sub: t("Every part in and out"), Icon: Activity },
     ...(can("orders") ? [{ key: "orders" as View, full: t("To order"), short: t("To order"), sub: t("Parts to buy, and WhatsApp orders"), Icon: ListChecks }] : []),
@@ -970,7 +974,7 @@ function App() {
           </div>
         )}
         {view === "home" && session && !owner && (
-          <MechanicHome disabled={busy} low={can("orders") || can("stock_count") ? lowItems.slice(0, 8) : undefined} lowTotal={lowItems.length} onOrder={can("orders") ? () => navigate("orders") : undefined} onCount={roomOn && can("stock_count") ? () => navigate("shelf") : undefined} onLow={(id) => { setSelected(id); navigate("find"); }} onFind={() => navigate("find")} onIn={counterOn && can("stock_in") ? () => openCounter("receive") : undefined} onOut={counterOn && can("stock_out") ? () => openCounter("give") : undefined} onJob={can("jobs") ? () => openWorkshop({ name: "new" }) : undefined} />
+          <MechanicHome disabled={busy} low={can("orders") || can("stock_count") ? lowItems.slice(0, 8) : undefined} lowTotal={lowItems.length} onOrder={can("orders") ? () => navigate("orders") : undefined} onCount={roomOn && can("stock_count") ? () => navigate("shelf") : undefined} onLow={(id) => { setSelected(id); navigate("find"); }} onFind={() => navigate("find")} onIn={can("stock_in") ? () => goFind("receive") : undefined} onOut={can("stock_out") ? () => goFind("give") : undefined} onJob={can("jobs") ? () => openWorkshop({ name: "new" }) : undefined} />
         )}
         {view === "home" && !(session && !owner) && (
           <>
@@ -1044,23 +1048,23 @@ function App() {
               <button
                 className="counter-tile receive"
                 disabled={!session || busy}
-                onClick={() => openCounter("receive")}
+                onClick={() => goFind("receive")}
               >
                 <ArrowDownLeft size={30} />
                 <span>
                   <strong>{t("Part came in")}</strong>
-                  <small>{t("Scan or photo what came in")}</small>
+                  <small>{t("Find the part, then say how many")}</small>
                 </span>
               </button>
               <button
                 className="counter-tile give"
                 disabled={!session || busy}
-                onClick={() => openCounter("give")}
+                onClick={() => goFind("give")}
               >
                 <ArrowUpRight size={30} />
                 <span>
                   <strong>{t("Part went out")}</strong>
-                  <small>{t("Scan the part and confirm the quantity")}</small>
+                  <small>{t("Find the part, then say how many")}</small>
                 </span>
               </button>
             </div>
@@ -1161,7 +1165,7 @@ function App() {
                 </h1>
                 <p>
                   {view === "find"
-                    ? (isDesk && !counterOn ? "Type the name, part number or shelf." : "Search by part number, scan a QR or identify a photo.")
+                    ? (intent ? (intent === "receive" ? "Pick the part that came in." : "Pick the part that went out.") : isDesk && !counterOn ? "Type the name, part number or shelf." : "Search by part number, scan a QR or identify a photo.")
                     : "Build your list first. Stock changes only when you confirm."}
                 </p>
               </div>
