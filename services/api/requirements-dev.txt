@@ -1,3 +1,4 @@
 boto3>=1.35
 moto[dynamodb,cognitoidp]>=5
 pytest>=8
+pillow>=10
