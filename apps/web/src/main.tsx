@@ -15,6 +15,7 @@ import { ToastHost, ConfirmHost, askConfirm, applyTheme, getTheme, toast } from 
 import { setBusinessName, setDefaultReorder, useBusinessName } from "./businessName";
 import { t, useLang, setLang, setSinhalaAllowed, useSinhalaAllowed } from "./i18n";
 import { Walkthrough } from "./Walkthrough";
+import { QuickMove } from "./QuickMove";
 import { NumPadHost } from "./NumPad";
 import { OfflineBar } from "./OfflineBar";
 import { flush as flushOffline } from "./offline";
@@ -89,6 +90,7 @@ function App() {
   });
   const [menuOpen, setMenuOpen] = useState(false);
   const [wsNow, setWsNow] = useState("home");
+  const [quick, setQuick] = useState<{ part: Item; mode: "give" | "receive" } | null>(null);
   const [isDesk, setIsDesk] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 761px)").matches);
   // by default a computer has the store room (take out and put in by hand) and a phone has the parts counter (camera and QR); the owner can switch the other one on in Settings
   const roomOn = mods.storeRoom && (isDesk || mods.roomPhone), counterOn = mods.counter && (!isDesk || mods.counterWeb);
@@ -347,10 +349,10 @@ function App() {
     setSaveReference(false);
   };
   useEffect(() => { if (session) void flushOffline(); }, [session]); // anything saved while there was no internet goes out after sign-in
-  useEffect(() => { const out = (e: Event) => { const p = items.find((x) => x.id === (e as CustomEvent).detail); if (p) openCounter("give", p); }; window.addEventListener("lifta:take-out", out); return () => window.removeEventListener("lifta:take-out", out); });
+  useEffect(() => { const out = (e: Event) => { const p = items.find((x) => x.id === (e as CustomEvent).detail); if (p) setQuick({ part: p, mode: "give" }); }; window.addEventListener("lifta:take-out", out); return () => window.removeEventListener("lifta:take-out", out); });
   useEffect(() => { const go = () => { if (can("see_cost") && can("price_edit")) navigate("prices"); }; window.addEventListener("lifta:open-prices", go); return () => window.removeEventListener("lifta:open-prices", go); });
   useEffect(() => { const go = () => navigate("shelf"); window.addEventListener("lifta:open-shelf", go); return () => window.removeEventListener("lifta:open-shelf", go); });
-  useEffect(() => { const here = () => { try { localStorage.setItem("lifta.counter.style", "batch"); } catch { /* ignore */ } openCounter("receive"); }; window.addEventListener("lifta:receive-here", here); return () => window.removeEventListener("lifta:receive-here", here); });
+  useEffect(() => { const here = (e: Event) => { const id = (e as CustomEvent).detail, p = id && items.find((x) => x.id === id); if (p) { setQuick({ part: p, mode: "receive" }); return; } try { localStorage.setItem("lifta.counter.style", "batch"); } catch { /* ignore */ } openCounter("receive", null); }; window.addEventListener("lifta:receive-here", here); return () => window.removeEventListener("lifta:receive-here", here); });
   const navigate = (next: View, preserveCounterPick = false) => {
     if (submitting.current) return;
     setMenuOpen(false);
@@ -804,7 +806,7 @@ function App() {
             <button
               data-tour={n.key === "settings" && isDesk ? "ws-tab-settings" : "nav-" + n.key}
               disabled={busy}
-              className={(view === n.key ? "chosen" : "") + (n.main ? "" : " nav-more")}
+              className={((n.key === "settings" ? view === "workshop" && wsNow === "settings" : n.key === "workshop" ? view === "workshop" && wsNow !== "settings" : view === n.key) ? "chosen" : "") + (n.main ? "" : " nav-more")}
               title={n.sub || undefined}
               onClick={() => pickNav(n.key)}
             >
@@ -815,7 +817,7 @@ function App() {
               </span>
               <span className="nav-short">{n.short}</span>
             </button>
-            {n.key === "workshop" && view === "workshop" && isDesk && wsSubs.length > 0 && (
+            {n.key === "workshop" && view === "workshop" && wsNow !== "settings" && isDesk && wsSubs.length > 0 && (
               <div className="nav-subs" role="group" aria-label={t("Jobs & Invoices")}>
                 {wsSubs.map((x) => (
                   <button key={x.key} data-tour={x.tour} disabled={busy} className={wsNow === x.key ? "chosen" : ""} onClick={() => openWorkshop(x.page)}>{x.label}</button>
@@ -888,6 +890,7 @@ function App() {
       <main className="stock-main">
         <OfflineBar />
         <NumPadHost />
+      {quick && <QuickMove key={quick.part.id + quick.mode} part={quick.part} mode={quick.mode} onClose={() => setQuick(null)} onChanged={() => void refresh()} />}
         <header className="stock-header">
           <a className="m-brand" href="#" onClick={(e) => { e.preventDefault(); navigate("home"); }}>
             <Logo size={30} /> <b>Lifta<span>.</span></b>
@@ -1148,7 +1151,7 @@ function App() {
                 </h1>
                 <p>
                   {view === "find"
-                    ? "Search by part number, scan a QR or identify a photo."
+                    ? (isDesk && !counterOn ? "Type the name, part number or shelf." : "Search by part number, scan a QR or identify a photo.")
                     : "Build your list first. Stock changes only when you confirm."}
                 </p>
               </div>
@@ -1186,8 +1189,10 @@ function App() {
                             <Search size={19} />
                             <input aria-label="Search catalogue" autoFocus={typeof matchMedia !== "undefined" && matchMedia("(pointer: fine)").matches} disabled={busy} value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Name, part number or shelf")} />
                           </label>
+                          {!(isDesk && !counterOn) && <>
                           <button type="button" className="button primary find-scan" disabled={busy} onClick={() => setScanner(true)} aria-label="Scan QR label"><ScanLine size={20} /> <span>{t("Scan")}</span></button>
                           <button type="button" className="button secondary find-scan" disabled={busy} onClick={() => { markNativePick(); file.current?.click(); }} aria-label="Identify from photo"><Camera size={20} /> <span>{t("Photo")}</span></button>
+                          </>}
                         </div>
                         <details className="find-paste">
                           <summary>{t("Barcode scanner or paste code")}</summary>
@@ -1482,22 +1487,18 @@ function App() {
                     ) : (
                       <>
                         <div className="stock-form-actions">
-                          <button
+                          {can("stock_in") && <button
                             className="button primary"
-                            onClick={() => {
-                              openCounter("receive", active);
-                            }}
+                            onClick={() => setQuick({ part: active, mode: "receive" })}
                           >
                             Receive this item
-                          </button>
-                          <button
+                          </button>}
+                          {can("stock_out") && <button
                             className="button secondary"
-                            onClick={() => {
-                              openCounter("give", active);
-                            }}
+                            onClick={() => setQuick({ part: active, mode: "give" })}
                           >
                             Give this item
-                          </button>
+                          </button>}
                           <button
                             className="button secondary"
                             onClick={() => setLabelItem(active)}

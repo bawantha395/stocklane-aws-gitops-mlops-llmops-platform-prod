@@ -1,6 +1,7 @@
 import { can } from "../perms";
 import { openPdf } from "../api";
 import { t } from "../i18n";
+import { askConfirm } from "../ui";
 import { Rows, groupByPeriod } from "./Rows";
 import { InvoiceCard } from "./Cards";
 import { useEffect, useState } from "react";
@@ -68,6 +69,7 @@ function ReturnParts({ inv, onClose, onDone }: { inv: Invoice; onClose: () => vo
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!picked.length && paid <= 0) { setErr(t("Pick the parts that came back")); return; }
+    if (!picked.length && hasParts && !(await askConfirm(t("The parts do NOT go back into stock. Only the money is given back. If the parts came back, cancel and put the numbers above."), { title: t("Refund money only?"), confirm: t("Refund money only") }))) return;
     setBusy(true); setErr("");
     try {
       if (picked.length) await command("/api/workshop/invoices/" + inv.id + "/return", { lines: picked, reason, refundMethod: method });
@@ -78,7 +80,7 @@ function ReturnParts({ inv, onClose, onDone }: { inv: Invoice; onClose: () => vo
   return (
     <form className="ws-card ws-pay ws-return" onSubmit={submit} data-tour="return-parts">
       <h3>{t("Refund")} <small>{inv.invoice_number}{paid > 0 ? " · " + t("Paid so far") + " LKR " + lkr(paid) : ""}</small></h3>
-      {hasParts && <p className="muted">{t("Parts that came back: put the number here. They go back into stock by themselves and the bill goes down.")}</p>}
+      {hasParts && <p className="muted">{t("Parts that came back: put the number here. They go back into stock by themselves and the bill goes down.")} <button type="button" className="button secondary small" onClick={() => setQty(Object.fromEntries(inv.parts.map((_, i) => [i, left(i) > 0 ? String(left(i)) : ""]).filter(([, v]) => v)))}>{t("All parts came back")}</button></p>}
       {inv.parts.map((p, i) => left(i) > 0 && (
         <label className="ws-field ws-return-line" key={i}>
           <span>{p.name}{p.product_id ? "" : " (" + t("not from stock") + ")"} <small>{t("up to")} {left(i)}</small></span>
@@ -99,7 +101,7 @@ function ReturnParts({ inv, onClose, onDone }: { inv: Invoice; onClose: () => vo
           {giveBack > 0.005 ? <>{t("Money you give back")}: <b>LKR {lkr(giveBack)}</b></> : <>{t("No money to give back. The customer still owes")} <b>LKR {lkr(newTotal - paid)}</b></>}</p>;
       })()}
       {err && <p role="alert" className="stock-error">{err}</p>}
-      <div className="ws-actions"><button type="button" className="button secondary" disabled={busy} onClick={onClose}>{t("Cancel")}</button><button className="button primary" disabled={busy || (!picked.length && paid <= 0)}>{picked.length ? t("Return to stock and refund") : t("Save refund")}</button></div>
+      <div className="ws-actions"><button type="button" className="button secondary" disabled={busy} onClick={onClose}>{t("Cancel")}</button><button className="button primary" disabled={busy || (!picked.length && paid <= 0)}>{picked.length ? t("Return to stock and refund") : hasParts ? t("Refund money only (stock stays)") : t("Save refund")}</button></div>
     </form>
   );
 }

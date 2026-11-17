@@ -7,6 +7,7 @@ import { ArrowLeft, Camera as CameraIcon, Check, Loader2, Minus, Plus } from "lu
 import { t, useLang } from "./i18n";
 import { toast } from "./ui";
 import { SupplierPick, useSuppliers } from "./Suppliers";
+import { can } from "./perms";
 import { BatchIn, batchSize, clearBatch } from "./BatchIn";
 import { BatchOut, batchOutSize, clearBatchOut } from "./BatchOut";
 import { api, openPdf, shrink, type Match, type Product, type BarcodeLookup, type Movement } from "./api";
@@ -307,18 +308,18 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
                 <SupplierPick id={supplierId} name={supplier} disabled={busy} onChange={pickSupplier} />
                 <label className="ws-field">{t("Supplier invoice or delivery no.")}<input value={reference} maxLength={60} disabled={busy} onChange={(e) => setReference(e.target.value)} placeholder="DN-1234" /></label>
               </div>
-              <label className="ws-field">{t("Cost price per unit (LKR)")} <small>({t("optional")})</small><input value={cost} inputMode="decimal" maxLength={12} disabled={busy} onChange={(e) => setCost(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="1350.00" /></label>
-              {supplierId && (
+              {can("see_cost") && <label className="ws-field">{t("Cost price per unit (LKR)")} <small>({t("optional")})</small><input value={cost} inputMode="decimal" maxLength={12} disabled={busy} onChange={(e) => setCost(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="1350.00" /></label>}
+              {supplierId && can("see_cost") && (
                 <div className="ws-field" role="group" aria-label={t("Payment")}>{t("Payment")}
                   <div className="ws-seg">{([["PAID", t("Paid now")], ["CREDIT", t("On credit")]] as [string, string][]).map(([k, l]) => <button type="button" key={k} className={terms === k ? "on" : ""} aria-pressed={terms === k} disabled={busy} onClick={() => setTerms(k as "PAID" | "CREDIT")}>{l}</button>)}</div>
                   {terms === "CREDIT" && !cost.trim() && <small className="stock-error">{t("Enter the cost price so we know how much is owed.")}</small>}
                 </div>
               )}
-              <small className="stock-help">{t("What the supplier charged for one. Only the owner can see this price later.")} {t("A note number is made for this entry. You can print the note after saving.")}</small>
+              <small className="stock-help">{can("see_cost") ? t("What the supplier charged for one. Only the owner can see this price later.") + " " : ""}{t("A note number is made for this entry. You can print the note after saving.")}</small>
             </div>
           )}
           {part && mode === "receive" && (
-            <button className="button primary counter-confirm" disabled={busy || !(quantity > 0) || (mode === "receive" && !!supplierId && terms === "CREDIT" && !cost.trim())} onClick={() => void receive()}>
+            <button className="button primary counter-confirm" disabled={busy || !(quantity > 0) || (mode === "receive" && !!supplierId && can("see_cost") && terms === "CREDIT" && !cost.trim())} onClick={() => void receive()}>
               {busy ? t("Saving…") : t("Add {q} × {name} to stock", { q: amount(quantity), name: part.name })}
             </button>
           )}

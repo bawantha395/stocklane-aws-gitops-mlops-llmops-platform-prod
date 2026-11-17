@@ -145,6 +145,13 @@ export function StoreMap({ items }: { items: Item[] }) {
   );
 }
 
+/** Put a part in on a shelf: opens the counter's batch list with that shelf (and, if given, that part) ready. */
+function putIn(shelfLabel: string, id?: string) {
+  try { sessionStorage.setItem("lifta.putaway", shelfLabel); } catch { /* ignore */ }
+  window.dispatchEvent(new CustomEvent("lifta:receive-here", { detail: id || "" }));
+}
+const noCamera = () => typeof window !== "undefined" && window.matchMedia("(min-width: 761px)").matches;
+
 /** One shelf (or a whole rack, or the parts with no shelf): what is on it, and the photo of it if the owner took one. */
 function ShelfPage({ sel, rack, onClose, onMove, canCount, counted, onCounted }: { sel: Sel; rack?: Rack; onClose: () => void; onMove?: (ids: string[]) => void; canCount?: boolean; counted?: string; onCounted?: () => void }) {
   const [counting, setCounting] = useState(false), [vals, setVals] = useState<Record<string, string>>({}), [saving, setSaving] = useState(false);
@@ -161,7 +168,7 @@ function ShelfPage({ sel, rack, onClose, onMove, canCount, counted, onCounted }:
       <p className="muted sm-counted">{counted ? t("Last counted") + ": " + dayText(counted) : t("Not counted yet")}</p>
       {sel.rack !== "none" && !counting && (can("stock_in") || can("stock_out")) && (
         <div className="sm-tools">
-          {can("stock_in") && <button type="button" className="button primary small" onClick={() => { try { sessionStorage.setItem("lifta.putaway", sel.label); } catch { /* ignore */ } window.dispatchEvent(new Event("lifta:receive-here")); }}>{t("Put in")}</button>}
+          {can("stock_in") && <button type="button" className="button primary small" onClick={() => putIn(sel.label)}>{t("Put in")}</button>}
         </div>
       )}
       {canCount && data && data.parts.length > 0 && !counting && <div className="sm-tools"><button type="button" className="button secondary small" onClick={() => { setVals({}); setCounting(true); }}>{t("Count this shelf")}</button></div>}
@@ -194,7 +201,7 @@ function ShelfPage({ sel, rack, onClose, onMove, canCount, counted, onCounted }:
               {counting ? (
                 <span className="sm-count"><input type="number" inputMode="decimal" min="0" step={p.unit === "LITRE" ? "0.1" : "1"} aria-label={t("Counted") + " " + p.name} value={vals[p.id] ?? ""} onChange={(e) => setVals({ ...vals, [p.id]: e.target.value })} placeholder={String(Number(p.quantity))} />
                   {vals[p.id] !== undefined && vals[p.id] !== "" && Number(vals[p.id]) !== Number(p.quantity) && <small className={Number(vals[p.id]) > Number(p.quantity) ? "up" : "down"}>{Number(vals[p.id]) - Number(p.quantity) > 0 ? "+" : ""}{Math.round((Number(vals[p.id]) - Number(p.quantity)) * 100) / 100}</small>}</span>
-              ) : <span className="sm-qty">{Number(p.quantity)} <small>{p.unit === "LITRE" ? "L" : ""}</small>{can("stock_out") && Number(p.quantity) > 0 && <button type="button" className="button secondary small sm-out" onClick={() => window.dispatchEvent(new CustomEvent("lifta:take-out", { detail: p.id }))}>{t("Take out")}</button>}</span>}
+              ) : <span className="sm-qty">{Number(p.quantity)} <small>{p.unit === "LITRE" ? "L" : ""}</small>{can("stock_out") && Number(p.quantity) > 0 && <button type="button" className="button secondary small sm-out" onClick={() => window.dispatchEvent(new CustomEvent("lifta:take-out", { detail: p.id }))}>{t("Take out")}</button>}{can("stock_in") && sel.rack !== "none" && <button type="button" className="button secondary small sm-out" onClick={() => putIn(sel.label, p.id)}>{t("Put in")}</button>}</span>}
             </li>
           ))}
         </ul>
@@ -218,13 +225,14 @@ function QuickLook({ rack, wall, counts, onClose, onOpen }: { rack: Rack; wall: 
             {rack.levels.map((l) => <button key={l.id} type="button" className={lv === l.id ? "on" : ""} aria-pressed={lv === l.id} onClick={() => setLv(l.id)}><b>{label(rack, l)}</b><span className="ws-count">{counts[l.id] || 0}</span></button>)}
           </div>
           <div className="sm-look-items">
-            <h3>{label(rack, level)}</h3>
+            <h3>{label(rack, level)}{data && <small> {data.parts.length} {data.parts.length === 1 ? t("part") : t("parts")}</small>}</h3>
             {!data ? <Loading error={error} /> : data.parts.length === 0 ? <p className="muted">{t("Nothing on this shelf.")}</p> : (
-              <ul className="sm-parts">{data.parts.map((p) => <li key={p.id} className={Number(p.quantity) <= Number(p.reorder_level ?? -1) ? "low" : ""}><span><b>{p.name}</b><small>{p.part_number || p.sku}</small></span><span className="sm-qty">{Number(p.quantity)}{can("stock_out") && Number(p.quantity) > 0 && <button type="button" className="button secondary small" onClick={() => { onClose(); window.dispatchEvent(new CustomEvent("lifta:take-out", { detail: p.id })); }}>{t("Take out")}</button>}</span></li>)}</ul>
+              <ul className="sm-parts">{data.parts.map((p) => <li key={p.id} className={Number(p.quantity) <= Number(p.reorder_level ?? -1) ? "low" : ""}><span><b>{p.name}</b><small>{p.part_number || p.sku}</small></span><span className="sm-qty">{Number(p.quantity)}{can("stock_out") && Number(p.quantity) > 0 && <button type="button" className="button secondary small" onClick={() => { onClose(); window.dispatchEvent(new CustomEvent("lifta:take-out", { detail: p.id })); }}>{t("Take out")}</button>}{can("stock_in") && <button type="button" className="button secondary small sm-out" onClick={() => { onClose(); putIn(label(rack, level), p.id); }}>{t("Put in")}</button>}</span></li>)}</ul>
             )}
+            {noCamera() && <p className="muted sm-nocam">{t("No camera here. Camera scan stays on the phone Counter.")}</p>}
             <div className="sm-tools">
               <button type="button" className="button primary small" onClick={() => onOpen(level)}>{t("Open this shelf")}</button>
-              {can("stock_in") && <button type="button" className="button secondary small" onClick={() => { try { sessionStorage.setItem("lifta.putaway", label(rack, level)); } catch { /* ignore */ } window.dispatchEvent(new Event("lifta:receive-here")); }}>{t("Part came in here")}</button>}
+              {can("stock_in") && <button type="button" className="button secondary small" onClick={() => putIn(label(rack, level))}>{t("Part came in here")}</button>}
             </div>
           </div>
         </div>

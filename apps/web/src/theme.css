@@ -446,3 +446,37 @@ html .stock-shell .bl, html .stock-shell .bl * { color: #fff !important; }
 .numpad-grid button:active { background: rgba(var(--sh), .16); }
 
 .ws-sub { margin-left: 26px; font-size: 13px; }
+
+/* Settings → Store room switches: a small box and its words on one line (never a huge box with the words pushed off the page) */
+.ws-set .ws-modules .stock-check { display: flex !important; flex-direction: row !important; align-items: flex-start; justify-content: flex-start !important; gap: 10px; width: auto !important; margin: 4px 0 !important; text-align: left; }
+.ws-set .ws-modules .stock-check input[type="checkbox"] { width: 18px !important; height: 18px !important; min-width: 18px; min-height: 0 !important; padding: 0 !important; margin: 2px 0 0 !important; flex: 0 0 18px !important; }
+.ws-set .ws-modules .stock-check.ws-sub { margin-left: 28px !important; }
+/* nothing on a page may push the whole page sideways (that is what cut the logo off at the left edge) */
+.stock-shell, .stock-main { overflow-x: clip; max-width: 100vw; }
+
+/* every on/off switch in Settings: a small box and its words on one line */
+.ws-set .stock-check { display: flex !important; flex-direction: row !important; align-items: flex-start; justify-content: flex-start !important; gap: 10px; width: auto !important; max-width: 100%; text-align: left; }
+.ws-set .stock-check input[type="checkbox"] { width: 18px !important; height: 18px !important; min-width: 18px; min-height: 0 !important; padding: 0 !important; margin: 2px 0 0 !important; flex: 0 0 18px !important; }
+
+/* store room quick look: the columns of a rack side by side (1-A 1-B 1-C ...), the parts of the chosen column under them */
+.sm-look-body { grid-template-columns: 1fr !important; }
+.sm-look-levels { display: flex !important; flex-wrap: wrap; gap: 8px; overflow: visible !important; }
+.sm-look-levels button { flex: 1 1 88px; min-width: 88px; flex-direction: column !important; justify-content: center !important; gap: 4px; min-height: 76px !important; padding: 8px !important; text-align: center; }
+.sm-look-levels button b { font-size: 20px; }
+.sm-look-items { max-height: 46vh; }
+
+/* store room quick look: take out + put in side by side, "no camera" note */
+.sm-parts .sm-qty { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.sm-look-items h3 small { font-size: .7em; font-weight: 500; color: var(--muted, #6b7280); margin-left: 6px; }
+.sm-nocam { font-size: .85rem; margin: 10px 0 0; }
+
+/* supplier picker: the select looks like the other inputs */
+.sup-pick-row select { border: 1px solid var(--ws-line, rgba(0,0,0,.12)); border-radius: 14px; background-color: var(--surface, #fff); padding: 0 12px; min-height: 44px; font: inherit; color: var(--ink, inherit); }
+
+/* quick put in / take out box */
+.quick-move { max-width: 460px; display: flex; flex-direction: column; gap: 12px; }
+.quick-move-part { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.quick-move-part small { color: var(--ws-muted, #6b7280); }
+.quick-move-more { border: 1px solid var(--ws-line, rgba(0,0,0,.1)); border-radius: 14px; padding: 8px 12px; }
+.quick-move-more > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.quick-move-more[open] { display: flex; flex-direction: column; gap: 10px; }
