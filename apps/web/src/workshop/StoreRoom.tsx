@@ -48,87 +48,77 @@ export function StoreRoomSection() {
   };
   const key = (a: Ar) => a.id || a.name;
   const WALL_TEXT: Record<string, string> = { W: "Left wall (west)", E: "Right wall (east)", N: "Top wall (north)", S: "Bottom wall (south)" };
-  const groups: { area: Ar | null; racks: { r: Rk; i: number }[] }[] = [...areas.map((a) => ({ area: a as Ar | null, racks: racks.map((r, i) => ({ r, i })).filter(({ r }) => r.area === key(a)) })),
-    { area: null, racks: racks.map((r, i) => ({ r, i })).filter(({ r }) => !r.area || !areas.some((a) => key(a) === r.area)) }];
   const setRack = (i: number, r: Rk) => edit(setRacks, (x) => x.map((v, k) => (k === i ? r : v)));
   const swapRack = (i: number, d: number) => edit(setRacks, (x) => { // move within the same wall only
     const here = x[i].area; let j = i + d; while (j >= 0 && j < x.length && x[j].area !== here) j += d;
     if (j < 0 || j >= x.length) return x; const c = [...x]; [c[i], c[j]] = [c[j], c[i]]; return c; });
-  // Drag and drop (mouse and pen): a rack dropped on another rack goes before it, on that rack's wall; dropped on a wall heading it goes to the end of that wall.
-  const [drag, setDrag] = useState<{ rack: number; level?: number } | null>(null);
-  const dropRack = (target: number) => { if (!drag || drag.level !== undefined || drag.rack === target) return; edit(setRacks, (x) => { const c = [...x], [m] = c.splice(drag.rack, 1); const at = c.indexOf(x[target]); c.splice(at, 0, { ...m, area: x[target].area }); return c; }); setDrag(null); };
-  const dropWall = (wall: Ar | null) => { if (!drag || drag.level !== undefined) return; const area = wall ? key(wall) : ""; edit(setRacks, (x) => { const c = [...x], [m] = c.splice(drag.rack, 1); let last = -1; c.forEach((r, k) => { if (r.area === area) last = k; }); c.splice(last + 1, 0, { ...m, area }); return c; }); setDrag(null); };
-  const dropLevel = (i: number, to: number) => { if (!drag || drag.level === undefined || drag.rack !== i || drag.level === to) return; const r = racks[i]; const lv = [...r.levels], [m] = lv.splice(drag.level, 1); lv.splice(to, 0, m); setRack(i, { ...r, levels: lv }); setDrag(null); };
-  const [adding, setAdding] = useState(""), [addN, setAddN] = useState("1"), [addL, setAddL] = useState("3");
-  const addRacks = (wall: Ar) => {
-    const n = Math.max(1, Math.min(30, Math.floor(Number(addN)) || 1)), l = Math.max(1, Math.min(12, Math.floor(Number(addL)) || 1));
-    edit(setRacks, (x) => {
-      let next = Number(nextNumber()); const out = [...x];
-      for (let k = 0; k < n && out.length < 100; k++) out.push({ name: String(next++), area: key(wall), type: "RACK" as const, levels: Array.from({ length: l }, (_, v) => ({ name: String.fromCharCode(65 + v) })) });
-      return out;
-    });
-    setAdding("");
-  };
+  const [sel, setSel] = useState<number | null>(null);
   const nextNumber = () => String(racks.reduce((n, r) => (/^\d+$/.test(r.name.trim()) ? Math.max(n, Number(r.name.trim())) : n), 0) + 1);
+  const addRack = (wall: Ar) => {
+    if (racks.length >= 100) return;
+    edit(setRacks, (x) => [...x, { name: nextNumber(), area: key(wall), type: "RACK" as const, levels: ["A", "B", "C"].map((name) => ({ name })) }]);
+    setSel(racks.length);
+  };
+  const removeRack = (i: number) => { edit(setRacks, (x) => x.filter((_, k) => k !== i)); setSel(null); };
+  const wall = (pos: string) => areas.find((a) => a.pos === pos);
+  const Wall = ({ pos }: { pos: "N" | "W" | "E" | "S" }) => {
+    const a = wall(pos);
+    if (!a) return <div className={"sr-wall sr-" + pos} />;
+    return (
+      <div className={"sr-wall sr-" + pos}>
+        <input className="sr-wallname" aria-label={t(WALL_TEXT[pos])} title={t(WALL_TEXT[pos])} value={a.name} maxLength={40} onChange={(e) => { const nm = e.target.value; edit(setAreas, (x) => x.map((v) => (v === a ? { ...v, name: nm } : v))); }} />
+        <div className="sr-boxes">
+          {racks.map((r, i) => (r.area === key(a) ? <button key={r.id || "n" + i} type="button" className={"sr-box" + (sel === i ? " on" : "")} aria-pressed={sel === i} onClick={() => setSel(sel === i ? null : i)}>{r.name || "?"}</button> : null))}
+          {racks.length < 100 && <button type="button" className="sr-box sr-plus" aria-label={t("Add a rack to this wall")} onClick={() => addRack(a)}>+</button>}
+        </div>
+      </div>
+    );
+  };
+  const loneRacks = racks.map((r, i) => ({ r, i })).filter(({ r }) => !r.area || !areas.some((a) => key(a) === r.area));
+  const cur = sel !== null ? racks[sel] : undefined;
   return (
     <section className="ws-sec" data-tour="store-room">
       <h3><span className="ws-sec-ico"><Boxes size={18} /></span>{t("Store room")}</h3>
-      <small className="ws-hint">{t("Four walls, as you stand in the middle. Rename the walls, racks and levels, and drag a rack to where it really is. Shelves are named like 1-A.")}</small>
+      <small className="ws-hint">{t("Draw the room as you stand in the middle. Tap + on a wall to add a rack. Tap a rack to set its columns (1-A, 1-B).")}</small>
       <ModulesBox />
       {loaded && racks.length === 0 && <button type="button" className="button secondary small" disabled={busy} onClick={() => void quick()}>{t("Quick start: racks 1 to 12, levels A B C")}</button>}
       {loose > 0 && <p className="ws-hint">{t("Parts not on a shelf yet")}: <b>{loose}</b></p>}
-      {groups.map(({ area, racks: rs }) => (
-        (area || rs.length > 0) && (
-          <div className="ws-area" key={area ? key(area) : "none"} onDragOver={(e) => drag && e.preventDefault()} onDrop={(e) => { e.preventDefault(); dropWall(area); }}>
-            {area ? (
-              <div className="ws-list-row">
-                <span className="ws-wallpos" title={t(WALL_TEXT[area.pos || ""] || "")}>{{ W: "←", E: "→", N: "↑", S: "↓" }[area.pos || ""]}</span>
-                <input aria-label={t(WALL_TEXT[area.pos || ""] || "Wall name")} placeholder={t(WALL_TEXT[area.pos || ""] || "Wall name")} value={area.name} maxLength={40}
-                  onChange={(e) => { const nm = e.target.value; edit(setAreas, (x) => x.map((v) => (v === area ? { ...v, name: nm } : v))); }} />
-                <small className="ws-hint">{t(WALL_TEXT[area.pos || ""] || "")}</small>
-              </div>
-            ) : <div className="ws-hint">{t("Racks with no wall")}</div>}
-            {rs.map(({ r, i }) => (
-              <div className={"ws-rack" + (drag?.rack === i && drag.level === undefined ? " dragging" : "")} key={r.id || "n" + i} onDragOver={(e) => drag && drag.level === undefined && e.preventDefault()} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); dropRack(i); }}>
-                <div className="ws-list-row">
-                  <span className="ws-grip" draggable aria-hidden="true" title={t("Drag to move")} onDragStart={() => setDrag({ rack: i })} onDragEnd={() => setDrag(null)}>⋮⋮</span>
-                  <input aria-label={t("Rack name")} placeholder={t("Rack 1")} value={r.name} maxLength={40} onChange={(e) => setRack(i, { ...r, name: e.target.value })} />
-                  <select aria-label={t("Type")} value={r.type} onChange={(e) => setRack(i, { ...r, type: e.target.value as Rk["type"] })}>{(Object.keys(TYPE) as Rk["type"][]).map((k) => <option key={k} value={k}>{t(TYPE[k])}</option>)}</select>
-                  <select aria-label={t("Wall")} value={r.area} onChange={(e) => setRack(i, { ...r, area: e.target.value })}><option value="">{t("No wall")}</option>{areas.map((a) => <option key={key(a)} value={key(a)}>{a.name || t(WALL_TEXT[a.pos || ""] || "Wall")}</option>)}</select>
-                  <button type="button" className="ws-l-del" aria-label={t("Move up")} onClick={() => swapRack(i, -1)}>↑</button>
-                  <button type="button" className="ws-l-del" aria-label={t("Move down")} onClick={() => swapRack(i, 1)}>↓</button>
-                  <button type="button" className="ws-l-del" aria-label={t("Remove")} disabled={used(r) > 0} title={used(r) ? t("Move parts first") : ""} onClick={() => edit(setRacks, (x) => x.filter((_, k) => k !== i))}>×</button>
-                </div>
-                <div className="ws-levels">
-                  {r.levels.map((l, j) => (
-                    <span className="ws-level" key={l.id || "n" + j} onDragOver={(e) => drag && drag.level !== undefined && drag.rack === i && e.preventDefault()} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); dropLevel(i, j); }}>
-                      <span className="ws-grip" draggable aria-hidden="true" title={t("Drag to move")} onDragStart={() => setDrag({ rack: i, level: j })} onDragEnd={() => setDrag(null)}>⋮⋮</span>
-                      <input aria-label={t("Level")} value={l.name} maxLength={12} onChange={(e) => setRack(i, { ...r, levels: r.levels.map((v, k) => (k === j ? { ...v, name: e.target.value } : v)) })} />
-                      {used(r, l) > 0 && <small className="ws-count" title={t("Parts on this level")}>{used(r, l)}</small>}
-                      <ShelfPhoto id={l.photo_id} onId={(pid) => setRack(i, { ...r, levels: r.levels.map((v, k) => (k === j ? { ...v, photo_id: pid } : v)) })} />
-                      <button type="button" className="ws-l-del" aria-label={t("Move up")} onClick={() => setRack(i, { ...r, levels: move(r.levels, j, -1) })}>↑</button>
-                      <button type="button" className="ws-l-del" aria-label={t("Move down")} onClick={() => setRack(i, { ...r, levels: move(r.levels, j, 1) })}>↓</button>
-                      <button type="button" className="ws-l-del" aria-label={t("Remove")} disabled={used(r, l) > 0} title={used(r, l) ? t("Move parts first") : ""} onClick={() => setRack(i, { ...r, levels: r.levels.filter((_, k) => k !== j) })}>×</button>
-                    </span>
-                  ))}
-                  {r.levels.length < 20 && <button type="button" className="button secondary small" onClick={() => setRack(i, { ...r, levels: [...r.levels, { name: String.fromCharCode(65 + Math.min(r.levels.length, 25)) }] })}>{t("+ Level")}</button>}
-                </div>
-              </div>
-            ))}
-            {area && racks.length < 100 && (adding === key(area) ? (
-              <div className="ws-addbox">
-                <label>{t("Racks")}<input type="number" inputMode="numeric" min={1} max={30} value={addN} onChange={(e) => setAddN(e.target.value)} /></label>
-                <label>{t("Levels each")}<input type="number" inputMode="numeric" min={1} max={12} value={addL} onChange={(e) => setAddL(e.target.value)} /></label>
-                <small className="ws-hint">{t("Shelves are named like 1-A, 1-B, 2-A. You can rename them after.")}</small>
-                <span className="ws-bar">
-                  <button type="button" className="button primary small" onClick={() => addRacks(area)}>{t("Add")}</button>
-                  <button type="button" className="button secondary small" onClick={() => setAdding("")}>{t("Cancel")}</button>
-                </span>
-              </div>
-            ) : <button type="button" className="ws-addrack" aria-label={t("Add racks to this wall")} onClick={() => { setAdding(key(area)); setAddN("1"); setAddL("3"); }}><span aria-hidden="true">+</span> {t("Add racks")}</button>)}
+      <div className="sr-room" role="group" aria-label={t("Store room map")}>
+        <Wall pos="N" /><Wall pos="W" />
+        <div className="sr-floor"><span>{t("Floor / parts counter")}</span></div>
+        <Wall pos="E" /><Wall pos="S" />
+      </div>
+      {loneRacks.length > 0 && (
+        <div className="sr-wall sr-lone"><b className="sr-wallname">{t("Racks with no wall")}</b>
+          <div className="sr-boxes">{loneRacks.map(({ r, i }) => <button key={r.id || "n" + i} type="button" className={"sr-box" + (sel === i ? " on" : "")} aria-pressed={sel === i} onClick={() => setSel(sel === i ? null : i)}>{r.name || "?"}</button>)}</div></div>
+      )}
+      {cur && sel !== null && (
+        <div className="sr-panel">
+          <div className="sr-panel-head">
+            <b>{t("Rack")}</b>
+            <input aria-label={t("Rack name")} className="sr-name" value={cur.name} maxLength={40} onChange={(e) => setRack(sel, { ...cur, name: e.target.value })} />
+            <select aria-label={t("Type")} value={cur.type} onChange={(e) => setRack(sel, { ...cur, type: e.target.value as Rk["type"] })}>{(Object.keys(TYPE) as Rk["type"][]).map((k) => <option key={k} value={k}>{t(TYPE[k])}</option>)}</select>
+            <select aria-label={t("Wall")} value={cur.area} onChange={(e) => setRack(sel, { ...cur, area: e.target.value })}><option value="">{t("No wall")}</option>{areas.map((a) => <option key={key(a)} value={key(a)}>{a.name || t(WALL_TEXT[a.pos || ""] || "Wall")}</option>)}</select>
+            <button type="button" className="ws-l-del" aria-label={t("Move up")} title={t("Earlier on the wall")} onClick={() => swapRack(sel, -1)}>←</button>
+            <button type="button" className="ws-l-del" aria-label={t("Move down")} title={t("Later on the wall")} onClick={() => swapRack(sel, 1)}>→</button>
+            <button type="button" className="ws-l-del" aria-label={t("Remove")} disabled={used(cur) > 0} title={used(cur) ? t("Move parts first") : t("Remove this rack")} onClick={() => removeRack(sel)}>×</button>
           </div>
-        )
-      ))}
+          <div className="sr-cols"><span>{t("Columns")}:</span>
+            {cur.levels.map((l, j) => (
+              <span className="sr-col" key={l.id || "n" + j}>
+                <input aria-label={t("Level")} value={l.name} maxLength={12} onChange={(e) => setRack(sel, { ...cur, levels: cur.levels.map((v, k) => (k === j ? { ...v, name: e.target.value } : v)) })} />
+                {used(cur, l) > 0 && <small className="ws-count" title={t("Parts on this level")}>{used(cur, l)}</small>}
+                <ShelfPhoto id={l.photo_id} onId={(pid) => setRack(sel, { ...cur, levels: cur.levels.map((v, k) => (k === j ? { ...v, photo_id: pid } : v)) })} />
+                <button type="button" className="ws-l-del" aria-label={t("Move up")} onClick={() => setRack(sel, { ...cur, levels: move(cur.levels, j, -1) })}>‹</button>
+                <button type="button" className="ws-l-del" aria-label={t("Move down")} onClick={() => setRack(sel, { ...cur, levels: move(cur.levels, j, 1) })}>›</button>
+                <button type="button" className="ws-l-del" aria-label={t("Remove")} disabled={used(cur, l) > 0} title={used(cur, l) ? t("Move parts first") : ""} onClick={() => setRack(sel, { ...cur, levels: cur.levels.filter((_, k) => k !== j) })}>×</button>
+              </span>
+            ))}
+            {cur.levels.length < 20 && <button type="button" className="sr-col sr-addcol" onClick={() => setRack(sel, { ...cur, levels: [...cur.levels, { name: String.fromCharCode(65 + Math.min(cur.levels.length, 25)) }] })}>+ {t("column")}</button>}
+          </div>
+          <small className="ws-hint">{t("Labels made")}: {cur.levels.length ? cur.levels.map((l) => (cur.name || "?") + "-" + (l.name || "?")).join(", ") : cur.name}</small>
+        </div>
+      )}
       {error && <p role="alert" className="ws-err">{error}</p>}
       <button type="button" className="button small" disabled={busy || !loaded || !dirty} onClick={() => void save()}>{busy ? t("Saving…") : t("Save store room")}</button>
       {dirty && <small className="ws-hint">{t("Not saved yet")}</small>}

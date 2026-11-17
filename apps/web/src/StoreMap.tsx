@@ -220,7 +220,7 @@ function QuickLook({ rack, wall, counts, onClose, onOpen }: { rack: Rack; wall: 
           <div className="sm-look-items">
             <h3>{label(rack, level)}</h3>
             {!data ? <Loading error={error} /> : data.parts.length === 0 ? <p className="muted">{t("Nothing on this shelf.")}</p> : (
-              <ul className="sm-parts">{data.parts.map((p) => <li key={p.id} className={Number(p.quantity) <= Number(p.reorder_level ?? -1) ? "low" : ""}><span><b>{p.name}</b><small>{p.part_number || p.sku}</small></span><span className="sm-qty">{Number(p.quantity)}</span></li>)}</ul>
+              <ul className="sm-parts">{data.parts.map((p) => <li key={p.id} className={Number(p.quantity) <= Number(p.reorder_level ?? -1) ? "low" : ""}><span><b>{p.name}</b><small>{p.part_number || p.sku}</small></span><span className="sm-qty">{Number(p.quantity)}{can("stock_out") && Number(p.quantity) > 0 && <button type="button" className="button secondary small" onClick={() => { onClose(); window.dispatchEvent(new CustomEvent("lifta:take-out", { detail: p.id })); }}>{t("Take out")}</button>}</span></li>)}</ul>
             )}
             <div className="sm-tools">
               <button type="button" className="button primary small" onClick={() => onOpen(level)}>{t("Open this shelf")}</button>

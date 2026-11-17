@@ -402,3 +402,31 @@ html .stock-shell .bl, html .stock-shell .bl * { color: #fff !important; }
   .ws-set .ws-sec input:not([type="checkbox"]), .ws-set .ws-sec select, .ws-set .ws-sec textarea { font-size: 14px; min-height: 38px; }
   .ws-set-nav button { font-size: 13.5px; }
 }
+
+/* Store room editor: the room drawn as a box, walls on four sides, a rack = a small box */
+.sr-room { display: grid; grid-template-columns: minmax(70px, auto) 1fr minmax(70px, auto); grid-template-areas: "n n n" "w f e" "s s s"; gap: 10px; padding: 12px; margin: 10px 0; border: 2px solid var(--line); border-radius: 16px; background: rgba(var(--sh), .03); }
+.sr-N { grid-area: n; } .sr-W { grid-area: w; } .sr-E { grid-area: e; } .sr-S { grid-area: s; }
+.sr-wall { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.sr-wallname { width: 100%; max-width: 220px; border: 0 !important; background: transparent !important; text-align: center; font-size: 12px; color: var(--muted, #667); box-shadow: none !important; padding: 2px; }
+.sr-boxes { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.sr-W .sr-boxes, .sr-E .sr-boxes { flex-direction: column; flex-wrap: nowrap; }
+.sr-box { min-width: 52px; height: 44px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface, #fff); font-weight: 700; font-size: 16px; color: var(--ink); cursor: pointer; }
+.sr-box.on { border-color: #0f5c3f; box-shadow: 0 0 0 2px rgba(15, 92, 63, .25); background: rgba(15, 92, 63, .08); }
+.sr-plus { border-style: dashed; color: var(--muted, #667); font-weight: 500; }
+.sr-floor { grid-area: f; display: grid; place-items: center; min-height: 90px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted, #667); font-size: 13px; text-align: center; padding: 8px; }
+.sr-lone { align-items: flex-start; margin-bottom: 8px; }
+.sr-panel { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 6px 0 10px; display: grid; gap: 8px; }
+.sr-panel-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sr-name { width: 90px; }
+.sr-cols { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sr-col { display: inline-flex; align-items: center; gap: 2px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface, #fff); }
+.sr-col input { width: 3.2em; text-align: center; font-weight: 700; padding: 4px; }
+.sr-addcol { border-style: dashed; cursor: pointer; color: var(--muted, #667); height: 40px; }
+@media (max-width: 520px) { .sr-room { grid-template-columns: minmax(56px, auto) 1fr minmax(56px, auto); padding: 8px; gap: 6px; } .sr-box { min-width: 44px; height: 40px; } }
+
+/* Store room view: a rack is a small box on its wall (not a tall empty card) */
+.sm-pos .sm-racks { justify-content: center; max-height: none; overflow: visible; }
+.sm-pos.w .sm-racks, .sm-pos.e .sm-racks { align-items: center; }
+.sm-pos .sm-rack { flex: 0 0 auto !important; width: auto !important; min-width: 72px; padding: 0 !important; border-width: 1px !important; border-radius: 12px !important; background: var(--surface, #fff); }
+.sm-pos .sm-rack-head { min-height: 56px; padding: 6px 12px; border-bottom: 0 !important; }
+.sm-pos .sm-rack-head small:not(.ws-count) { display: none !important; }
