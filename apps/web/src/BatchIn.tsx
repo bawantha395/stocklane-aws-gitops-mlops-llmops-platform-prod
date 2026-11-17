@@ -5,6 +5,7 @@ import { toast } from "./ui";
 import { can } from "./perms";
 import { SupplierPick, useSuppliers } from "./Suppliers";
 import { api, openPdf, shrink, type Match, type Product } from "./api";
+import { printLabelSheet } from "./partsShared";
 import { useLoad } from "./workshop/common";
 
 const Camera = React.lazy(() => import("./Camera").then((m) => ({ default: m.Camera })));
@@ -53,7 +54,10 @@ export function BatchIn({ items, picked, onNewItem, onChanged, photo }: { items:
     });
   }, []);
   // a new item registered from this screen comes back as a line
-  useEffect(() => { if (picked) addPart(picked); }, [picked]); // eslint-disable-line react-hooks/exhaustive-deps
+  // parts registered during this delivery: remembered until their labels are printed
+  const [fresh, setFresh] = useState<string[]>(() => { try { return JSON.parse(sessionStorage.getItem("lifta.batchfresh") || "[]"); } catch { return []; } });
+  useEffect(() => { try { sessionStorage.setItem("lifta.batchfresh", JSON.stringify(fresh)); } catch { /* ignore */ } }, [fresh]);
+  useEffect(() => { if (picked) { addPart(picked); setFresh((f) => (f.includes(picked.id) ? f : [...f, picked.id])); } }, [picked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // the camera stays on, so these two must never change identity: they read the latest list through a ref
   const itemsRef = useRef(items); itemsRef.current = items;
@@ -130,6 +134,9 @@ export function BatchIn({ items, picked, onNewItem, onChanged, photo }: { items:
   return (
     <div className="bi" data-tour="batch-in">
       {error && <div className="stock-error stock-error-toast" role="alert"><strong>{t("Could not complete that action")}</strong><span>{error}</span><button className="toast-close" aria-label="Dismiss error" onClick={() => setError("")}>×</button></div>}
+      {lines.length === 0 && notes.length > 0 && fresh.some((id) => byId.has(id)) && (
+        <p><button type="button" className="button secondary" onClick={() => void printLabelSheet(fresh.map((id) => byId.get(id)).filter((x): x is Item => !!x)).then(() => setFresh([])).catch((e) => setError((e as Error).message))}>{t("Print labels for the {n} new parts", { n: fresh.filter((id) => byId.has(id)).length })}</button></p>
+      )}
       {notes.length > 0 && lines.length === 0 && (
         <p className="counter-done" role="status"><Check size={20} /> {t("Saved.")} {notes.map((n) => <button key={n.id} type="button" className="doc-link" onClick={() => void openPdf("/api/inventory/movements/" + n.id + "/note.pdf", n.doc_no + ".pdf").catch((e) => toast((e as Error).message, { bad: true }))}>{n.doc_no} · {t("Print note")}</button>)}</p>
       )}
@@ -181,7 +188,7 @@ export function BatchIn({ items, picked, onNewItem, onChanged, photo }: { items:
                   <div className="bi-name"><strong>{p.name}</strong><small>{p.part_number || p.sku} · {t("in stock")} {amount(Number(p.quantity))}</small></div>
                   <div className="counter-stepper bi-qty">
                     <button type="button" aria-label="One less" disabled={busy || l.qty <= 1} onClick={() => change(l.id, { qty: Math.max(1, l.qty - 1) })}><Minus /></button>
-                    <input aria-label="Quantity" type="number" min={p.unit === "LITRE" ? 0.001 : 1} step={p.unit === "LITRE" ? 0.001 : 1} value={l.qty} disabled={busy} onChange={(e) => change(l.id, { qty: Number(e.target.value) })} />
+                    <input aria-label="Quantity" type="number" inputMode="decimal" min={p.unit === "LITRE" ? 0.001 : 1} step={p.unit === "LITRE" ? 0.001 : 1} value={l.qty} disabled={busy} onChange={(e) => change(l.id, { qty: Number(e.target.value) })} />
                     <button type="button" aria-label="One more" disabled={busy} onClick={() => change(l.id, { qty: l.qty + 1 })}><Plus /></button>
                   </div>
                   {seeCost && <label className="bi-small bi-cost">{t("Cost (LKR)")}<input value={l.cost} inputMode="decimal" maxLength={12} disabled={busy} onChange={(e) => change(l.id, { cost: e.target.value.replace(/[^0-9.]/g, "") })} /></label>}

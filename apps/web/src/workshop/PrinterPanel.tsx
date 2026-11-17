@@ -4,14 +4,14 @@ import { autoPrintOn } from "./Bill";
 import { connectPrinter, disconnectPrinter, onPrinterChange, paperColumns, printerConnected, printerName, printerSupported, sendToPrinter, setPaperColumns, testBytes } from "./printer";
 
 /** The one printer control in the Workshop header: connect once, set paper, choose auto-print. Without a connected printer, Print opens the browser print preview. */
-export function PrinterPanel() {
+export function PrinterPanel({ open }: { open?: boolean } = {}) {
   const [, tick] = useState(0), [message, setMessage] = useState(""), [cols, setCols] = useState<32 | 48>(paperColumns());
   useEffect(() => onPrinterChange(() => tick((n) => n + 1)), []);
   const run = async (work: () => Promise<void>) => { setMessage(""); try { await work(); } catch (e) { setMessage((e as Error).message); } };
   const [auto, setAuto] = useState(autoPrintOn);
   const supported = printerSupported(), connected = printerConnected();
   return (
-    <details className="ws-printer">
+    <details className="ws-printer" open={open}>
       <summary className={connected ? "on" : ""}>{connected ? "Printer: " + printerName() : "Printer"}</summary>
       <div className="ws-printer-menu">
         {!supported ? <small>{t("This browser prints through the normal print preview. For direct receipt printing use Chrome or Edge.")}</small> : !connected ? (

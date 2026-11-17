@@ -1,4 +1,7 @@
 import { SHELF_FOCUS, parseShelfCode } from "./StoreMap";
+import { getCounterStart } from "./counterStart";
+import { enqueue, isOfflineError } from "./offline";
+import { isPractice } from "./practice";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Camera as CameraIcon, Check, Loader2, Minus, Plus } from "lucide-react";
 import { t, useLang } from "./i18n";
@@ -43,6 +46,12 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
     document.addEventListener("pointerdown", away); return () => document.removeEventListener("pointerdown", away);
   }, [listOpen]);
   const [camera, setCamera] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  // opening the counter: phones start with the camera, computers with the search box (the owner can change this on each device in Settings)
+  useEffect(() => {
+    if (batching || picked || isPractice()) return;
+    if (getCounterStart() === "camera") setCamera(true); else searchRef.current?.focus({ preventScroll: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [done, setDone] = useState("");
   // The note for the last entry (GRN for a part that came in, GIN for one that went out): print it from the confirmation.
   const [note, setNote] = useState<{ id: string; no: string } | null>(null);
@@ -107,8 +116,8 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
   const give = async () => {
     if (!part) return;
     setBusy(true); setError("");
+    const job = jobs.find((x) => x.id === jobId);
     try {
-      const job = jobs.find((x) => x.id === jobId);
       if (job) await api("/api/workshop/jobs/" + job.id + "/stock", { method: "POST", body: JSON.stringify({ productId: part.id, quantity, op: "use" }) }, commandKey.current);
       else {
         const out = await api<{ id: string; doc_no?: string }>("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: part.id, quantity, note: "Issued at the storeroom counter" }) }, commandKey.current);
@@ -124,7 +133,16 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
       offerUndo(t("{q} × {name} taken out.", { q: amount(undoQty), name: undoPart.name }), () => job
         ? api("/api/workshop/jobs/" + job.id + "/stock", { method: "POST", body: JSON.stringify({ productId: undoPart.id, quantity: undoQty, op: "return" }) }, key())
         : api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "RECEIPT", productId: undoPart.id, quantity: undoQty, note: "Undo of a counter entry" }) }, key()));
-    } catch (e) { setError((e as Error).message); commandKey.current = key(); }
+    } catch (e) {
+      if (isOfflineError(e)) {
+        // no internet: write the take-out down on this phone; it goes through when the connection is back (the same key, so never twice)
+        const path = job ? "/api/workshop/jobs/" + job.id + "/stock" : "/api/inventory/movements";
+        const body = job ? { productId: part.id, quantity, op: "use" } : { kind: "STOCK_OUT", productId: part.id, quantity, note: "Issued at the storeroom counter" };
+        enqueue({ key: commandKey.current, kind: "takeout", label: amount(quantity) + " × " + part.name + (job ? " → " + job.registration : ""), path, body: JSON.stringify(body) });
+        reset(t("No internet. {q} × {name} is saved on this phone and will be sent when the connection is back.", { q: amount(quantity), name: part.name }));
+        commandKey.current = key();
+      } else { setError((e as Error).message); commandKey.current = key(); }
+    }
     finally { setBusy(false); }
   };
   const onBarcode = async (value: string) => {
@@ -247,7 +265,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
                   </div>
                 )}
                 <div className="counter-combo" ref={comboRef}>
-                <label data-tour="counter-search" className="stock-field counter-search">{t("Or search")}<input value={search} placeholder={t("Oil filter") + " (" + t("or tap to see all parts") + ")"} onFocus={() => setListOpen(true)} onChange={(e) => { setSearch(e.target.value); setListOpen(true); }} /></label>
+                <label data-tour="counter-search" className="stock-field counter-search">{t("Or search")}<input ref={searchRef} value={search} placeholder={t("Oil filter") + " (" + t("or tap to see all parts") + ")"} onFocus={() => setListOpen(true)} onChange={(e) => { setSearch(e.target.value); setListOpen(true); }} /></label>
                 <div className="counter-list">
                   {shownList.map((m) => <button key={m.id} className="counter-result" onClick={() => choosePart(m)}>{photo && <span className="counter-result-photo">{photo(m)}</span>}<span className="counter-result-text">{m.name} <small>{t("Part no.")} {m.part_number || t("Not set")} · {t("In stock")} {amount(Number(m.quantity))}</small></span></button>)}
                 </div>
@@ -261,7 +279,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
               <h2><span>2</span> {t("How many?")}</h2>
               <div className="counter-stepper">
                 <button aria-label="One less" onClick={() => step(-1)}><Minus /></button>
-                <input aria-label="Quantity" type="number" min={part.unit === "LITRE" ? 0.001 : 1} step={part.unit === "LITRE" ? 0.001 : 1} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
+                <input aria-label="Quantity" type="number" inputMode="decimal" min={part.unit === "LITRE" ? 0.001 : 1} step={part.unit === "LITRE" ? 0.001 : 1} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
                 <button aria-label="One more" onClick={() => step(1)}><Plus /></button>
                 <span>{part.unit === "LITRE" ? t("litres") : t("pieces")}</span>
               </div>
@@ -296,7 +314,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
                   {terms === "CREDIT" && !cost.trim() && <small className="stock-error">{t("Enter the cost price so we know how much is owed.")}</small>}
                 </div>
               )}
-              <small className="stock-help">{t("What the supplier charged for one. Only the owner can see this price later.")} {t("A GRN number is made for this entry. You can print the note after saving.")}</small>
+              <small className="stock-help">{t("What the supplier charged for one. Only the owner can see this price later.")} {t("A note number is made for this entry. You can print the note after saving.")}</small>
             </div>
           )}
           {part && mode === "receive" && (

@@ -719,6 +719,7 @@ def _new_product(p, who):
     if unit == 'UNIT' and opening != opening.to_integral_value():
         raise bad('Sealed units require a whole number')
     barcode = (p.get('barcode') or '').strip() or None
+    cost = cost_of(p.get('cost')) if p.get('cost') not in (None, '', 0, '0') else None  # optional: what the supplier charged for one unit
     product_id = str(uuid.uuid4())
     created = now()
     item = {'pk': 'PRODUCT', 'sk': product_id, 'id': product_id, 'sku': sku, 'name': name, 'category': category,
@@ -734,6 +735,8 @@ def _new_product(p, who):
         item['supplier_id'] = sid
     if barcode:
         item['barcode'] = barcode
+    if cost is not None:
+        item['last_cost'], item['last_cost_at'] = cost, created
     if p.get('imageId'):
         item['image_id'] = str(p['imageId'])
     ops, labels = [put(item), unique('sku', sku), unique('part', item['manufacturer_key'] + '|' + item['part_number'])], \
@@ -743,7 +746,7 @@ def _new_product(p, who):
         labels.append('This barcode already belongs to another item')
     result = product_view(item)
     if opening > 0:
-        extra, _ = movement_items(item, 'OPENING', opening, price, None, None, who, 'Approved initial physical count', None, None, created)
+        extra, _ = movement_items(item, 'OPENING', opening, price, None, None, who, 'Approved initial physical count', None, None, created, extra={'unit_cost': cost} if cost is not None else None)
         ops += extra
         labels += [None] * len(extra)
         result['opening_movement'] = True

@@ -21,7 +21,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from . import bills, inventory, photos
 from .core import PerShop
-from .core import COLOMBO, bad, batch_get, check, command, conflict, delete, emails, get, missing, now, num, public, put, query, update
+from .core import COLOMBO, ApiError, bad, batch_get, check, command, conflict, delete, emails, get, missing, now, num, public, put, query, update
 
 LATIN = re.compile(r'[\x20-\x7e]*')
 MONEY, ZERO, HUNDRED = Decimal('0.01'), Decimal('0'), Decimal('100')
@@ -1071,6 +1071,50 @@ def finalise(job_id, key, who, body):
         ops = [op, put(invoice), vehicle_put(j['vehicle_key'], fields, always=('next_service_date', 'next_service_km'), fill_only=FROM_JOBS), history_put(j)]
         return ops, [CHANGED, None, None, None], public(invoice)
     return command(key, 'finalise:' + job_id, who, body, build)
+
+
+def quick_bill(key, who, body, owner=True):
+    """A bill with no repair job in the shop: a part sold over the counter, or a small paid job. Behind the scenes it is the same chain as always
+    (a job, its parts from stock, its labour, the invoice, the payment), each step with its own key made from this one, so a retry after a
+    dropped connection carries on where it stopped and never does a step twice. Same rules as every step: whole units, enough stock, discount limit."""
+    b = body or {}
+    if not key or len(key) < 16:
+        raise bad('A 16-100 character Idempotency-Key is required')
+
+    def step(n):
+        return hashlib.sha256((key + ':' + n).encode()).hexdigest()[:40]
+    lines, labour = b.get('lines') or [], b.get('labour') or []
+    if not isinstance(lines, list) or not isinstance(labour, list):
+        raise bad('Add a part or a labour line')
+    if not lines and not labour:
+        raise bad('Add at least one part or labour line first')
+    kind = invoice_type(b.get('invoice_type'))
+    j = create_job(step('job'), who, {'registration': b.get('registration') or 'WALK-IN', 'customer': b.get('customer') or 'Walk-in customer', 'phone': b.get('phone'),
+                                      'summary': text(b.get('note'), 'Note', 200) or 'Quick bill', 'invoice_type': kind})
+    try:
+        if lines:
+            j = use_stock_batch(j['id'], step('stock'), who, {'lines': lines})
+        patch = {'revision': j['revision']}
+        if labour:
+            patch['labour'] = labour
+        if b.get('discount') not in (None, '', 0, '0'):
+            patch['discount'] = b['discount']
+        if len(patch) > 1:
+            j = save_job(j['id'], step('save'), who, patch, owner)
+        inv = finalise(j['id'], step('bill'), who, {'revision': j['revision']})
+    except ApiError:
+        # nothing was billed: take the job back so no empty job and no held stock is left behind
+        try:
+            cancel_job(j['id'], step('undo'), who, {'reason': 'Quick bill not completed'})
+        except ApiError:
+            pass
+        raise
+    paid = money(b.get('paid') or 0, 'Amount paid')
+    if kind == 'CASH' and b.get('paid') in (None, ''):
+        paid = inv['total']
+    if paid > 0:
+        inv = pay(inv['id'], step('pay'), who, {'amount': paid, 'method': b.get('method') or 'CASH', 'note': 'Quick bill'})
+    return inv
 
 
 def invoice(invoice_id):

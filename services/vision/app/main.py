@@ -146,6 +146,21 @@ def create_app():
             return {'barcode': value, 'found': False, 'suggestions': {}}
         return {'barcode': value, 'found': True, 'suggestions': {k: product[k] for k in ('product_name', 'brands', 'categories', 'quantity') if product.get(k)}}
 
+    @app.post('/api/vision/plate')
+    async def plate(request: Request, file: UploadFile = File(...)):
+        staff(request)
+        data = await file.read(settings.max_upload_bytes + 1)
+        if len(data) > settings.max_upload_bytes:
+            raise HTTPException(413, 'Image exceeds the upload limit')
+        if not settings.textract_fallback:
+            return {'plate': '', 'read': False}
+        try:
+            lines = await asyncio.to_thread(textract.read_lines, settings, data) or []
+        except Exception as error:  # reading the plate is a help only: the person can always type it
+            log.warning('Plate reading failed type=%s', type(error).__name__)
+            return {'plate': '', 'read': False}
+        return {'plate': textract.find_plate(lines), 'read': True}
+
     @app.post('/api/vision/match')
     async def match(request: Request, file: UploadFile = File(...)):
         staff(request)

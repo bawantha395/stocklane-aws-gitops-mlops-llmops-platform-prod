@@ -2,6 +2,9 @@ import { useMemo, useState } from "react";
 import { t } from "./i18n";
 import { Loading, useLoad } from "./workshop/common";
 import { routeIndex, shelfRoute, type RouteLayout } from "./shelfRoute";
+import { api } from "./api";
+import { can } from "./perms";
+import { toast } from "./ui";
 
 type Prod = { id: string; name: string; location?: string; quantity: number | string; reorder_level?: number | string | null };
 export type PickLine = { product_id: string; name: string; quantity: number | string };
@@ -10,7 +13,11 @@ export type PickLine = { product_id: string; name: string; quantity: number | st
 export default function PickList({ lines, onClose }: { lines: PickLine[]; onClose: () => void }) {
   const prods = useLoad<Prod[]>("/api/inventory/products");
   const layout = useLoad<RouteLayout>("/api/inventory/stores/layout");
-  const [done, setDone] = useState<string[]>([]);
+  const [done, setDone] = useState<string[]>([]), [ordered, setOrdered] = useState<string[]>([]);
+  const orderThis = async (id: string, qty: number | string) => {
+    try { await api("/api/inventory/wants", { method: "POST", body: JSON.stringify({ productId: id, quantity: Math.max(1, Math.ceil(Number(qty) || 1)) }) }, crypto.randomUUID()); setOrdered((o) => [...o, id]); toast(t("Added to the To order list.")); }
+    catch (e) { toast((e as Error).message, { bad: true }); }
+  };
   const rows = useMemo(() => {
     const order = shelfRoute(layout.data);
     const by = new Map((prods.data || []).map((p) => [p.id, p]));
@@ -34,7 +41,12 @@ export default function PickList({ lines, onClose }: { lines: PickLine[]; onClos
                     <span className="pl-shelf">{p?.location || "—"}</span>
                     <span className="pl-name"><b>{l.name}</b> × {l.quantity}</span>
                   </label>
-                  {low && <span className="pl-low">{t("Order this")} · {t("In stock")}: {p!.quantity}</span>}
+                  {low && (
+                    <span className="pl-low">
+                      {t("In stock")}: {p!.quantity}
+                      {can("job_stock") && (ordered.includes(l.product_id) ? <b>{t("On the To order list")}</b> : <button type="button" className="button secondary small" onClick={() => void orderThis(l.product_id, l.quantity)}>{t("Order this")}</button>)}
+                    </span>
+                  )}
                 </li>
               );
             })}

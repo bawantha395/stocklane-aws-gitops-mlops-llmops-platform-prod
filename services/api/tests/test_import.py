@@ -42,3 +42,13 @@ def test_import_is_all_or_none_and_limited_and_needs_permission(api):
     assert imp(api, [])[0] == 400
     assert imp(api, [row(9)], role='MECHANIC')[0] == 200  # mechanics may register parts (item_add)
     assert imp(api, [row(10)], role='STOREKEEPER')[0] == 200
+
+
+def test_import_keeps_the_supplier_cost_and_rejects_a_bad_cost(api):
+    r = ok(imp(api, [row(1, cost=650, supplier='Lanka Parts'), row(2)], key='k-import-cost-0000001'))
+    assert len(r['created']) == 2
+    prods = {p['name']: p for p in ok(api('GET', '/api/inventory/products'))}
+    assert prods['Part 1'].get('last_cost') == 650 and prods['Part 1'].get('supplier') == 'Lanka Parts'
+    assert prods['Part 2'].get('last_cost') is None
+    chk = ok(imp(api, [row(3, cost='abc'), row(4, cost=-5)], dry=True))
+    assert chk['ok'] == 0 and len(chk['errors']) == 2

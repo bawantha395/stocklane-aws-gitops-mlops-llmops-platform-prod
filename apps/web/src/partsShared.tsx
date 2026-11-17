@@ -65,7 +65,7 @@ export async function printLabel(item: Item) {
     doc.title = "Stock label — " + item.sku;
     const style = doc.createElement("style");
     style.textContent =
-      "body{font:14px sans-serif;text-align:center;margin:12mm}img{width:45mm;height:45mm}h1{font-size:18px}p{margin:5px}button{margin:20px;padding:12px}@media print{button{display:none}}";
+      "body{font:14px sans-serif;text-align:center;margin:12mm}img{width:90mm;height:90mm}h1{font-size:30px}p{margin:8px;font-size:20px}button{margin:20px;padding:12px}@media print{button{display:none}}";
     doc.head.append(style);
     const img = doc.createElement("img");
     img.src = data;
@@ -169,7 +169,7 @@ export async function printLabelSheet(items: Item[]) {
       const qr = await QRCode.toDataURL("stocklane:v1:" + item.id, { width: 300, margin: 1 });
       cells.push('<div class="c"><img src="' + qr + '"><b>' + esc(item.name) + "</b><span>" + esc(item.part_number || item.sku) + "</span><span>" + esc(item.location || "") + "</span></div>");
     }
-    popup.document.write("<!doctype html><title>Stock labels</title><style>body{font:12px sans-serif;margin:10mm}.g{display:grid;grid-template-columns:repeat(4,1fr);gap:4mm}.c{border:1px dashed #888;padding:3mm;text-align:center;break-inside:avoid}.c img{width:100%;max-width:34mm}.c b{display:block;font-size:11pt}.c span{display:block}button{margin:10px;padding:10px}@media print{button{display:none}}</style><button onclick='print()'>Print / Save as PDF</button><div class=g>" + cells.join("") + "</div>");
+    popup.document.write("<!doctype html><title>Stock labels</title><style>body{font:12px sans-serif;margin:10mm}.g{display:grid;grid-template-columns:repeat(2,1fr);gap:6mm}.c{border:1px dashed #888;padding:5mm;text-align:center;break-inside:avoid}.c img{width:100%;max-width:68mm}.c b{display:block;font-size:20pt}.c span{display:block;font-size:15pt}button{margin:10px;padding:10px}@media print{button{display:none}}</style><button onclick='print()'>Print / Save as PDF</button><div class=g>" + cells.join("") + "</div>");
     popup.document.close();
   } catch (error) {
     popup.close();

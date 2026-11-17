@@ -39,13 +39,13 @@ function Lightbox({ id, onClose, from }: { id: string; onClose: () => void; from
 }
 
 /** Takes one photo: the phone camera (or a file on a computer). In practice mode it uses a drawn sample instead. */
-function Take({ kind, label, onId, disabled, className = "button secondary small" }: { kind: "plate" | "front" | "damage"; label: string; onId: (id: string) => void; disabled?: boolean; className?: string }) {
+function Take({ kind, label, onId, onFile, disabled, className = "button secondary small" }: { kind: "plate" | "front" | "damage"; label: string; onId: (id: string) => void; onFile?: (f: Blob) => void; disabled?: boolean; className?: string }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [pct, setPct] = useState(0), last = useRef<Blob | undefined>(undefined);
   useEffect(() => { if (!busy) return; setPct(8); const id = setInterval(() => setPct((p) => (p < 90 ? p + (90 - p) * 0.12 : p)), 250); return () => clearInterval(id); }, [busy]);
   const send = async (file: Blob | undefined) => {
     if (!file) return;
-    last.current = file; setBusy(true); setError("");
+    last.current = file; setBusy(true); setError(""); onFile?.(file);
     try { onId(await uploadPhoto(file)); last.current = undefined; } catch (e) { setError((e as Error).message); } finally { setBusy(false); if (input.current) input.current.value = ""; }
   };
   return (
@@ -61,7 +61,7 @@ function Take({ kind, label, onId, disabled, className = "button secondary small
 }
 
 /** One photo with a fixed meaning (plate or front): shows the picture with a retake and remove, or a button. */
-export function PhotoSlot({ kind, label, id, onId, disabled, saved }: { kind: "plate" | "front"; label: string; id: string; onId: (id: string) => void; disabled?: boolean; saved?: boolean }) {
+export function PhotoSlot({ kind, label, id, onId, onFile, disabled, saved }: { onFile?: (f: Blob) => void; kind: "plate" | "front"; label: string; id: string; onId: (id: string) => void; disabled?: boolean; saved?: boolean }) {
   const [open, setOpen] = useState(false), [rect, setRect] = useState<DOMRect | null>(null);
   return (
     <div className={"ws-photo-slot" + (id ? " has" : "")}>
@@ -71,7 +71,7 @@ export function PhotoSlot({ kind, label, id, onId, disabled, saved }: { kind: "p
           <button type="button" className="ws-photo-pic" onClick={(e) => { setRect(e.currentTarget.getBoundingClientRect()); setOpen(true); }} aria-label={label}><Photo id={id} /></button>
           {!disabled && <button type="button" className="ws-photo-x" aria-label={t("Remove")} onClick={() => onId("")}><X size={14} /></button>}
         </>
-      ) : <Take kind={kind} label={t("Take photo")} onId={onId} disabled={disabled} />}
+      ) : <Take kind={kind} label={t("Take photo")} onId={onId} onFile={onFile} disabled={disabled} />}
       {open && <Lightbox id={id} from={rect} onClose={() => setOpen(false)} />}
     </div>
   );

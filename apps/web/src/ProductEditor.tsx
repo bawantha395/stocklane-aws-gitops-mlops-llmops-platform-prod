@@ -89,8 +89,29 @@ export function ProductEditor({
       const form = new FormData(); form.append("file", await shrink(f));
       const found = await api<Match>("/api/vision/match", { method: "POST", body: form });
       setPhotoId(found.imageId);
+      if (!item && !draft) await readLabel(found.imageId);
     } catch (x) { setError((x as Error).message); }
     finally { setPhotoBusy(false); }
+  };
+  // A new photo also reads the label: the empty boxes are filled with what it says, marked so the person checks them. Nothing is saved yet.
+  const [localDraft, setLocalDraft] = useState<Draft | null>(null), [readNote, setReadNote] = useState("");
+  const readLabel = async (id: string) => {
+    setReadNote(t("Reading the label…"));
+    try {
+      const r = await api<Draft>("/api/vision/drafts", { method: "POST", body: JSON.stringify({ imageId: id }) });
+      setLocalDraft(r);
+      const got: Partial<Record<Field, string>> = { ...(r.suggestions || {}), ...(r.labelSuggestions || {}) };
+      const marks: Partial<Record<Field, "ai" | "label">> = {};
+      for (const f of ["name", "brand", "partNumber", "category", "grade", "capacity"] as Field[]) {
+        const v = (got[f] || "").trim();
+        if (!v || fieldState[f][0].trim()) continue;
+        if (f === "category" && stores.categories.length && !stores.categories.some((c) => c.toLowerCase() === v.toLowerCase())) continue;
+        fieldState[f][1](v); marks[f] = r.labelSuggestions?.[f] === v ? "label" : "ai";
+      }
+      if (marks.grade || marks.capacity) setMoreOpen(true);
+      setFilled((x) => ({ ...x, ...marks }));
+      setReadNote(Object.keys(marks).length ? t("Filled from the photo. Please check each box before you save.") : t("Nothing could be read from this photo. Type the details from the label."));
+    } catch { setReadNote(t("Could not read the label. Type the details.")); }
   };
   const fieldState: Record<Field, [string, (v: string) => void]> = {
     name: [name, setName], brand: [brand, setBrand], partNumber: [part, setPart], category: [category, setCategory],
@@ -207,9 +228,10 @@ export function ProductEditor({
         : inTask
           ? "Item registered with zero stock. Add its quantity to your receipt."
           : "Item registered. Print its QR label to start scanning.";
-      if (!item && draft && draft.source !== "barcode") {
+      const liveDraft = draft || localDraft;
+      if (!item && liveDraft && liveDraft.source !== "barcode") {
         try {
-          await api("/api/vision/drafts/" + draft.id, {
+          await api("/api/vision/drafts/" + liveDraft.id, {
             method: "PATCH",
             body: JSON.stringify({ status: "APPROVED", productId: result.id }),
           });
@@ -280,6 +302,7 @@ export function ProductEditor({
             <LiveCam onQR={() => {}} onPhoto={(f) => { setShootPhoto(false); void pickPhoto(f); }} onClose={() => setShootPhoto(false)} />
           </React.Suspense>
         )}
+        {readNote && !draft && <p className="ai-note" role="status"><span>{readNote}</span></p>}
         {savedNote && <p className="reg-saved" role="status"><Check size={16} /> {savedNote}</p>}
         {banner && (
           <div className={"ai-note" + (bannerKind ? " " + bannerKind : "")} role="status">
@@ -358,7 +381,7 @@ export function ProductEditor({
                   <label className="stock-field">
                     Initial physical quantity
                     <input
-                      type="number"
+                      type="number" inputMode="decimal"
                       required
                       min={0}
                       step={unit === "LITRE" ? 0.001 : 1}
@@ -405,7 +428,7 @@ export function ProductEditor({
               <label className="stock-field">
                 Low-stock threshold
                 <input
-                  type="number"
+                  type="number" inputMode="decimal"
                   min="0"
                   step={unit === "LITRE" ? 0.001 : 1}
                   required

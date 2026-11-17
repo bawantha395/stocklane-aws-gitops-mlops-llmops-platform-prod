@@ -16,8 +16,8 @@ import { Settings } from "./Settings";
 import { Due, VehiclePage, Vehicles } from "./Vehicles";
 import { Messages } from "./Messages";
 import { Alerts } from "./Alerts";
-import { PrinterPanel } from "./PrinterPanel";
 import { reconnectPrinter } from "./printer";
+import { QuickBill } from "./QuickBill";
 import { WsContext, useScrollFeel, type Business, type Page, type PageName } from "./common";
 
 import { toast } from "../ui";
@@ -64,8 +64,8 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
     ...(can("bills_view") || can("reports") || can("alerts") ? [{ key: "money", label: t("Bills"), pages: [...(can("bills_view") ? ["invoices"] : []), ...(can("reports") ? ["report"] : []), ...(can("alerts") ? ["alerts"] : [])] as PageName[] }] : []),
     ...(owner ? [{ key: "setup", label: t("Setup"), pages: ["archive", "settings"] as PageName[] }] : []),
   ];
-  const tab: PageName = page.name === "job" || page.name === "new" ? "jobs" : page.name === "quote" || page.name === "quotes" ? "jobs" : page.name === "vehicle" ? "vehicles" : page.name === "customer" ? "customers" : page.name === "invoice" ? "invoices" : page.name;
-  const TITLES: Partial<Record<PageName, string>> = { home: t("Today"), messages: t("Messages"), alerts: t("Alerts"), jobs: t("Jobs"), new: t("New job"), job: t("Job"), quotes: t("Estimates and quotations"), quote: t("Estimate or quotation"), vehicles: t("Vehicles"), vehicle: t("Vehicle"), customers: t("Customers"), customer: t("Customer"), due: t("Service due"), invoices: t("Invoices"), invoice: t("Invoice"), archive: t("Archive"), report: t("Sales report"), settings: t("Settings") };
+  const tab: PageName = page.name === "job" || page.name === "new" ? "jobs" : page.name === "quote" || page.name === "quotes" ? "jobs" : page.name === "vehicle" ? "vehicles" : page.name === "customer" ? "customers" : page.name === "invoice" || page.name === "quickbill" ? "invoices" : page.name;
+  const TITLES: Partial<Record<PageName, string>> = { home: t("Today"), messages: t("Messages"), alerts: t("Alerts"), jobs: t("Jobs"), new: t("New job"), job: t("Job"), quotes: t("Estimates and quotations"), quote: t("Estimate or quotation"), vehicles: t("Vehicles"), vehicle: t("Vehicle"), customers: t("Customers"), customer: t("Customer"), due: t("Service due"), invoices: t("Invoices"), quickbill: t("Quick bill"), invoice: t("Invoice"), archive: t("Archive"), report: t("Sales report"), settings: t("Settings") };
   const title = TITLES[page.name] || business.name;
   const headRef = useRef<HTMLHeadingElement>(null), pageRef = useRef<HTMLDivElement>(null), [shrunk, setShrunk] = useState(false);
   useEffect(() => { const h = headRef.current; if (!h || !("IntersectionObserver" in window)) return; const io = new IntersectionObserver((es) => setShrunk(!es[0]!.isIntersecting), { rootMargin: (window.innerWidth <= 760 ? "-150px" : "-10px") + " 0px 0px 0px" }); io.observe(h); return () => io.disconnect(); }, [page.name]);
@@ -77,22 +77,28 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
   }, [page.name]);
   useScrollFeel(pageRef, page.name + (page.id || ""));
   const group = GROUPS.find((g) => g.pages.includes(tab)) || GROUPS[0]!;
-  const crumbs: { label: string; to: Page }[] = page.name === "job" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "new" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "quote" ? [{ label: t("Jobs"), to: { name: "jobs", tab: page.kind === "QUOTATION" ? "QUOTATION" : "ESTIMATE" } as Page }] : page.name === "vehicle" ? [{ label: t("Vehicles"), to: { name: "vehicles" } }] : page.name === "customer" ? [{ label: t("Customers"), to: { name: "customers" } }] : page.name === "invoice" ? [{ label: t("Invoices"), to: { name: "invoices" } }] : [];
+  // the side menu (main.tsx) shows which workshop page is open
+  // on a laptop the side menu carries these tour targets, so the page tabs must not duplicate them
+  const [desk, setDesk] = useState(() => window.matchMedia("(min-width: 761px)").matches);
+  useEffect(() => { const mq = window.matchMedia("(min-width: 761px)"), on = () => setDesk(mq.matches); mq.addEventListener("change", on); return () => mq.removeEventListener("change", on); }, []);
+  const shellPage = page.name === "quotes" || page.name === "quote" || (page.name === "jobs" && page.tab === "ESTIMATE") ? "estimates" : tab;
+  useEffect(() => { window.dispatchEvent(new CustomEvent("lifta:ws-page", { detail: shellPage })); }, [shellPage]);
+  const crumbs: { label: string; to: Page }[] = page.name === "job" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "new" ? [{ label: t("Jobs"), to: { name: "jobs" } }] : page.name === "quote" ? [{ label: t("Jobs"), to: { name: "jobs", tab: page.kind === "QUOTATION" ? "QUOTATION" : "ESTIMATE" } as Page }] : page.name === "vehicle" ? [{ label: t("Vehicles"), to: { name: "vehicles" } }] : page.name === "customer" ? [{ label: t("Customers"), to: { name: "customers" } }] : page.name === "invoice" || page.name === "quickbill" ? [{ label: t("Invoices"), to: { name: "invoices" } }] : [];
   return (
     <WsContext.Provider value={{ owner, business, go, reloadBusiness }}>
       <section className="ws" aria-label="Workshop">
         <div className="ws-top">
           <div><p className="eyebrow">{business.name}</p><h1 ref={headRef} className="ws-large">{title}</h1></div>
-          <div className="ws-top-actions"><PrinterPanel />{can("jobs") && <button className="button primary" onClick={() => go({ name: "new" })}>+ {t("New job")}</button>}</div>
+          <div className="ws-top-actions">{can("jobs") && <button className="button primary" onClick={() => go({ name: "new" })}>+ {t("New job")}</button>}</div>
         </div>
         {!online && <p className="ws-offline" role="alert">{t("You are offline. Changes will not save until the internet is back.")}</p>}
         <div className={"ws-sticky" + (shrunk ? " shrunk" : "")}>
         <p className="ws-mini" aria-hidden="true">{title}</p>
         <nav className="ws-groups" aria-label="Workshop sections">
-          {GROUPS.map((g) => <button key={g.key} data-tour={"ws-tab-" + g.pages[0]} aria-current={group.key === g.key} className={group.key === g.key ? "chosen" : ""} onClick={() => go({ name: g.pages[0]! })}>{g.label}</button>)}
+          {GROUPS.map((g) => <button key={g.key} data-tour={desk ? undefined : "ws-tab-" + g.pages[0]} aria-current={group.key === g.key} className={group.key === g.key ? "chosen" : ""} onClick={() => go({ name: g.pages[0]! })}>{g.label}</button>)}
         </nav>
         </div>
-        {group.pages.length > 1 && <nav className="ws-subs" aria-label="More pages">{group.pages.map((k) => <button key={k} data-tour={k === group.pages[0] ? undefined : "ws-tab-" + k} className={tab === k ? "chosen" : ""} onClick={() => go({ name: k })}>{LABEL[k] || k}</button>)}</nav>}
+        {group.pages.length > 1 && <nav className="ws-subs" aria-label="More pages">{group.pages.map((k) => <button key={k} data-tour={desk || k === group.pages[0] ? undefined : "ws-tab-" + k} className={tab === k ? "chosen" : ""} onClick={() => go({ name: k })}>{LABEL[k] || k}</button>)}</nav>}
         {can("jobs") && ["home", "jobs", "vehicles", "due", "invoices"].includes(page.name) && <button className="ws-fab" aria-label={t("New job")} onClick={() => go({ name: "new" })}>+</button>}
         {crumbs.length > 0 && <div className="ws-crumbs"><button onClick={() => go(crumbs[0]!.to)}>‹ {t("Back")}</button><span>{crumbs[0]!.label}</span></div>}
         {HELP[page.name] && <p className="ws-help">{t(HELP[page.name]!)}</p>}
@@ -110,6 +116,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
         {page.name === "messages" && can("messages") && <Messages />}
         {page.name === "alerts" && can("alerts") && <Alerts />}
         {page.name === "invoices" && <Invoices />}
+        {page.name === "quickbill" && can("bill") && can("job_stock") && can("jobs") && <QuickBill />}
         {page.name === "invoice" && page.id && <InvoicePage key={page.id} id={page.id} />}
         {page.name === "archive" && owner && <Archive />}
         {page.name === "report" && can("reports") && <Reports />}

@@ -16,19 +16,24 @@ const key = (s: string) => s.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 
 export function Customers() {
   const { go } = useWs();
-  const [q, setQ] = useState(""), [old, setOld] = useState(false);
+  const [q, setQ] = useState(""), [old, setOld] = useState(false), [owingOnly, setOwingOnly] = useState(false);
   const term = useDebounced(q.trim());
   const { data, error } = useLoad<CustomerRow[]>("/api/workshop/customers?search=" + encodeURIComponent(term) + (old ? "&inactive=1" : ""));
+  // credit customers: who still owes, the biggest balance first
+  const shown = data ? (owingOnly ? data.filter((c) => c.owing > 0).sort((a, b) => b.owing - a.owing) : data) : null;
+  const owedTotal = data ? data.reduce((s, c) => s + Math.max(0, c.owing), 0) : 0;
   return (
     <>
       <div className="ws-toolbar">
         <input aria-label={t("Search customers")} placeholder={t("Search name, phone or vehicle number")} value={q} onChange={(e) => setQ(e.target.value)} />
         <label className="ws-check"><input type="checkbox" checked={old} onChange={(e) => setOld(e.target.checked)} /> {t("Show closed customers")}</label>
+        <label className="ws-check"><input type="checkbox" checked={owingOnly} onChange={(e) => setOwingOnly(e.target.checked)} /> {t("Only customers who owe")}</label>
         {can("customers_edit") && <button className="button secondary" onClick={() => go({ name: "customer", id: "new" })}>+ {t("New customer")}</button>}
       </div>
-      {!data ? <Loading error={error} /> : data.length === 0 ? <Empty>{term ? "No customer matches." : "No customers yet. A customer is added by itself when you create a job with a phone number."}</Empty> : (
+      {owingOnly && data && <p className="ws-owed">{t("Customers owe")} <b>LKR {lkr(owedTotal)}</b> · {shown?.length || 0} {t("customers")}</p>}
+      {!data || !shown ? <Loading error={error} /> : shown.length === 0 ? <Empty>{term ? "No customer matches." : "No customers yet. A customer is added by itself when you create a job with a phone number."}</Empty> : (
         <div className="ws-cust-list">
-          {data.map((c) => (
+          {shown.map((c) => (
             <button key={c.id} className={"ws-cust" + (c.active ? "" : " closed")} onClick={() => go({ name: "customer", id: c.id })}>
               <span className="ws-cust-main"><strong>{c.name}</strong><small>{c.phone || "-"}{c.regs.length ? " · " + c.regs.join(", ") + (c.vehicles > c.regs.length ? " +" + (c.vehicles - c.regs.length) : "") : ""}</small></span>
               <span className="ws-cust-side">{c.owing > 0 && <b className="ws-cust-owe">LKR {lkr(c.owing)}</b>}<small>{kindLabel(c.kind)} · {c.vehicles} {t("vehicles")}</small></span>

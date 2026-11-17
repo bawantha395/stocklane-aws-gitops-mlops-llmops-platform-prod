@@ -3,6 +3,7 @@ import { api, openPdf } from "./api";
 import { can } from "./perms";
 import { t } from "./i18n";
 import { toast } from "./ui";
+import { ClaimsPanel } from "./Claims";
 import { Empty, Loading, dateOnly, kmText, lkr, useCommand, useDebounced, useLoad } from "./workshop/common";
 
 export type Supplier = { id: string; name: string; kind: "MAIN" | "LOCAL"; phone: string; whatsapp: string; credit_days: number; active: boolean; parts: number; updated_at: string };
@@ -96,6 +97,7 @@ function SupplierList({ onOpen }: { onOpen: (id: string) => void }) {
         <div className="ws-seg">{([["", t("All")], ["MAIN", t("Main suppliers")], ["LOCAL", t("Local shops")]] as [string, string][]).map(([k, l]) => <button key={k} type="button" className={kind === k ? "on" : ""} aria-pressed={kind === k} onClick={() => setKind(k)}>{l}</button>)}</div>
         <label className="ws-check"><input type="checkbox" checked={old} onChange={(e) => setOld(e.target.checked)} /> {t("Show closed suppliers")}</label>
       </div>
+      {!term && !kind && <ClaimsPanel />}
       {owing && owing.total > 0 && <p className="ws-owed-total">{t("Owed to suppliers")}: <b>LKR {lkr(owing.total)}</b>{owing.overdue > 0 && <span className="ws-debt"> · {t("Overdue")} LKR {lkr(owing.overdue)}</span>}</p>}
       {!data ? <Loading error={error} /> : data.length === 0 ? <Empty>{term ? "No supplier matches." : "No suppliers yet. Add the shops and companies you buy parts from."}</Empty> : (
         <div className="ws-cust-list">
@@ -176,6 +178,7 @@ function SupplierPage({ id, onBack }: { id: string; onBack: () => void }) {
       </div>
       {can("supplier_pay") && <Payables id={id} name={s.name} />}
       {can("supplier_return") && <SendBack id={id} name={s.name} parts={s.parts} onDone={() => void reload()} />}
+      <ClaimsPanel supplierId={id} parts={s.parts} />
       <div className="ws-card">
         <div className="ws-section-head"><h3>{t("Deliveries")} ({s.delivery_count})</h3></div>
         {s.deliveries.length === 0 ? <p className="muted">{t("Nothing received from this supplier yet.")}</p> : s.deliveries.map((d) => (

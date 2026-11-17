@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, AlertTriangle } from "lucide-react";
+import { CheckCircle2, AlertTriangle, X } from "lucide-react";
 import { t } from "./i18n";
 
 /** Button: variants + built-in "Saving…" state + haptic-like press. */
@@ -21,7 +21,16 @@ export function Field({ label, hint, error, children }: { label: string; hint?: 
 /** Bottom sheet on phones, centred card on desktop. Esc and tap outside close it. */
 export function Sheet({ title, onClose, children }: { title?: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => { const k = (e: KeyboardEvent) => e.key === "Escape" && onClose(); window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
-  return <div className="ui-sheet-back" onClick={onClose}><div className="ui-sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}><i className="ui-sheet-grip" />{title && <h3>{title}</h3>}{children}</div></div>;
+  // phone: pull the handle (or the top of the sheet when it is scrolled to the top) down to close
+  const box = useRef<HTMLDivElement>(null), start = useRef<number | null>(null);
+  const down = (e: React.TouchEvent) => { const top = (e.target as HTMLElement).closest(".ui-sheet-grip") || (box.current?.scrollTop === 0 && e.touches[0].clientY - (box.current?.getBoundingClientRect().top || 0) < 56); start.current = top ? e.touches[0].clientY : null; };
+  const move = (e: React.TouchEvent) => { if (start.current === null || !box.current) return; const d = Math.max(0, e.touches[0].clientY - start.current); box.current.style.transition = "none"; box.current.style.transform = "translateY(" + d + "px)"; };
+  const up = (e: React.TouchEvent) => {
+    if (start.current === null || !box.current) return;
+    const d = e.changedTouches[0].clientY - start.current; start.current = null; box.current.style.transition = "transform .18s"; box.current.style.transform = "";
+    if (d > 90) onClose();
+  };
+  return <div className="ui-sheet-back" onClick={onClose}><div ref={box} className="ui-sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()} onTouchStart={down} onTouchMove={move} onTouchEnd={up}><i className="ui-sheet-grip" /><button type="button" className="ui-sheet-x" aria-label={t("Close")} onClick={onClose}><X size={18} /></button>{title && <h3>{title}</h3>}{children}</div></div>;
 }
 
 type ToastItem = { id: number; text: string; bad?: boolean; action?: { label: string; run: () => void } };

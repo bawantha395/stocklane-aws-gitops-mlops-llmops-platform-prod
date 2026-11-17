@@ -1,10 +1,12 @@
 import { t } from "../i18n";
+import { PrinterPanel } from "./PrinterPanel";
+import { OwnerMailSection } from "./OwnerMail";
 import { toast, askConfirm } from "../ui";
 import { api } from "../api";
 import { useState, useEffect, useRef } from "react";
 import { logoFromFile, resetLogo } from "../logoStore";
 import { useLogo } from "../BizLogo";
-import { MessageCircle, Boxes, Building2, FileText, Landmark, ListChecks, Percent, ShieldCheck, Users, Wrench, Database, type LucideIcon } from "lucide-react";
+import { MessageCircle, Boxes, Building2, FileText, Landmark, ListChecks, Percent, ShieldCheck, Users, Wrench, Database, Printer, Mail, type LucideIcon } from "lucide-react";
 import QRCode from "qrcode";
 import { BizLogo } from "../BizLogo";
 import { StoresSection } from "./StoresSection";
@@ -22,13 +24,13 @@ function qrBits(url?: string) {
   try { const m = QRCode.create(url.trim(), { errorCorrectionLevel: "M" }).modules; let b = ""; for (let r = 0; r < m.size; r++) for (let c = 0; c < m.size; c++) b += m.get(r, c) ? "1" : "0"; return m.size + ":" + b; } catch { return ""; }
 }
 
-type Sec = "biz" | "tax" | "pay" | "bill" | "data" | "workshop" | "staff" | "perms" | "store" | "lists" | "msgs";
+type Sec = "mail" | "printer" | "biz" | "tax" | "pay" | "bill" | "data" | "workshop" | "staff" | "perms" | "store" | "lists" | "msgs";
 const NAV: { group: string; items: { id: Sec; label: string; Icon: LucideIcon; owner?: boolean }[] }[] = [
   { group: "Stock", items: [{ id: "store", label: "Store room", Icon: Boxes }, { id: "lists", label: "Shelves and categories", Icon: ListChecks }] },
-  { group: "Workshop", items: [{ id: "workshop", label: "Workshop", Icon: Wrench }, { id: "staff", label: "Staff", Icon: Users, owner: true }, { id: "perms", label: "Who can do what", Icon: ShieldCheck, owner: true }, { id: "msgs", label: "Customer messages", Icon: MessageCircle, owner: true }] },
+  { group: "Workshop", items: [{ id: "workshop", label: "Workshop", Icon: Wrench }, { id: "printer", label: "Receipt printer", Icon: Printer }, { id: "mail", label: "Daily summary", Icon: Mail, owner: true }, { id: "staff", label: "Staff", Icon: Users, owner: true }, { id: "perms", label: "Who can do what", Icon: ShieldCheck, owner: true }, { id: "msgs", label: "Customer messages", Icon: MessageCircle, owner: true }] },
   { group: "Business", items: [{ id: "biz", label: "Business details", Icon: Building2 }, { id: "tax", label: "Tax and discount", Icon: Percent }, { id: "pay", label: "Getting paid", Icon: Landmark }, { id: "bill", label: "Bill notes", Icon: FileText }, { id: "data", label: "Your data", Icon: Database, owner: true }] },
 ];
-const OWN_SAVE: string[] = ["store", "lists", "staff", "perms", "data", "msgs"]; // these sections save themselves
+const OWN_SAVE: string[] = ["mail", "printer", "store", "lists", "staff", "perms", "data", "msgs"]; // these sections save themselves
 const SEC_KEY = "lifta.settingsSec";
 
 export function Settings() {
@@ -135,6 +137,13 @@ export function Settings() {
             <small className="ws-hint">{t("Not printed. A mechanic can give a discount up to this percent of parts and labour (bill discount and line discounts together). More needs the owner. 0 = no discounts.")}</small>
           </section>
         </div>
+        <div hidden={sec !== "printer"}>
+          <section className="ws-sec">
+            <h3><span className="ws-sec-ico"><Printer size={18} /></span>{t("Receipt printer")}</h3>
+            <p className="muted">{t("Connect a receipt printer once. Bills then print straight to it, no dialog.")}</p>
+            <PrinterPanel open />
+          </section>
+        </div>
         <div hidden={sec !== "workshop"}>
           <section className="ws-sec">
             <h3><span className="ws-sec-ico"><Wrench size={18} /></span>{t("Workshop")}</h3>
@@ -170,6 +179,7 @@ export function Settings() {
         <div hidden={sec !== "store"}><StoreRoomSection /></div>
         <div hidden={sec !== "lists"}><StoresSection /></div>
         <div hidden={sec !== "staff"}><StaffSection /></div>
+        <div hidden={sec !== "mail"}>{sec === "mail" && owner && <OwnerMailSection />}</div>
         <div hidden={sec !== "perms"}><PermissionsSection /></div>
         <div hidden={sec !== "msgs"}>{sec === "msgs" && <MessageTemplatesSection sinhala={!!business.sinhala} />}</div>
         <div hidden={sec !== "pay"}>

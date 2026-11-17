@@ -1,5 +1,7 @@
 import { t } from "../i18n";
-import { askConfirm } from "../ui";
+import { api } from "../api";
+import { askConfirm, toast } from "../ui";
+import { enqueue, isOfflineError } from "../offline";
 import { useEffect, useRef, useState } from "react";
 import { JobItem } from "./Dashboard";
 import { OwingNotice, PastRepairs } from "./Vehicles";
@@ -70,6 +72,18 @@ export function NewJob({ reg: start }: { reg?: string }) {
   const formRef = useRef<HTMLFormElement>(null);
   const next = () => { const bad = Array.from(formRef.current?.querySelectorAll<HTMLInputElement>('[data-step="' + step + '"] [required]') || []).find((x) => !x.checkValidity()); if (bad) { bad.reportValidity(); return; } setStep((n) => Math.min(n + 1, 2)); window.scrollTo({ top: 0 }); };
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
+  const [plateNote, setPlateNote] = useState("");
+  // the plate photo is read for the number; it only fills the vehicle number when that is still empty
+  const readPlate = (file: Blob) => {
+    setPlateNote("");
+    if (f.registration.trim() || !navigator.onLine) return;
+    const form = new FormData(); form.append("file", file, "plate.jpg");
+    api<{ plate: string }>("/api/vision/plate", { method: "POST", body: form }).then((r) => {
+      if (!r.plate) { setPlateNote(t("Could not read the number. Type it.")); return; }
+      setF((x) => (x.registration.trim() ? x : { ...x, registration: r.plate }));
+      setPlateNote(t("Number read from the photo. Check it: {plate}", { plate: r.plate }));
+    }).catch(() => undefined);
+  };
   const key = useDebounced(regKey(f.registration), 300);
   const known = useLoad<Vehicle>(key.length >= 2 ? "/api/workshop/vehicles/" + key : null);
   const v = key.length >= 2 ? known.data : null;
@@ -91,7 +105,16 @@ export function NewJob({ reg: start }: { reg?: string }) {
       try { sessionStorage.setItem("ws.justmade", job.id); } catch { /* ignore */ }
       go({ name: "job", id: job.id }, (job.job_no ? job.job_no + " created. " : "Job created. ") + "Print the job card, then add the parts and labour.");
     }
-    catch (err) { setError((err as Error).message); setBusy(false); }
+    catch (err) {
+      const k = (err as { key?: string }).key;
+      if (!newOwner && isOfflineError(err) && k) {
+        // no internet: keep the job on this phone and send it when the connection is back
+        enqueue({ key: k, kind: "job", label: t("Job") + " " + f.registration.toUpperCase(), path: "/api/workshop/jobs", body: JSON.stringify({ ...f, customer, ...extra, odometer: f.odometer === "" ? null : Number(f.odometer), plate_photo: plate || undefined, front_photo: front || undefined, before_photos: before }) });
+        toast(t("No internet. The job is saved on this phone and will be sent when the connection is back."), { ms: 6000 });
+        go({ name: "home" }); return;
+      }
+      setError((err as Error).message); setBusy(false);
+    }
   };
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,9 +153,10 @@ export function NewJob({ reg: start }: { reg?: string }) {
         <div className="ws-photos" data-tour="job-photos">
           <strong>{t("Photos")} <small>({t("optional")})</small></strong>
           <div className="ws-photo-grid">
-            <PhotoSlot kind="plate" label={t("Number plate")} id={plate} onId={setPlate} />
+            <PhotoSlot kind="plate" label={t("Number plate")} id={plate} onId={setPlate} onFile={readPlate} />
             <PhotoSlot kind="front" label={t("Front of the vehicle")} id={front || v?.front_photo || ""} onId={setFront} saved={!front && !!v?.front_photo} />
           </div>
+          {plateNote && <p className="ws-help" role="status">{plateNote}</p>}
           <span className="ws-photo-label">{t("Condition when it arrived (before fixing)")}</span>
           <PhotoStrip ids={before} onAdd={(id) => setBefore((x) => [...x, id])} onRemove={(id) => setBefore((x) => x.filter((y) => y !== id))} />
         </div>

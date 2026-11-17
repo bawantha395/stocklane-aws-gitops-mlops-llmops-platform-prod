@@ -1,7 +1,8 @@
 import { Crash } from "./Crash";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Track } from "./workshop/Track";
+import { printerConnected } from "./workshop/printer";
 import { Camera, Package, ArrowDownLeft, ArrowUpRight, Activity, Plus, Printer, Search, RefreshCw, LogOut, Check, X, ScanLine, Home, ArrowRight, ArrowLeft, ClipboardCheck, ListChecks, Truck, Wrench, Warehouse, Menu as MenuIcon, FileText, PlusCircle, X as CloseIcon, Compass, Settings2 } from "lucide-react";
 import { api, ApiError, auth, openPdf, userEmail, shrink, signOut, type Match, type Draft, type Movement } from "./api";
 import "@fontsource-variable/dm-sans";
@@ -14,6 +15,8 @@ import { ToastHost, ConfirmHost, askConfirm, applyTheme, getTheme, toast } from 
 import { setBusinessName, setDefaultReorder, useBusinessName } from "./businessName";
 import { t, useLang, setLang, setSinhalaAllowed, useSinhalaAllowed } from "./i18n";
 import { Walkthrough } from "./Walkthrough";
+import { OfflineBar } from "./OfflineBar";
+import { flush as flushOffline } from "./offline";
 import { MechanicHome } from "./MechanicHome";
 import { SetupWizard, setupDone } from "./SetupWizard";
 import { usePractice, startPractice, probe } from "./practice";
@@ -84,6 +87,13 @@ function App() {
     try { return localStorage.getItem("lifta.dock") === "hidden"; } catch { return false; }
   });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [wsNow, setWsNow] = useState("home");
+  const [isDesk, setIsDesk] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 761px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 761px)"), on = () => setIsDesk(mq.matches), page = (e: Event) => setWsNow(String((e as CustomEvent).detail || "home"));
+    mq.addEventListener("change", on); window.addEventListener("lifta:ws-page", page);
+    return () => { mq.removeEventListener("change", on); window.removeEventListener("lifta:ws-page", page); };
+  }, []);
   const [wsStart, setWsStart] = useState<{ page: WsPage; n: number }>({ page: { name: "home" }, n: 0 });
   const [wizardGone, setWizardGone] = useState(false);
   const [started, setStarted] = useState<{ jobs: boolean; invoices: boolean } | null>(null);
@@ -115,8 +125,8 @@ function App() {
       if (swipeY.current === null) return;
       const dy = e.changedTouches[0].clientY - swipeY.current;
       swipeY.current = null;
-      if (dy < -24) setDock(true);
-      else if (dy > 24) setDock(false);
+      if (dy > 24) setDock(true);
+      else if (dy < -24) setDock(false);
     },
   };
   const [items, setItems] = useState<Item[]>([]),
@@ -333,6 +343,9 @@ function App() {
     setDraft(null);
     setSaveReference(false);
   };
+  useEffect(() => { if (session) void flushOffline(); }, [session]); // anything saved while there was no internet goes out after sign-in
+  useEffect(() => { const out = (e: Event) => { const p = items.find((x) => x.id === (e as CustomEvent).detail); if (p) openCounter("give", p); }; window.addEventListener("lifta:take-out", out); return () => window.removeEventListener("lifta:take-out", out); });
+  useEffect(() => { const go = () => { if (can("see_cost") && can("price_edit")) navigate("prices"); }; window.addEventListener("lifta:open-prices", go); return () => window.removeEventListener("lifta:open-prices", go); });
   useEffect(() => { const go = () => navigate("shelf"); window.addEventListener("lifta:open-shelf", go); return () => window.removeEventListener("lifta:open-shelf", go); });
   useEffect(() => { const here = () => { try { localStorage.setItem("lifta.counter.style", "batch"); } catch { /* ignore */ } openCounter("receive"); }; window.addEventListener("lifta:receive-here", here); return () => window.removeEventListener("lifta:receive-here", here); });
   const navigate = (next: View, preserveCounterPick = false) => {
@@ -751,6 +764,20 @@ function App() {
     { group: t("HELP") },
     { key: "tour", full: t("Walkthrough"), short: t("Walkthrough"), sub: t("Show me how it works"), Icon: Compass },
   ];
+  // the pages inside Jobs & Invoices, listed under it in the side menu (laptop); phones use the tabs on the page
+  const wsSubs: { key: string; label: string; page: WsPage; tour?: string }[] = can("jobs_view") ? [
+    { key: "home", label: t("Summary"), page: { name: "home" } },
+    { key: "jobs", label: t("Jobs"), page: { name: "jobs" }, tour: "ws-tab-jobs" },
+    { key: "estimates", label: t("Estimates"), page: { name: "jobs", tab: "ESTIMATE" } as WsPage, tour: "ws-tab-quotes" },
+    { key: "vehicles", label: t("Vehicles"), page: { name: "vehicles" }, tour: "ws-tab-vehicles" },
+    ...(can("customers_view") ? [{ key: "customers", label: t("Customers"), page: { name: "customers" } as WsPage }] : []),
+    { key: "due", label: t("Service due"), page: { name: "due" } },
+    ...(can("bills_view") ? [{ key: "invoices", label: t("Bills"), page: { name: "invoices" } as WsPage, tour: "ws-tab-invoices" }] : []),
+    ...(can("reports") ? [{ key: "report", label: t("Business reports"), page: { name: "report" } as WsPage, tour: "ws-tab-report" }] : []),
+    ...(can("messages") ? [{ key: "messages", label: t("Messages"), page: { name: "messages" } as WsPage }] : []),
+    ...(can("alerts") ? [{ key: "alerts", label: t("Alerts"), page: { name: "alerts" } as WsPage }] : []),
+    ...(owner ? [{ key: "archive", label: t("Archive"), page: { name: "archive" } as WsPage, tour: "ws-tab-archive" }] : []),
+  ] : [];
   const pickNav = (key: View | "settings" | "tour") => { if (key === "tour") { setMenuOpen(false); setChooser(true); } else if (key === "settings") { setMenuOpen(false); openWorkshop({ name: "settings" }); } else navigate(key); };
   const moreActive = view === "stock" || view === "activity" || view === "analysis" || view === "suppliers" || view === "orders" || view === "prices" || view === "shelf";
   return (
@@ -771,11 +798,12 @@ function App() {
           "group" in n ? (
             <span className="nav-heading" key={n.group}>{n.group}</span>
           ) : (
+            <Fragment key={n.key}>
             <button
-              key={n.key}
-              data-tour={"nav-" + n.key}
+              data-tour={n.key === "settings" && isDesk ? "ws-tab-settings" : "nav-" + n.key}
               disabled={busy}
               className={(view === n.key ? "chosen" : "") + (n.main ? "" : " nav-more")}
+              title={n.sub || undefined}
               onClick={() => pickNav(n.key)}
             >
               <n.Icon size={19} />
@@ -785,6 +813,14 @@ function App() {
               </span>
               <span className="nav-short">{n.short}</span>
             </button>
+            {n.key === "workshop" && view === "workshop" && isDesk && wsSubs.length > 0 && (
+              <div className="nav-subs" role="group" aria-label={t("Jobs & Invoices")}>
+                {wsSubs.map((x) => (
+                  <button key={x.key} data-tour={x.tour} disabled={busy} className={wsNow === x.key ? "chosen" : ""} onClick={() => openWorkshop(x.page)}>{x.label}</button>
+                ))}
+              </div>
+            )}
+            </Fragment>
           ),
         )}
         <button
@@ -848,6 +884,7 @@ function App() {
       {session && <CommandBar open={cmdOpen} onClose={() => setCmdOpen(false)} workshop={true} openWorkshop={openWorkshop} openPart={(q) => { setQuery(q); navigate("stock"); }} />}
       <PracticeCoach />
       <main className="stock-main">
+        <OfflineBar />
         <header className="stock-header">
           <a className="m-brand" href="#" onClick={(e) => { e.preventDefault(); navigate("home"); }}>
             <Logo size={30} /> <b>Lifta<span>.</span></b>
@@ -930,22 +967,23 @@ function App() {
               const steps = [
                 { done: businessName !== "Workshop Suite" && businessName.trim() !== "", title: t("Add your business details"), sub: t("Name, address and phone for your bills."), go: () => openWorkshop({ name: "settings" }) },
                 { done: items.length > 0, title: t("Add your first part"), sub: t("Take a photo of a part. Lifta reads the label."), go: () => openCounter("receive") },
+                { done: printerConnected(), title: t("Connect a receipt printer"), optional: true, sub: t("Optional. Bills then print straight to it."), go: () => openWorkshop({ name: "settings" }) },
                 { done: started.jobs, title: t("Start your first job"), sub: t("One vehicle, its repairs, parts and labour."), go: () => openWorkshop({ name: "new" }) },
                 { done: started.invoices, title: t("Make your first invoice"), sub: t("Open a job and press Create invoice."), go: () => openWorkshop({ name: "jobs" }) },
               ];
-              const left = steps.filter((x) => !x.done).length;
+              const left = steps.filter((x) => !x.done && !("optional" in x)).length;
               if (!left) return null;
-              const next = steps.findIndex((x) => !x.done);
+              const next = steps.findIndex((x) => !x.done && !("optional" in x));
               return (
                 <section className="start-card" aria-label="Get started">
                   <div className="start-head">
                     <div>
                       <p className="eyebrow">{t("GET STARTED")}</p>
-                      <h2>{t("{done} of {total} done", { done: steps.length - left, total: steps.length })}</h2>
+                      <h2>{t("{done} of {total} done", { done: steps.filter((x) => x.done).length, total: steps.length })}</h2>
                     </div>
                     <button className="stock-link" onClick={() => { try { localStorage.setItem("lifta.start", "done"); } catch { /* private mode */ } setStartHidden(true); }}>{t("Hide")}</button>
                   </div>
-                  <div className="start-bar" aria-hidden="true"><span style={{ width: ((steps.length - left) / steps.length) * 100 + "%" }} /></div>
+                  <div className="start-bar" aria-hidden="true"><span style={{ width: (steps.filter((x) => x.done).length / steps.length) * 100 + "%" }} /></div>
                   <ol className="start-steps">
                     {steps.map((x, i) => (
                       <li key={x.title} className={x.done ? "done" : i === next ? "next" : ""}>
@@ -975,6 +1013,15 @@ function App() {
                   <small>{t("Open a bill or take a payment")}</small>
                 </span>
               </button>
+              {can("bill") && can("job_stock") && can("jobs") && (
+                <button className="counter-tile bill" disabled={!session || busy} onClick={() => openWorkshop({ name: "quickbill" })}>
+                  <FileText size={30} />
+                  <span>
+                    <strong>{t("Quick bill")}</strong>
+                    <small>{t("Sell a part or a small job, no repair job needed")}</small>
+                  </span>
+                </button>
+              )}
             </div>
             <p className="home-label">{t("STOCK")}</p>
             <div className="counter-tiles">
@@ -1373,7 +1420,7 @@ function App() {
                           </button>
                           <input
                             id="movement-quantity"
-                            type="number"
+                            type="number" inputMode="decimal"
                             min={active.unit === "UNIT" ? 1 : 0.001}
                             step={active.unit === "UNIT" ? 1 : 0.001}
                             value={quantity}

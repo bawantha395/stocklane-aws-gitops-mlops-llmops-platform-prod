@@ -145,7 +145,7 @@ export function BatchOut({ items, onChanged, photo }: { items: Item[]; onChanged
             {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         )}
-        <small className="stock-help">{d.who === "JOB" ? t("The parts go on this job's bill at their selling price.") : d.who === "PERSON" ? t("A goods issue note (GIN) is made with this person's name.") : t("A goods issue note (GIN) is made. No job and no person.")}</small>
+        <small className="stock-help">{d.who === "JOB" ? t("The parts go on this job's bill at their selling price.") : d.who === "PERSON" ? t("A note is made with this person's name.") : t("A note is made. No job and no person.")}</small>
       </div>
 
       <div className="counter-step">
@@ -171,12 +171,12 @@ export function BatchOut({ items, onChanged, photo }: { items: Item[]; onChanged
                   <div className="bi-name"><strong>{p.name}</strong><small>{p.part_number || p.sku} · {t("in stock")} {amount(Number(p.quantity))}{p.location ? " · " + p.location : ""}</small></div>
                   <div className="counter-stepper bi-qty">
                     <button type="button" aria-label="One less" disabled={busy || l.qty <= 1} onClick={() => change(l.id, Math.max(1, l.qty - 1))}><Minus /></button>
-                    <input aria-label="Quantity" type="number" min={p.unit === "LITRE" ? 0.001 : 1} step={p.unit === "LITRE" ? 0.001 : 1} value={l.qty} disabled={busy} onChange={(e) => change(l.id, Number(e.target.value))} />
+                    <input aria-label="Quantity" type="number" inputMode="decimal" min={p.unit === "LITRE" ? 0.001 : 1} step={p.unit === "LITRE" ? 0.001 : 1} value={l.qty} disabled={busy} onChange={(e) => change(l.id, Number(e.target.value))} />
                     <button type="button" aria-label="One more" disabled={busy} onClick={() => change(l.id, l.qty + 1)}><Plus /></button>
                   </div>
                   <button type="button" className="bi-del" aria-label={t("Remove")} disabled={busy} onClick={() => set({ lines: d.lines.filter((x) => x.id !== l.id) })}><Trash2 size={18} /></button>
                   {lack > 0 && (
-                    <p className="bo-warn" role="alert">{t("Only {n} in stock.", { n: amount(Number(p.quantity)) })} {can("job_stock") && (ordered[l.productId] ? <b>{t("On the To order list")}</b> : <button type="button" className="stock-link" onClick={() => void orderThis(l)}>{t("Order this")}</button>)}</p>
+                    <p className="bo-warn" role="alert">{t("Only {n} in stock.", { n: amount(Number(p.quantity)) })} {can("job_stock") && (ordered[l.productId] ? <b>{t("On the To order list")}</b> : <button type="button" className="button secondary small" onClick={() => void orderThis(l)}>{t("Order this")}</button>)}</p>
                   )}
                 </li>
               );

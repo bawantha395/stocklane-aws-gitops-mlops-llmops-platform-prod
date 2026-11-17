@@ -12,7 +12,7 @@ export function ReorderCard() {
   if (!report) return <section className="stock-panel reorder-card" aria-busy="true"><p className="stock-help">Checking what to reorder…</p></section>;
   const { reorder, soon, idle } = reorderSuggestions(report.products);
   const today = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
-  const download = () => csv("purchase-list-" + today + ".csv", reorder.map((r) => ({ SKU: r.sku, Item: r.name, "In stock": r.availableNow, "Order quantity": r.order, Unit: r.unit === "LITRE" ? "litres" : "units", Why: why(r), Method: r.basis === "forecast" ? "Forecast" : "Reorder level" })));
+  const download = () => csv("purchase-list-" + today + ".csv", reorder.map((r) => ({ SKU: r.sku, Item: r.name, "In stock": r.availableNow, "Order quantity": r.order, Unit: r.unit === "LITRE" ? "litres" : "units", Why: why(r), Method: r.basis === "forecast" ? "Forecast" : "Low stock" })));
   return (
     <section className="stock-panel reorder-card" aria-label="Reorder this week">
       <div className="section-heading">

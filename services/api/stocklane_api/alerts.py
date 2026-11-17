@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from .core import bad, command, get, now, put, query
 
-TYPES = ('BELOW_COST', 'DISCOUNT', 'VOID', 'REFUND', 'COUNT', 'COST_EDIT', 'STOCK_RETURN')
+TYPES = ('BELOW_COST', 'DISCOUNT', 'VOID', 'REFUND', 'COUNT', 'COST_EDIT', 'STOCK_RETURN', 'ESTIMATE_DECISION')
 DISCOUNT_PCT = Decimal('10')   # a bill discounted by more than this share of its value
 WINDOW_DAYS = 30
 MAX_SEEN = 50
@@ -59,6 +59,13 @@ def found(days=WINDOW_DAYS):
             add('STOCK_RETURN', m['id'], m['created_at'], m.get('actor'), 'Sent back to supplier: %s' % m.get('name', ''), '%s %s' % (m['quantity'], m.get('unit', '')))
     for e in query('COSTEV', gte=since):
         add('COST_EDIT', e['sk'], e['at'], e.get('by'), 'Cost price changed: %s' % e.get('name', ''), 'from %s to %s' % (e.get('old') or 'not entered', e['new']))
+    for q in query('WQUO'):  # a customer answered their estimate from the link: the owner should know
+        d = q.get('customer_decision') or {}
+        if d.get('at') and local_date(d['at']).isoformat() >= since:
+            word = 'approved' if d.get('decision') == 'APPROVE' else 'declined'
+            what = 'quotation' if q.get('kind') == 'QUOTATION' else 'estimate'
+            add('ESTIMATE_DECISION', q['id'] + ':' + d['at'], d['at'], d.get('name') or 'Customer', 'Customer %s the %s %s' % (word, what, q.get('number', '')),
+                '%s. %s' % (q.get('registration') or q.get('customer') or '', 'Make it a job.' if word == 'approved' else 'You may want to call them.'))
     return sorted(out, key=lambda a: a['at'], reverse=True)
 
 
@@ -94,10 +101,12 @@ def cockpit():
     now_r, mon_r = workshop.report(day, day), workshop.report(month, day)
     dash = workshop.dashboard()
     to_order = orders.to_order()
+    from . import inventory
+    below = inventory.price_review()['below']  # parts priced under cost + markup: the owner decides
     return {
         'today': {'received': now_r['received'], 'billed': now_r['total'], 'profit': now_r['profit']['profit'], 'profit_unknown': now_r['profit']['unknown']},
         'month': {'received': mon_r['received'], 'billed': mon_r['total'], 'profit': mon_r['profit']['profit'], 'profit_unknown': mon_r['profit']['unknown']},
         'owing': dash['unpaid_total'], 'owing_count': dash['unpaid_count'], 'overdue_count': dash['overdue_count'],
-        'to_order': to_order['open'], 'approvals': len(dash['delete_requests']),
+        'to_order': to_order['open'], 'approvals': len(dash['delete_requests']), 'price_below': below,
         'messages': messages.count()['count'], 'alerts': unseen(),
     }

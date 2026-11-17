@@ -83,11 +83,11 @@ export function StoreMap({ items }: { items: Item[] }) {
         {racks.map((r) => {
           const c = data.counts[r.id], on = sel?.rack === r.id;
           return (
-            <div key={r.id} className={"sm-rack" + (on ? " on" : "") + (r.levels.length === 0 && shown(r) ? " lit" : "")}>
+            <div key={r.id} className={"sm-rack" + (on ? " on" : "") + ((r.levels.length === 0 ? shown(r) : r.levels.some((l) => shown(r, l))) ? " lit" : "")}>
               <button className="sm-rack-head" aria-pressed={on && !sel?.level} disabled={!!moving && r.levels.length > 0} title={t("Quick look")} onClick={() => (moving || r.levels.length === 0 ? pick(r) : setLook({ rack: r, wall: wall.name }))}>
                 <b>{rackTitle(r.name)}</b><small>{t(TYPE[r.type] || "Rack")}</small><span className="ws-count" aria-label={t("Parts")}>{total(c)}</span>
               </button>
-              {r.levels.map((l) => (
+              {!!moving && r.levels.map((l) => (
                 <button key={l.id} className={"sm-level" + (sel?.level === l.id ? " on" : "") + (shown(r, l) ? " lit" : "")} aria-pressed={sel?.level === l.id} onClick={() => pick(r, l)}>
                   <span>{l.name}</span><span className="ws-count">{c?.[l.id] || 0}</span>
                 </button>
@@ -127,7 +127,7 @@ export function StoreMap({ items }: { items: Item[] }) {
       {moving && (
         <div className="sm-moving" role="status"><b>{t("Tap the shelf to move {n} parts to.", { n: moving.length })}</b> <button type="button" className="button secondary small" onClick={() => setMoving(null)}>{t("Cancel")}</button></div>
       )}
-      {data.racks.length === 0 && <Empty>{t("The store room is not set up yet. The owner does it in Setup → Settings → Store room.")}</Empty>}
+      {data.racks.length === 0 && <Empty>{t("The store room is not set up yet. The owner does it in Settings → Store room.")}</Empty>}
       <div className="sm-compass" aria-label={t("Store room map")}>
         {(["N", "W", "C", "E", "S"] as const).map((pos) => {
           if (pos === "C") return <div key="c" className="sm-pos c"><span className="sm-keeper"><User size={26} /></span><small>{t("Storekeeper")}</small></div>;
@@ -159,6 +159,11 @@ function ShelfPage({ sel, rack, onClose, onMove, canCount, counted, onCounted }:
       <div className="sm-shelf-top"><h2>{sel.label}</h2><button className="button secondary small" onClick={onClose}>{t("Close")}</button></div>
       {photo && <Photo id={photo} size="full" className="sm-shelf-photo" />}
       <p className="muted sm-counted">{counted ? t("Last counted") + ": " + dayText(counted) : t("Not counted yet")}</p>
+      {sel.rack !== "none" && !counting && (can("stock_in") || can("stock_out")) && (
+        <div className="sm-tools">
+          {can("stock_in") && <button type="button" className="button primary small" onClick={() => { try { sessionStorage.setItem("lifta.putaway", sel.label); } catch { /* ignore */ } window.dispatchEvent(new Event("lifta:receive-here")); }}>{t("Put in")}</button>}
+        </div>
+      )}
       {canCount && data && data.parts.length > 0 && !counting && <div className="sm-tools"><button type="button" className="button secondary small" onClick={() => { setVals({}); setCounting(true); }}>{t("Count this shelf")}</button></div>}
       {counting && data && (
         <div className="sm-tools">
@@ -189,7 +194,7 @@ function ShelfPage({ sel, rack, onClose, onMove, canCount, counted, onCounted }:
               {counting ? (
                 <span className="sm-count"><input type="number" inputMode="decimal" min="0" step={p.unit === "LITRE" ? "0.1" : "1"} aria-label={t("Counted") + " " + p.name} value={vals[p.id] ?? ""} onChange={(e) => setVals({ ...vals, [p.id]: e.target.value })} placeholder={String(Number(p.quantity))} />
                   {vals[p.id] !== undefined && vals[p.id] !== "" && Number(vals[p.id]) !== Number(p.quantity) && <small className={Number(vals[p.id]) > Number(p.quantity) ? "up" : "down"}>{Number(vals[p.id]) - Number(p.quantity) > 0 ? "+" : ""}{Math.round((Number(vals[p.id]) - Number(p.quantity)) * 100) / 100}</small>}</span>
-              ) : <span className="sm-qty">{Number(p.quantity)} <small>{p.unit === "LITRE" ? "L" : ""}</small></span>}
+              ) : <span className="sm-qty">{Number(p.quantity)} <small>{p.unit === "LITRE" ? "L" : ""}</small>{can("stock_out") && Number(p.quantity) > 0 && <button type="button" className="button secondary small sm-out" onClick={() => window.dispatchEvent(new CustomEvent("lifta:take-out", { detail: p.id }))}>{t("Take out")}</button>}</span>}
             </li>
           ))}
         </ul>

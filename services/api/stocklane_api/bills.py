@@ -403,7 +403,7 @@ def monthly(x, business):
     table('WE OWE SUPPLIERS', ['SUPPLIER', 'OVERDUE', 'BALANCE'], [(i['name'], m(i['overdue']), m(i['balance'])) for i in x['payables']['suppliers']], ['l', 'r', 'r'], [MARGIN + 6, 400, R - 6])
     s = x['slow']
     table('SLOW STOCK (NO SALES FOR 90 DAYS): ' + str(s['count']) + ' ITEMS, LKR ' + format(s['value'], ',.2f'), ['CATEGORY', 'ITEMS', 'VALUE'], [(c['category'] or 'No category', str(c['items']), m(c['value'])) for c in s['categories']], ['l', 'r', 'r'], [MARGIN + 6, 400, R - 6])
-    names = {'BELOW_COST': 'Sold below cost', 'DISCOUNT': 'Big discounts', 'VOID': 'Bills voided', 'REFUND': 'Refunds', 'COUNT': 'Stock count changes', 'COST_EDIT': 'Cost price changes', 'STOCK_RETURN': 'Sent back to supplier'}
+    names = {'BELOW_COST': 'Sold below cost', 'DISCOUNT': 'Big discounts', 'VOID': 'Bills voided', 'REFUND': 'Refunds', 'COUNT': 'Stock count changes', 'COST_EDIT': 'Cost price changes', 'STOCK_RETURN': 'Sent back to supplier', 'ESTIMATE_DECISION': 'Customer answered an estimate'}
     table('THINGS TO LOOK AT: ' + str(x['alert_total']), ['WHAT', 'TIMES'], [(names.get(k, k), str(v)) for k, v in sorted(x['alerts'].items())], ['l', 'r'], [MARGIN + 6, R - 6])
     return d.render()
 

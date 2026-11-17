@@ -39,6 +39,7 @@ export function Invoices() {
         </div>
         <input aria-label="Search invoices" placeholder={t("Search invoice, vehicle or customer")} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
+      {can("bill") && can("job_stock") && can("jobs") && <p><button type="button" className="button secondary small" onClick={() => go({ name: "quickbill" })}>+ {t("Quick bill")}</button></p>}
       {filter === "UNPAID" && <p className="ws-owed">{t("Customers owe")} <b>LKR {lkr(owing.reduce((s, i) => s + i.total - i.paid, 0))}</b></p>}
       <DateChips value={range} onChange={setRange} />
       <SummaryBar text={cap(t("bills")) + ": " + shown.length + " · LKR " + lkr(shown.reduce((s, i) => s + (i.status === "VOID" ? 0 : i.total), 0))} file="bills"

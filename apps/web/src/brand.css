@@ -75,8 +75,8 @@ html[data-theme="dark"] .counter-step h2 span { background: #2a8a63 !important; 
 .stock-brand b, .m-brand b { font-size: 26px; font-weight: 800; letter-spacing: -.045em; color: var(--ink); }
 /* Mobile: the top bar (Lifta, language, search) stays pinned under the dock, and the tabs pin under it */
 @media (max-width: 760px) {
-  html .stock-shell .stock-header { position: sticky !important; top: calc(84px + env(safe-area-inset-top)); height: 56px; z-index: 35; }
-  .ws-sticky, .ws-tabs { top: calc(140px + env(safe-area-inset-top)) !important; }
+  html .stock-shell .stock-header { position: sticky !important; top: 0; height: 56px; z-index: 35; padding-top: env(safe-area-inset-top); box-sizing: content-box; }
+  .ws-sticky, .ws-tabs { top: calc(56px + env(safe-area-inset-top)) !important; }
 }
 
 /* Small screens: nothing may push the page wider than the screen. Sign out lives in the Menu there. */
@@ -106,11 +106,6 @@ html, body { overflow-x: clip; }
 .stock-sidebar > p { margin: -2px 0 14px 56px; font-size: 10px; font-weight: 600; letter-spacing: .15em; white-space: nowrap; color: var(--muted); }
 .m-brand b { font-size: 26px; }
 .lifta-logo { box-shadow: 0 6px 16px rgba(0, 0, 0, .25); border-radius: 24%; }
-/* Pinned bars follow the dock: when it is tucked away, they move up with it */
-@media (max-width: 760px) {
-  .stock-shell[data-dock="hidden"] .stock-header { top: calc(30px + env(safe-area-inset-top)) !important; }
-  .stock-shell[data-dock="hidden"] .ws-sticky, .stock-shell[data-dock="hidden"] .ws-tabs { top: calc(86px + env(safe-area-inset-top)) !important; }
-}
 /* Desktop: the workshop tabs pin just under the top bar, never behind it */
 @media (min-width: 761px) { .ws-sticky { top: 72px; } }
 
@@ -152,13 +147,12 @@ html, body { overflow-x: clip; }
 .ws-sticky { padding-top: 6px; }
 .counter-lowchip { display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0; vertical-align: middle; color: #8a4b12; background: rgba(224, 140, 40, .18); border: 1px solid rgba(224, 140, 40, .4); }
 html[data-theme="dark"] .counter-lowchip { color: #f0b266; }
-/* Phones: header slides up and away on scroll down; the tabs take its place just under the dock */
+/* Phones: header slides up and away on scroll down; the tabs take its place at the top */
 @media (max-width: 760px) {
   html .stock-shell .stock-header { transition: transform .22s ease, opacity .18s ease; }
   .ws-sticky, .ws-tabs { transition: top .22s ease; }
   .stock-shell[data-hdr="hidden"] .stock-header { transform: translateY(-120%); opacity: 0; pointer-events: none; }
-  .stock-shell[data-hdr="hidden"] .ws-sticky, .stock-shell[data-hdr="hidden"] .ws-tabs { top: calc(84px + env(safe-area-inset-top)) !important; }
-  .stock-shell[data-hdr="hidden"][data-dock="hidden"] .ws-sticky, .stock-shell[data-hdr="hidden"][data-dock="hidden"] .ws-tabs { top: calc(30px + env(safe-area-inset-top)) !important; }
+  .stock-shell[data-hdr="hidden"] .ws-sticky, .stock-shell[data-hdr="hidden"] .ws-tabs { top: env(safe-area-inset-top) !important; }
 }
 
 /* Desktop: at the top of the page the tabs are just pills under the title (no band); the frosted bar appears only once they stick under the top bar */

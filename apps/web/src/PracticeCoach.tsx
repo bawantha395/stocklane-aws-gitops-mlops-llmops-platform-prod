@@ -180,7 +180,7 @@ export function PracticeCoach() {
           scrolled.current = step.id + (hint ? "g" : "");
           const el = document.querySelector(hint ? step.go!.sel : step.target!) as HTMLElement | null;
           const b = el?.getBoundingClientRect();
-          if (el && b && (b.top < 70 || b.bottom > window.innerHeight - 40)) el.scrollIntoView({ block: "center", behavior: "smooth" });
+          if (el && b && (b.top < (window.innerWidth <= 760 ? 130 : 70) || b.bottom > window.innerHeight - (window.innerWidth <= 760 ? 110 : 40))) el.scrollIntoView({ block: "center", behavior: "smooth" });
         }
       }
       const sig = mission.id + ":" + at + ":" + hint + ":" + (r ? [r.x, r.y, r.w, r.h].map(Math.round).join(",") : "-");
@@ -238,7 +238,7 @@ export function PracticeCoach() {
   const hole = !fin && focus ? { x: Math.max(0, focus.x - PAD), y: Math.max(0, focus.y - PAD), w: focus.w + PAD * 2, h: focus.h + PAD * 2 } : null;
 
   type Spot = { left: number; width: number; top?: number; bottom?: number };
-  const edge = 12, topEdge = mobile ? 92 : 14;
+  const edge = mobile ? 94 : 12, topEdge = mobile ? 66 : 14; // phones: the dock sits at the bottom
   const W = mobile ? vw - 24 : 340;
   const heights = mobile ? { full: 232, mini: 120, pill: 46 } : { full: 262, mini: 128, pill: 46 };
   const spotsFor = (h: number) => {

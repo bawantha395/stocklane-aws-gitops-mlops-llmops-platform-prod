@@ -140,3 +140,19 @@ def propose(settings, image):
     fields = parse_lines(lines)
     logging.getLogger(__name__).info('Textract label fallback lines=%d fields=%s', len(lines), sorted(fields))
     return fields
+
+
+PLATE_NEW = re.compile(r'(?<![A-Z0-9])([A-Z]{2,3})[\s.-]{0,2}(\d{4})(?![0-9])')
+PLATE_OLD = re.compile(r'(?<![A-Z0-9])(\d{1,3})[\s.-]{0,2}(\d{4})(?![0-9])')
+
+
+def find_plate(lines):
+    """A Sri Lankan registration (CAB-1234, 250-1234) from the text lines of a number plate photo. Empty if none looks right."""
+    for line in lines:
+        text = re.sub(r'[^A-Z0-9 .-]', ' ', line.upper())
+        m = PLATE_NEW.search(text) or PLATE_OLD.search(text)
+        if m:
+            return m.group(1) + '-' + m.group(2)
+    joined = re.sub(r'[^A-Z0-9 .-]', ' ', ' '.join(lines).upper())
+    m = PLATE_NEW.search(joined) or PLATE_OLD.search(joined)
+    return m.group(1) + '-' + m.group(2) if m else ''

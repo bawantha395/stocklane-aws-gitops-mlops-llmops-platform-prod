@@ -38,7 +38,9 @@ button:not(:disabled):active, .button:not(:disabled):active, a.button:active { t
 /* Sheet: bottom sheet on phones, centred card on desktop */
 .ui-sheet-back { position: fixed; inset: 0; z-index: 95; background: rgba(0,0,0,.4); display: flex; align-items: flex-end; justify-content: center; animation: ap-in .2s ease both; }
 .ui-sheet { width: 100%; max-width: 560px; max-height: 88vh; overflow: auto; background: var(--surface); border-radius: var(--lf-r-lg) var(--lf-r-lg) 0 0; padding: 12px 20px calc(20px + env(safe-area-inset-bottom)); animation: ui-up .3s var(--lf-ease) both; }
-.ui-sheet-grip { display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 12px; }
+.ui-sheet-grip { display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 12px; position: relative; touch-action: none; }
+.ui-sheet-grip::after { content: ""; position: absolute; inset: -14px -30px; }
+@media (min-width: 761px) { .ui-sheet-grip { display: none; } }
 .ui-sheet h3 { margin: 0 0 8px; font-size: 20px; }
 @media (min-width: 761px) { .ui-sheet-back { align-items: center; } .ui-sheet { border-radius: var(--lf-r-lg); } }
 @keyframes ui-up { from { transform: translateY(40px); opacity: 0; } }

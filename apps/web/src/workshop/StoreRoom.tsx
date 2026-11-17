@@ -6,6 +6,7 @@ import { api } from "../api";
 import { uploadPhoto } from "../photo";
 import { Photo } from "./Photos";
 import { setModules } from "../modules";
+import { counterStartIsAuto, getCounterStart, setCounterStart } from "../counterStart";
 
 type Lv = { id?: string; name: string; photo_id?: string };
 type Rk = { id?: string; name: string; area: string; type: "RACK" | "CUPBOARD" | "FLOOR"; levels: Lv[] };
@@ -58,6 +59,16 @@ export function StoreRoomSection() {
   const dropRack = (target: number) => { if (!drag || drag.level !== undefined || drag.rack === target) return; edit(setRacks, (x) => { const c = [...x], [m] = c.splice(drag.rack, 1); const at = c.indexOf(x[target]); c.splice(at, 0, { ...m, area: x[target].area }); return c; }); setDrag(null); };
   const dropWall = (wall: Ar | null) => { if (!drag || drag.level !== undefined) return; const area = wall ? key(wall) : ""; edit(setRacks, (x) => { const c = [...x], [m] = c.splice(drag.rack, 1); let last = -1; c.forEach((r, k) => { if (r.area === area) last = k; }); c.splice(last + 1, 0, { ...m, area }); return c; }); setDrag(null); };
   const dropLevel = (i: number, to: number) => { if (!drag || drag.level === undefined || drag.rack !== i || drag.level === to) return; const r = racks[i]; const lv = [...r.levels], [m] = lv.splice(drag.level, 1); lv.splice(to, 0, m); setRack(i, { ...r, levels: lv }); setDrag(null); };
+  const [adding, setAdding] = useState(""), [addN, setAddN] = useState("1"), [addL, setAddL] = useState("3");
+  const addRacks = (wall: Ar) => {
+    const n = Math.max(1, Math.min(30, Math.floor(Number(addN)) || 1)), l = Math.max(1, Math.min(12, Math.floor(Number(addL)) || 1));
+    edit(setRacks, (x) => {
+      let next = Number(nextNumber()); const out = [...x];
+      for (let k = 0; k < n && out.length < 100; k++) out.push({ name: String(next++), area: key(wall), type: "RACK" as const, levels: Array.from({ length: l }, (_, v) => ({ name: String.fromCharCode(65 + v) })) });
+      return out;
+    });
+    setAdding("");
+  };
   const nextNumber = () => String(racks.reduce((n, r) => (/^\d+$/.test(r.name.trim()) ? Math.max(n, Number(r.name.trim())) : n), 0) + 1);
   return (
     <section className="ws-sec" data-tour="store-room">
@@ -104,7 +115,17 @@ export function StoreRoomSection() {
                 </div>
               </div>
             ))}
-            {area && racks.length < 100 && <button type="button" className="button secondary small" onClick={() => edit(setRacks, (x) => [...x, { name: nextNumber(), area: key(area), type: "RACK" as const, levels: [{ name: "A" }, { name: "B" }, { name: "C" }] }])}>{t("+ Rack")}</button>}
+            {area && racks.length < 100 && (adding === key(area) ? (
+              <div className="ws-addbox">
+                <label>{t("Racks")}<input type="number" inputMode="numeric" min={1} max={30} value={addN} onChange={(e) => setAddN(e.target.value)} /></label>
+                <label>{t("Levels each")}<input type="number" inputMode="numeric" min={1} max={12} value={addL} onChange={(e) => setAddL(e.target.value)} /></label>
+                <small className="ws-hint">{t("Shelves are named like 1-A, 1-B, 2-A. You can rename them after.")}</small>
+                <span className="ws-bar">
+                  <button type="button" className="button primary small" onClick={() => addRacks(area)}>{t("Add")}</button>
+                  <button type="button" className="button secondary small" onClick={() => setAdding("")}>{t("Cancel")}</button>
+                </span>
+              </div>
+            ) : <button type="button" className="ws-addrack" aria-label={t("Add racks to this wall")} onClick={() => { setAdding(key(area)); setAddN("1"); setAddL("3"); }}><span aria-hidden="true">+</span> {t("Add racks")}</button>)}
           </div>
         )
       ))}
@@ -117,7 +138,7 @@ export function StoreRoomSection() {
 
 /** Owner: switch the store room map and the parts counter on or off for this shop. */
 export function ModulesBox() {
-  const [s, setS] = useState<Record<string, unknown> | null>(null), [busy, setBusy] = useState(false);
+  const [s, setS] = useState<Record<string, unknown> | null>(null), [busy, setBusy] = useState(false), [start, setStart] = useState(getCounterStart());
   useEffect(() => { void api<Record<string, unknown>>("/api/workshop/settings").then(setS).catch(() => undefined); }, []);
   if (!s) return null;
   const flip = async (k: "store_room_on" | "counter_on", on: boolean) => {
@@ -129,6 +150,13 @@ export function ModulesBox() {
     <div className="ws-modules">
       <label className="stock-check"><input type="checkbox" disabled={busy} checked={s.counter_on !== false} onChange={(e) => void flip("counter_on", e.target.checked)} /> {t("Use the parts counter")}</label>
       <label className="stock-check"><input type="checkbox" disabled={busy} checked={s.store_room_on !== false} onChange={(e) => void flip("store_room_on", e.target.checked)} /> {t("Use the store room map")}</label>
+      <label className="ws-field">{t("When the parts counter opens on this device")}
+        <select value={counterStartIsAuto() ? "auto" : start} onChange={(e) => { setCounterStart(e.target.value as "auto" | "camera" | "search"); setStart(getCounterStart()); toast(t("Saved")); }}>
+          <option value="auto">{t("Automatic: camera on a phone, search on a computer")}</option>
+          <option value="camera">{t("Camera first")}</option>
+          <option value="search">{t("Search box first")}</option>
+        </select>
+      </label>
     </div>
   );
 }

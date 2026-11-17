@@ -3,7 +3,7 @@ import { t } from "../i18n";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
-export type PageName = "home" | "jobs" | "vehicles" | "customers" | "customer" | "due" | "invoices" | "archive" | "report" | "settings" | "new" | "job" | "vehicle" | "invoice" | "quotes" | "quote" | "messages" | "alerts";
+export type PageName = "home" | "jobs" | "vehicles" | "customers" | "customer" | "due" | "invoices" | "archive" | "report" | "settings" | "new" | "job" | "vehicle" | "invoice" | "quotes" | "quote" | "messages" | "alerts" | "quickbill";
 export type Page = { name: PageName; id?: string; reg?: string; kind?: "ESTIMATE" | "QUOTATION"; tab?: "JOBS" | "ESTIMATE" | "QUOTATION" };
 export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string; qr_url?: string; invoice_prefix?: string; default_reorder_level?: number; default_markup_pct?: number; sinhala?: boolean; labour_items?: Labour[]; mechanics?: string[]; logo?: { v: string; w: number; h: number; c: number } | null };
 export type Part = { name: string; quantity: number; unit_price: number; outside?: boolean; outside_cost?: number | string; outside_shop?: string; outside_supplier_id?: string; product_id?: string; discount_pct?: number; part_no?: string; added_at?: string; returned?: number; returned_at?: string };
@@ -90,7 +90,9 @@ export function useCommand() {
   return async <T,>(path: string, body: unknown, method = "POST") => {
     const fingerprint = path + method + JSON.stringify(body);
     if (pending.current.body !== fingerprint) pending.current = { body: fingerprint, key: typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) };
-    const value = await api<T>(path, { method, body: JSON.stringify(body) }, pending.current.key);
+    let value: T;
+    try { value = await api<T>(path, { method, body: JSON.stringify(body) }, pending.current.key); }
+    catch (e) { if (e instanceof Error && (e as { status?: number }).status === 0) (e as { key?: string }).key = pending.current.key; throw e; }
     pending.current = { body: "", key: "" };
     // these change the stock too (a part used, taken back, or returned when a job is cancelled or deleted): other screens reload it
     if (/\/api\/workshop\/jobs\/[^/]+\/(stock|cancel|archive|undo)$/.test(path)) window.dispatchEvent(new Event("lifta:stock-changed"));

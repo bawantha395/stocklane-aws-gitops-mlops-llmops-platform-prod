@@ -35,6 +35,13 @@ resource "aws_iam_role" "api" {
   }] })
 }
 
+# ---------- Owner e-mail summary ----------
+# One topic for every shop. Each owner's address is subscribed by the API with a filter on the shop name, so a summary only reaches its own shop.
+# The owner must press the confirmation link AWS e-mails them. Not encrypted with a custom key (it holds only the day's totals); email delivery is free for the first 1,000 a month.
+resource "aws_sns_topic" "owner_mail" {
+  name = "${var.name}-owner-mail"
+}
+
 resource "aws_iam_role_policy" "api" {
   name = "api"
   role = aws_iam_role.api.id
@@ -45,6 +52,8 @@ resource "aws_iam_role_policy" "api" {
     { Effect = "Allow", Action = ["s3:ListBucket"], Resource = var.models_bucket.arn, Condition = { StringLike = { "s3:prefix" = ["forecast/*", "shops/*/forecast/*"] } } },
     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${var.media_bucket.arn}/workshop/photos/*", "${var.media_bucket.arn}/shops/*/workshop/photos/*"] },
     { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"], Resource = var.kms_key_arn },
+    # the owner's daily summary: send to the one topic and add or change an owner's address on it
+    { Effect = "Allow", Action = ["sns:Publish", "sns:Subscribe", "sns:Unsubscribe", "sns:ListSubscriptionsByTopic", "sns:GetSubscriptionAttributes"], Resource = aws_sns_topic.owner_mail.arn },
     # opening a workshop: its SHOP_ group and its first owner, in this user pool only
     { Effect = "Allow", Action = ["cognito-idp:CreateGroup", "cognito-idp:AdminCreateUser", "cognito-idp:AdminAddUserToGroup", "cognito-idp:AdminListGroupsForUser",
       # the owner's Staff screen: list the shop's people, change a role, switch a sign-in off or back on
@@ -67,7 +76,7 @@ resource "aws_lambda_function" "api" {
   timeout          = 29
   environment {
     # USER_POOL_ID lets the platform owner invite a new workshop's first owner (Workshops screen)
-    variables = merge(local.table_env, { USER_POOL_ID = var.user_pool_id }, local.with_vision ? { VISION_FUNCTION = local.vision_name } : {})
+    variables = merge(local.table_env, { USER_POOL_ID = var.user_pool_id, OWNER_TOPIC_ARN = aws_sns_topic.owner_mail.arn }, local.with_vision ? { VISION_FUNCTION = local.vision_name } : {})
   }
   logging_config {
     log_format = "JSON"
@@ -257,6 +266,9 @@ resource "aws_lambda_permission" "vision" {
 locals {
   schedules = merge({
     forecast_export = { cron = "cron(0 20 * * ? *)", fn = aws_lambda_function.api.arn, name = aws_lambda_function.api.function_name, input = { job = "forecast-export" } }
+
+    # every hour; each shop's summary goes out only in the hour its owner chose (Sri Lanka time), so most runs do nothing
+    daily_summary = { cron = "cron(0 * * * ? *)", fn = aws_lambda_function.api.arn, name = aws_lambda_function.api.function_name, input = { job = "daily-summary" } }
     }, local.with_vision ? {
     photo_export = { cron = "cron(30 19 ? * SAT *)", fn = aws_lambda_function.vision[0].arn, name = aws_lambda_function.vision[0].function_name, input = { action = "export" } }
     } : {}, local.with_vision && var.warm_vision ? {

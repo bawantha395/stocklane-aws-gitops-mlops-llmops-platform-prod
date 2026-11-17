@@ -8,7 +8,7 @@ import json
 import re
 import traceback
 
-from . import alerts, core, links, monthly, slowstock, customers, forecast, inventory, messages, orders, payables, perms, photos, platform, quotes, staff, suppliers, workshop
+from . import alerts, core, links, monthly, slowstock, customers, forecast, inventory, messages, orders, payables, perms, claims, ownermail, photos, platform, quotes, staff, suppliers, workshop
 from .core import ApiError, actor, bad, dumps, groups, remember_email, require
 
 OWNER, STAFF = ('OWNER',), perms.ROLES  # OWNER: the owner only. STAFF: anyone who works in the shop (reads everyone needs)
@@ -117,6 +117,10 @@ route('GET', '/api/inventory/orders', P('orders'), lambda e, p, b, k: orders.ord
 route('POST', '/api/inventory/orders', P('orders'), lambda e, p, b, k: orders.make(k, actor(e), b))
 route('GET', '/api/inventory/orders/([^/]+)', P('orders'), lambda e, p, b, k: orders.order(p[0]))
 route('POST', '/api/inventory/orders/([^/]+)/close', P('orders'), lambda e, p, b, k: orders.close(p[0], k, actor(e), b))
+route('GET', '/api/inventory/claims', P('suppliers_view'), lambda e, p, b, k: claims.listing(q(e, 'status'), q(e, 'supplier')))
+route('POST', '/api/inventory/claims', P('supplier_return'), lambda e, p, b, k: claims.create(k, actor(e), b))
+route('GET', '/api/inventory/claims/([^/]+)', P('suppliers_view'), lambda e, p, b, k: claims.get_claim(p[0]))
+route('POST', '/api/inventory/claims/([^/]+)/status', P('supplier_return'), lambda e, p, b, k: claims.set_status(p[0], k, actor(e), b))
 route('GET', '/api/inventory/suppliers', P('suppliers_view'), lambda e, p, b, k: suppliers.suppliers(q(e, 'search'), q(e, 'kind'), q(e, 'inactive') == '1'))
 route('POST', '/api/inventory/suppliers', P('suppliers_edit'), lambda e, p, b, k: suppliers.create(k, actor(e), b))
 route('GET', '/api/inventory/suppliers/([^/]+)', P('suppliers_view'), lambda e, p, b, k: suppliers.supplier(p[0], sees_cost(e)))
@@ -160,6 +164,7 @@ route('DELETE', '/api/workshop/logo', P('settings'), lambda e, p, b, k: workshop
 route('POST', '/api/workshop/photos', STAFF, lambda e, p, b, k: photos.save(b))
 route('GET', '/api/workshop/photos/([0-9a-f]{32})', STAFF, lambda e, p, b, k: photos.read(p[0], q(e, 'size', 'thumb')))
 route('POST', '/api/workshop/jobs/([^/]+)/photos', P('jobs'), lambda e, p, b, k: workshop.job_photos(p[0], k, actor(e), b))
+route('POST', '/api/workshop/quick-bill', P('bill'), lambda e, p, b, k: (perms.need(e, 'jobs'), perms.need(e, 'job_stock'), workshop.quick_bill(k, actor(e), b, is_owner(e)))[2])
 route('GET', '/api/workshop/invoices', P('bills_view'), lambda e, p, b, k: workshop.invoices())
 route('GET', '/api/workshop/invoices/([^/]+)', P('bills_view'), lambda e, p, b, k: workshop.get_invoice(p[0]))
 route('GET', '/api/workshop/invoices/([^/]+)/pdf', P('bills_view'), lambda e, p, b, k: ('pdf',) + workshop.pdf(p[0]))
@@ -211,6 +216,9 @@ route('DELETE', '/api/workshop/staff/([^/]+)', OWNER, lambda e, p, b, k: staff.r
 route('GET', '/api/workshop/permissions', OWNER, lambda e, p, b, k: perms.view())
 route('PUT', '/api/workshop/permissions', OWNER, lambda e, p, b, k: perms.save(k, actor(e), b))
 route('GET', '/api/workshop/settings', STAFF, lambda e, p, b, k: workshop.business() if sees_cost(e) else {x: y for x, y in workshop.business().items() if x != 'default_markup_pct'})
+route('GET', '/api/workshop/owner-mail', OWNER, lambda e, p, b, k: ownermail.view())
+route('PUT', '/api/workshop/owner-mail', OWNER, lambda e, p, b, k: ownermail.save(k, actor(e), b))
+route('POST', '/api/workshop/owner-mail/test', OWNER, lambda e, p, b, k: ownermail.send_test(actor(e)))
 route('PUT', '/api/workshop/settings', P('settings'), lambda e, p, b, k: workshop.save_business(k, actor(e), b))
 route('GET', '/api/workshop/export', P('export'), lambda e, p, b, k: workshop.export_all())
 route('GET', '/api/workshop/report', P('reports'), lambda e, p, b, k: workshop.report(q(e, 'from'), q(e, 'until')))
@@ -230,6 +238,15 @@ def scheduled(event):
         for shop in core.shops():  # one export per shop, each from its own rows
             core.set_shop(shop)
             out[shop] = forecast.export_history()
+        return out
+    if job == 'daily-summary':
+        out = {}
+        for shop in core.shops():  # each shop that turned it on gets its own mail, built from its own rows
+            core.set_shop(shop)
+            try:
+                out[shop] = ownermail.run_daily()
+            except Exception as e:  # noqa: BLE001 - one shop's problem must not stop the others
+                out[shop] = {'sent': False, 'error': str(e)[:120]}
         return out
     raise ValueError('Unknown job')
 

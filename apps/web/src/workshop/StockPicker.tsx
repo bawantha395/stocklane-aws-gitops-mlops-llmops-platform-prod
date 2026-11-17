@@ -5,7 +5,7 @@ import { Loading, lkr, useLoad } from "./common";
 type Stock = { id: string; name: string; sku: string; part_number?: string; brand?: string; location?: string; unit: string; quantity: number; selling_price: number; archived?: boolean };
 
 /** Search the parts list and choose a quantity. The caller takes the part from stock and puts it on the job. */
-export function StockPicker({ taken, onPick, onClose }: { taken: Record<string, number>; onPick: (p: Stock, qty: number) => Promise<void>; onClose: () => void }) {
+export function StockPicker({ taken, onPick, onClose, confirmLabel }: { taken: Record<string, number>; onPick: (p: Stock, qty: number) => Promise<void>; onClose: () => void; confirmLabel?: string }) {
   const { data, error } = useLoad<Stock[]>("/api/inventory/products");
   const [q, setQ] = useState(""), [chosen, setChosen] = useState<Stock | null>(null), [qty, setQty] = useState("1"), [busy, setBusy] = useState(false), [err, setErr] = useState("");
   const hits = useMemo(() => {
@@ -56,7 +56,7 @@ export function StockPicker({ taken, onPick, onClose }: { taken: Record<string, 
         )}
         <div className="ws-actions">
           <button type="button" className="button secondary" disabled={busy} onClick={() => (chosen ? setChosen(null) : onClose())}>{chosen ? t("Back") : t("Cancel")}</button>
-          {chosen && <button className="button primary" disabled={!valid || busy}>{busy ? t("Saving…") : t("Add to job")}</button>}
+          {chosen && <button className="button primary" disabled={!valid || busy}>{busy ? t("Saving…") : confirmLabel || t("Add to job")}</button>}
         </div>
       </form>
     </div>
