@@ -882,7 +882,7 @@ def archive_product(key, product_id, who, body):
 
 
 # ---------- movements ----------
-DOCS = {'RECEIPT': 'GRN', 'STOCK_OUT': 'GIN', 'ISSUE': 'GIN', 'SUPPLIER_RETURN': 'SRN', 'ORDER': 'PO'}  # goods received note, goods issue note
+DOCS = {'RECEIPT': 'GRN', 'STOCK_OUT': 'GIN', 'ISSUE': 'GIN', 'RETURN': 'RTN', 'SUPPLIER_RETURN': 'SRN', 'ORDER': 'PO'}  # goods received note, goods issue note
 RUNNING = ('RECEIPT', 'STOCK_OUT', 'SUPPLIER_RETURN')  # these notes are numbered in a running series (GRN-0001, GIN-0001); a part put on a job is named by the job
 MAX_DOC_LINES = 15  # one transaction holds 100 writes and each line needs 5
 

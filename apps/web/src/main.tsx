@@ -1402,6 +1402,7 @@ function App() {
                         <p>
                           {active.brand} ·{" "}
                           <strong>Part no. {active.part_number || "Not set"}</strong>
+                          {" · "}
                           <small>System no. {active.sku}</small>
                         </p>
                         <p>

@@ -28,6 +28,9 @@ def test_return_after_invoice_restocks_and_lowers_the_bill(api):
     assert stock(api, p['id']) == 8
     moves = [m for m in ok(api('GET', '/api/inventory/movements', role='MECHANIC')) if m['kind'] == 'RETURN']
     assert len(moves) == 1 and moves[0]['quantity'] == 1 and inv['invoice_number'] in moves[0]['note']
+    # the returned part has its own numbered note, and it prints
+    assert moves[0]['doc_no'].startswith('RTN-')
+    assert ok(api('GET', '/api/inventory/movements/%s/note.pdf' % moves[0]['id']))['pdf']
     # cannot return more than is left (3 bought, 1 already back)
     assert api('POST', '/api/workshop/invoices/%s/return' % inv['id'], {'lines': [{'index': 0, 'quantity': 3}], 'reason': 'x'})[0] == 409
     done = ok(api('POST', '/api/workshop/invoices/%s/return' % inv['id'], {'lines': [{'index': 0, 'quantity': 2}], 'reason': 'Rest too', 'refundMethod': 'CASH'}))

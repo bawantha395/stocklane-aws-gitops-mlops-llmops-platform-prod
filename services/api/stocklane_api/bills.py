@@ -458,7 +458,8 @@ def stock_note(n, business):
     """One goods received note (GRN) or goods issue note (GIN): what, how many, from whom or to whom, and who signs."""
     grn = n['kind'] == 'RECEIPT'
     srn = n['kind'] == 'SUPPLIER_RETURN'
-    title = 'GOODS RECEIVED NOTE' if grn else 'SUPPLIER RETURN NOTE' if srn else 'GOODS ISSUE NOTE'
+    back = n['kind'] == 'RETURN'  # a customer's or a job's part that came back into stock
+    title = 'GOODS RECEIVED NOTE' if grn else 'SUPPLIER RETURN NOTE' if srn else 'PARTS RETURN NOTE' if back else 'GOODS ISSUE NOTE'
     d = Doc(footer=(business.get('name') or 'Workshop') + ' | ' + n.get('doc_no', title))
     letterhead(d, business, title, [(n.get('doc_no', ''), True), ('Date: ' + n['date'], False)])
     facts = [('Note no.', n.get('doc_no', '-')), ('Date', n['date'])]
@@ -469,6 +470,8 @@ def stock_note(n, business):
             facts += [('Cost price (per unit)', 'LKR ' + m(cost)), ('Cost of this delivery', 'LKR ' + m(cost * Decimal(str(n['quantity']))))]
     elif srn:
         facts += [('Returned to', n.get('supplier') or '-'), ('Reason', n.get('reason') or '-'), ('Supplier credit note no.', n.get('reference') or '-'), ('Sent back by', n.get('actor', '-'))]
+    elif back:
+        facts += [('Job / vehicle', n.get('job_registration') or '-'), ('Reference', n.get('reference') or '-'), ('Taken back into stock by', n.get('actor', '-'))]
     else:
         facts += [('Handed to', n.get('receiver_name') or '-'), ('For job / vehicle', n.get('job_registration') or '-'), ('Issued by', n.get('actor', '-'))]
     y = d.y + 4
@@ -514,7 +517,7 @@ def stock_note(n, business):
         d.paragraph(MARGIN, 'Note: ' + n['note'], R - MARGIN, 9, bold=False)
     d.y += 70
     d.room(60)
-    for x0, label in ((MARGIN, 'Issued by (signature)' if not grn else 'Received by (signature)'), (320, 'Received by (signature)' if not grn else 'Supplier / driver (signature)')):
+    for x0, label in ((MARGIN, 'Returned by (signature)' if back else 'Issued by (signature)' if not grn else 'Received by (signature)'), (320, 'Received back by (signature)' if back else 'Received by (signature)' if not grn else 'Supplier / driver (signature)')):
         d.line(x0, d.y, x0 + 210, d.y)
         d.text(x0, d.y + 12, label, 8.5, color=MUTED)
     return d.render()

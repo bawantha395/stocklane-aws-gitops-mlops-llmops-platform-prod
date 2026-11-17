@@ -1579,9 +1579,10 @@ def vehicle_pdf(key):
 def stock_note_pdf(movement_id, with_cost=False):
     """A goods received note (GRN) or goods issue note (GIN) for one stock movement."""
     n = get('MV#' + str(movement_id), 'M')
-    if not n or n['kind'] not in ('RECEIPT', 'STOCK_OUT', 'ISSUE', 'SUPPLIER_RETURN'):
+    if not n or n['kind'] not in ('RECEIPT', 'STOCK_OUT', 'ISSUE', 'RETURN', 'SUPPLIER_RETURN'):
         raise missing('Stock note not found')
     n = public(n)
+    n['actor'] = emails().get(n.get('actor')) or '-'  # the note shows who it was, not the sign-in id
     n['date'] = local_date(n['created_at']).isoformat()
     product = get('PRODUCT', n['product_id']) or {}
     n.update(part_number=product.get('part_number'), location=product.get('location'))
