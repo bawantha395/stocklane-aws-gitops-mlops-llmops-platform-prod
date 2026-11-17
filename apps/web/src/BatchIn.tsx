@@ -27,7 +27,7 @@ export const batchSize = () => load().lines.length;
 export const clearBatch = () => { try { localStorage.removeItem(STORE); } catch { /* ignore */ } };
 
 /** Parts that came in on one delivery: scan or pick them one after another, check the list, save once. The list lives on this phone until it is saved. */
-export function BatchIn({ items, picked, onNewItem, onChanged, photo }: { items: Item[]; picked?: Item | null; onNewItem?: (imageId: string) => void | Promise<void>; onChanged: () => void; photo?: (item: Item) => React.ReactNode }) {
+export function BatchIn({ items, picked, onNewItem, onChanged, photo, manual }: { manual?: boolean; items: Item[]; picked?: Item | null; onNewItem?: (imageId: string) => void | Promise<void>; onChanged: () => void; photo?: (item: Item) => React.ReactNode }) {
   const [d, setD] = useState<Draft>(load);
   const [camera, setCamera] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [lost, setLost] = useState<string[]>([]);
   const [search, setSearch] = useState(""), [which, setWhich] = useState<{ photoId: string; candidates: Item[] } | null>(null), [last, setLast] = useState("");
@@ -155,8 +155,10 @@ export function BatchIn({ items, picked, onNewItem, onChanged, photo }: { items:
 
       <div className="counter-step">
         <h2><span>2</span> {t("Add the parts")}</h2>
+        {!manual && <>
         <button className="counter-big wide" disabled={busy} onClick={() => setCamera(true)}><CameraIcon size={30} /> {busy ? t("Checking the photo…") : t("Scan the parts, one after another")}</button>
         <p className="stock-help">{t("The camera stays on. Each QR or barcode adds a part. Scan the same part again after a moment to add one more.")}</p>
+        </>}
         {lost.length > 0 && (
           <div className="counter-candidates" role="status">
             <p>{t("Not recognised")}: {lost.join(", ")}</p>

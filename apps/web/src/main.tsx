@@ -16,6 +16,7 @@ import { setBusinessName, setDefaultReorder, useBusinessName } from "./businessN
 import { t, useLang, setLang, setSinhalaAllowed, useSinhalaAllowed } from "./i18n";
 import { Walkthrough } from "./Walkthrough";
 import { QuickMove } from "./QuickMove";
+import { BatchIn } from "./BatchIn";
 import { NumPadHost } from "./NumPad";
 import { OfflineBar } from "./OfflineBar";
 import { flush as flushOffline } from "./offline";
@@ -90,6 +91,7 @@ function App() {
   });
   const [menuOpen, setMenuOpen] = useState(false);
   const [wsNow, setWsNow] = useState("home");
+  const [roomBatch, setRoomBatch] = useState(false);
   const [quick, setQuick] = useState<{ part: Item; mode: "give" | "receive" } | null>(null);
   const [isDesk, setIsDesk] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 761px)").matches);
   // by default a computer has the store room (take out and put in by hand) and a phone has the parts counter (camera and QR); the owner can switch the other one on in Settings
@@ -352,7 +354,7 @@ function App() {
   useEffect(() => { const out = (e: Event) => { const p = items.find((x) => x.id === (e as CustomEvent).detail); if (p) setQuick({ part: p, mode: "give" }); }; window.addEventListener("lifta:take-out", out); return () => window.removeEventListener("lifta:take-out", out); });
   useEffect(() => { const go = () => { if (can("see_cost") && can("price_edit")) navigate("prices"); }; window.addEventListener("lifta:open-prices", go); return () => window.removeEventListener("lifta:open-prices", go); });
   useEffect(() => { const go = () => navigate("shelf"); window.addEventListener("lifta:open-shelf", go); return () => window.removeEventListener("lifta:open-shelf", go); });
-  useEffect(() => { const here = (e: Event) => { const id = (e as CustomEvent).detail, p = id && items.find((x) => x.id === id); if (p) { setQuick({ part: p, mode: "receive" }); return; } try { localStorage.setItem("lifta.counter.style", "batch"); } catch { /* ignore */ } openCounter("receive", null); }; window.addEventListener("lifta:receive-here", here); return () => window.removeEventListener("lifta:receive-here", here); });
+  useEffect(() => { const here = (e: Event) => { const id = (e as CustomEvent).detail, p = id && items.find((x) => x.id === id); if (p) { setQuick({ part: p, mode: "receive" }); return; } setRoomBatch(true); }; window.addEventListener("lifta:receive-here", here); return () => window.removeEventListener("lifta:receive-here", here); });
   const navigate = (next: View, preserveCounterPick = false) => {
     if (submitting.current) return;
     setMenuOpen(false);
@@ -890,6 +892,14 @@ function App() {
       <main className="stock-main">
         <OfflineBar />
         <NumPadHost />
+      {roomBatch && (
+        <div className="stock-modal-shade" onClick={() => setRoomBatch(false)}>
+          <section className="stock-modal room-batch" role="dialog" aria-modal="true" aria-label="Parts came in" onClick={(e) => e.stopPropagation()}>
+            <header className="sm-look-top"><h2>Parts came in</h2><button type="button" className="button secondary small" onClick={() => setRoomBatch(false)}>Close</button></header>
+            <BatchIn manual items={items as never} photo={(p) => <ItemPhoto item={p as Item} peek />} onChanged={() => void refresh()} />
+          </section>
+        </div>
+      )}
       {quick && <QuickMove key={quick.part.id + quick.mode} part={quick.part} mode={quick.mode} onClose={() => setQuick(null)} onChanged={() => void refresh()} />}
         <header className="stock-header">
           <a className="m-brand" href="#" onClick={(e) => { e.preventDefault(); navigate("home"); }}>

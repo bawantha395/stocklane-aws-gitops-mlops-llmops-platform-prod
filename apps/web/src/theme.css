@@ -480,3 +480,6 @@ html .stock-shell .bl, html .stock-shell .bl * { color: #fff !important; }
 .quick-move-more { border: 1px solid var(--ws-line, rgba(0,0,0,.1)); border-radius: 14px; padding: 8px 12px; }
 .quick-move-more > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
 .quick-move-more[open] { display: flex; flex-direction: column; gap: 10px; }
+
+/* batch put-in inside the store room */
+.room-batch { max-width: 760px; width: min(760px, 96vw); max-height: 92vh; overflow-y: auto; }
