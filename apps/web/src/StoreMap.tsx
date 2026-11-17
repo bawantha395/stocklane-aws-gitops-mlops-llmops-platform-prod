@@ -128,6 +128,12 @@ export function StoreMap({ items }: { items: Item[] }) {
         <div className="sm-moving" role="status"><b>{t("Tap the shelf to move {n} parts to.", { n: moving.length })}</b> <button type="button" className="button secondary small" onClick={() => setMoving(null)}>{t("Cancel")}</button></div>
       )}
       {data.racks.length === 0 && <Empty>{t("The store room is not set up yet. The owner does it in Settings → Store room.")}</Empty>}
+      {(can("stock_in") || can("stock_out")) && !moving && (
+        <div className="sm-tools sm-batch">
+          {can("stock_in") && <button type="button" className="button secondary small" onClick={() => window.dispatchEvent(new Event("lifta:batch-in"))}>{t("Several came in")}</button>}
+          {can("stock_out") && <button type="button" className="button secondary small" onClick={() => window.dispatchEvent(new Event("lifta:batch-out"))}>{t("Take out several")}</button>}
+        </div>
+      )}
       <div className="sm-compass" aria-label={t("Store room map")}>
         {(["N", "W", "C", "E", "S"] as const).map((pos) => {
           if (pos === "C") return <div key="c" className="sm-pos c"><span className="sm-keeper"><User size={26} /></span><small>{t("Storekeeper")}</small></div>;

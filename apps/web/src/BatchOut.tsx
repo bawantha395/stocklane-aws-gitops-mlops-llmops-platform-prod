@@ -26,7 +26,7 @@ export const batchOutSize = () => load().lines.length;
 export const clearBatchOut = () => { try { localStorage.removeItem(STORE); } catch { /* ignore */ } };
 
 /** Parts that go out together: pick the job (or the person who takes them) first, scan the parts, check the list, save once. */
-export function BatchOut({ items, onChanged, photo }: { items: Item[]; onChanged: () => void; photo?: (item: Item) => React.ReactNode }) {
+export function BatchOut({ items, onChanged, photo, manual }: { manual?: boolean; items: Item[]; onChanged: () => void; photo?: (item: Item) => React.ReactNode }) {
   const [d, setD] = useState<Draft>(load);
   const [jobs, setJobs] = useState<Job[]>([]), [people, setPeople] = useState<Person[]>([]);
   const [camera, setCamera] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [lost, setLost] = useState<string[]>([]);
@@ -150,7 +150,7 @@ export function BatchOut({ items, onChanged, photo }: { items: Item[]; onChanged
 
       <div className="counter-step">
         <h2><span>2</span> {t("Add the parts")}</h2>
-        <button className="counter-big wide" disabled={busy || !target} onClick={() => setCamera(true)}><CameraIcon size={30} /> {t("Scan the parts, one after another")}</button>
+        {!manual && <button className="counter-big wide" disabled={busy || !target} onClick={() => setCamera(true)}><CameraIcon size={30} /> {t("Scan the parts, one after another")}</button>}
         {!target && <p className="stock-help">{d.who === "JOB" ? t("Choose the job first.") : t("Choose the person first.")}</p>}
         {lost.length > 0 && (
           <div className="counter-candidates" role="status"><p>{t("Not recognised")}: {lost.join(", ")}</p><button type="button" onClick={() => { setSearch(lost[lost.length - 1]); setLost([]); }}>{t("Search for it")}</button><button type="button" onClick={() => setLost([])}>{t("Dismiss")}</button></div>

@@ -5,6 +5,7 @@ import { toast } from "./ui";
 import { SupplierPick, useSuppliers } from "./Suppliers";
 import { can } from "./perms";
 import { api, type Product } from "./api";
+import { enqueue, isOfflineError } from "./offline";
 
 type Item = Product & { part_number?: string; location?: string };
 const key = () => crypto.randomUUID();
@@ -23,6 +24,8 @@ export function QuickMove({ part, mode, onClose, onChanged }: { part: Item; mode
   // take out: can go straight onto an open job's bill
   type OpenJob = { id: string; registration: string; customer: string };
   const [jobs, setJobs] = useState<OpenJob[]>([]), [jobId, setJobId] = useState("");
+  type Person = { id: string; name: string; active?: boolean };
+  const [who, setWho] = useState<"JOB" | "PERSON" | "NONE">("JOB"), [people, setPeople] = useState<Person[]>([]), [personId, setPersonId] = useState("");
   useEffect(() => {
     if (mode !== "give") return;
     let live = true;
@@ -31,6 +34,7 @@ export function QuickMove({ part, mode, onClose, onChanged }: { part: Item; mode
       const open = r.filter((x) => x.status === "OPEN"); setJobs(open);
       try { const last = JSON.parse(sessionStorage.getItem("lifta.counter.job") || "null"); if (last && Date.now() - last.at < 10 * 60 * 1000 && open.some((x) => x.id === last.id)) setJobId(last.id); } catch { /* ignore */ }
     }).catch(() => setJobs([]));
+    api<Person[]>("/api/inventory/people").then((r) => live && setPeople(r.filter((x) => x.active !== false))).catch(() => live && setPeople([]));
     return () => { live = false; };
   }, [mode]);
   // put in: supplier and cost are there if wanted, folded away if not
@@ -38,18 +42,19 @@ export function QuickMove({ part, mode, onClose, onChanged }: { part: Item; mode
   const { list: supplierList } = useSuppliers();
   const seeCost = can("see_cost");
   const pick = (v: { id: string; name: string }) => { setSupplierId(v.id); setSupplier(v.name); const s = (supplierList || []).find((x) => x.id === v.id); setTerms(s && s.credit_days > 0 ? "CREDIT" : "PAID"); };
+  const needPerson = mode === "give" && who === "PERSON" && !personId;
   const needCost = mode === "receive" && seeCost && !!supplierId && terms === "CREDIT" && !cost.trim();
 
   const save = async () => {
-    if (!ok || busy || needCost) return;
+    if (!ok || busy || needCost || needPerson) return;
     setBusy(true); setError("");
     try {
       let noteNo = "", jobName = "";
       if (mode === "give") {
-        const job = jobs.find((x) => x.id === jobId);
+        const job = who === "JOB" ? jobs.find((x) => x.id === jobId) : undefined;
         if (job) { await api("/api/workshop/jobs/" + job.id + "/stock", { method: "POST", body: JSON.stringify({ productId: part.id, quantity: q, op: "use" }) }, cmd.current); jobName = job.registration; try { sessionStorage.setItem("lifta.counter.job", JSON.stringify({ id: job.id, at: Date.now() })); } catch { /* ignore */ } }
         else {
-          const out = await api<{ id: string; doc_no?: string }>("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: part.id, quantity: q, note: "Issued from the parts list" }) }, cmd.current);
+          const out = await api<{ id: string; doc_no?: string }>("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: part.id, quantity: q, note: "Issued from the parts list", ...(who === "PERSON" && personId ? { receiverId: personId } : {}) }) }, cmd.current);
           noteNo = out?.doc_no || "";
           try { sessionStorage.removeItem("lifta.counter.job"); } catch { /* ignore */ }
         }
@@ -64,7 +69,17 @@ export function QuickMove({ part, mode, onClose, onChanged }: { part: Item; mode
         : api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: part.id, quantity: q, note: "Undo of a receipt" }) }, key()));
       toast((mode === "give" ? t("{q} × {name} taken out.", { q: amount(q), name: part.name }) : t("{q} × {name} added.", { q: amount(q), name: part.name })) + (jobName ? " " + t("Added to the bill of {job}.", { job: jobName }) : "") + (noteNo ? " " + noteNo : ""), { ms: 8000, action: { label: t("Undo"), run: () => { undo().then(() => { onChanged(); toast(t("Undone.")); }).catch((e) => toast((e as Error).message, { bad: true })); } } });
       onClose();
-    } catch (e) { setError((e as Error).message); cmd.current = key(); } finally { setBusy(false); }
+    } catch (e) {
+      if (mode === "give" && isOfflineError(e)) {
+        // no internet: write the take-out down on this phone; it goes through when the connection is back (same key, so never twice)
+        const job = who === "JOB" ? jobs.find((x) => x.id === jobId) : undefined;
+        const path = job ? "/api/workshop/jobs/" + job.id + "/stock" : "/api/inventory/movements";
+        const body = job ? { productId: part.id, quantity: q, op: "use" } : { kind: "STOCK_OUT", productId: part.id, quantity: q, note: "Issued from the parts list", ...(who === "PERSON" && personId ? { receiverId: personId } : {}) };
+        enqueue({ key: cmd.current, kind: "takeout", label: amount(q) + " × " + part.name + (job ? " → " + job.registration : ""), path, body: JSON.stringify(body) });
+        toast(t("No internet. {q} × {name} is saved on this phone and will be sent when the connection is back.", { q: amount(q), name: part.name }));
+        onClose();
+      } else { setError((e as Error).message); cmd.current = key(); }
+    } finally { setBusy(false); }
   };
 
   return (
@@ -80,13 +95,22 @@ export function QuickMove({ part, mode, onClose, onChanged }: { part: Item; mode
         </div>
         {!litre && <div className="counter-qtyquick">{[5, 10, 20].map((n) => <button key={n} type="button" onClick={() => bump(n)}>+{n}</button>)}</div>}
         {mode === "give" && Number.isFinite(q) && q > Number(part.quantity) && <small className="stock-error">{t("Only {n} in stock.", { n: amount(Number(part.quantity)) })}</small>}
-        {mode === "give" && jobs.length > 0 && (
-          <label className="ws-field">{t("Which job is it for?")} <small>({t("optional")})</small>
-            <select value={jobId} disabled={busy} onChange={(e) => setJobId(e.target.value)}>
-              <option value="">{t("No job, just take it out of stock")}</option>
-              {jobs.map((j) => <option key={j.id} value={j.id}>{j.registration} · {j.customer}</option>)}
-            </select>
-          </label>
+        {mode === "give" && (
+          <div className="ws-field" role="group" aria-label={t("Who is it for?")}>{t("Who is it for?")} <small>({t("optional")})</small>
+            <div className="ws-seg">{([["JOB", t("A job")], ["PERSON", t("A person")], ["NONE", t("No one")]] as ["JOB" | "PERSON" | "NONE", string][]).map(([k, l]) => <button type="button" key={k} className={who === k ? "on" : ""} aria-pressed={who === k} disabled={busy} onClick={() => setWho(k)}>{l}</button>)}</div>
+            {who === "JOB" && (jobs.length > 0 ? (
+              <select aria-label={t("Which job is it for?")} value={jobId} disabled={busy} onChange={(e) => setJobId(e.target.value)}>
+                <option value="">{t("No job, just take it out of stock")}</option>
+                {jobs.map((j) => <option key={j.id} value={j.id}>{j.registration} · {j.customer}</option>)}
+              </select>
+            ) : <small className="muted">{t("No open jobs.")}</small>)}
+            {who === "PERSON" && (
+              <select aria-label={t("Who takes the parts?")} value={personId} disabled={busy} onChange={(e) => setPersonId(e.target.value)}>
+                <option value="">{t("Choose the person")}</option>
+                {people.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+              </select>
+            )}
+          </div>
         )}
         {mode === "receive" && (
           <details className="quick-move-more">
@@ -105,7 +129,7 @@ export function QuickMove({ part, mode, onClose, onChanged }: { part: Item; mode
           </details>
         )}
         {error && <p className="stock-error" role="alert">{error}</p>}
-        <button type="button" className="button primary counter-confirm" disabled={!ok || busy || needCost} onClick={() => void save()}>
+        <button type="button" className="button primary counter-confirm" disabled={!ok || busy || needCost || needPerson} onClick={() => void save()}>
           <Check size={18} /> {busy ? t("Saving…") : mode === "give" ? t("Take out {q} × {name}", { q: amount(q || 0), name: part.name }) : t("Add {q} × {name} to stock", { q: amount(q || 0), name: part.name })}
         </button>
       </section>

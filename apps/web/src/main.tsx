@@ -17,6 +17,7 @@ import { t, useLang, setLang, setSinhalaAllowed, useSinhalaAllowed } from "./i18
 import { Walkthrough } from "./Walkthrough";
 import { QuickMove } from "./QuickMove";
 import { BatchIn } from "./BatchIn";
+import { BatchOut } from "./BatchOut";
 import { NumPadHost } from "./NumPad";
 import { OfflineBar } from "./OfflineBar";
 import { flush as flushOffline } from "./offline";
@@ -91,7 +92,7 @@ function App() {
   });
   const [menuOpen, setMenuOpen] = useState(false);
   const [wsNow, setWsNow] = useState("home");
-  const [roomBatch, setRoomBatch] = useState(false);
+  const [roomBatch, setRoomBatch] = useState(false), [roomBatchOut, setRoomBatchOut] = useState(false);
   const [intent, setIntent] = useState<"give" | "receive" | null>(null);
   const [quick, setQuick] = useState<{ part: Item; mode: "give" | "receive" } | null>(null);
   const [isDesk, setIsDesk] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 761px)").matches);
@@ -355,6 +356,7 @@ function App() {
     setSaveReference(false);
   };
   useEffect(() => { if (session) void flushOffline(); }, [session]); // anything saved while there was no internet goes out after sign-in
+  useEffect(() => { const a = () => { try { sessionStorage.removeItem("lifta.putaway"); } catch { /* ignore */ } setRoomBatch(true); }, b = () => setRoomBatchOut(true); window.addEventListener("lifta:batch-in", a); window.addEventListener("lifta:batch-out", b); return () => { window.removeEventListener("lifta:batch-in", a); window.removeEventListener("lifta:batch-out", b); }; });
   useEffect(() => { const out = (e: Event) => { const p = items.find((x) => x.id === (e as CustomEvent).detail); if (p) setQuick({ part: p, mode: "give" }); }; window.addEventListener("lifta:take-out", out); return () => window.removeEventListener("lifta:take-out", out); });
   useEffect(() => { const go = () => { if (can("see_cost") && can("price_edit")) navigate("prices"); }; window.addEventListener("lifta:open-prices", go); return () => window.removeEventListener("lifta:open-prices", go); });
   useEffect(() => { const go = () => navigate("shelf"); window.addEventListener("lifta:open-shelf", go); return () => window.removeEventListener("lifta:open-shelf", go); });
@@ -901,6 +903,14 @@ function App() {
           <section className="stock-modal room-batch" role="dialog" aria-modal="true" aria-label="Parts came in" onClick={(e) => e.stopPropagation()}>
             <header className="sm-look-top"><h2>Parts came in</h2><button type="button" className="button secondary small" onClick={() => setRoomBatch(false)}>Close</button></header>
             <BatchIn manual items={items as never} photo={(p) => <ItemPhoto item={p as Item} peek />} onChanged={() => void refresh()} />
+          </section>
+        </div>
+      )}
+      {roomBatchOut && (
+        <div className="stock-modal-shade" onClick={() => setRoomBatchOut(false)}>
+          <section className="stock-modal room-batch" role="dialog" aria-modal="true" aria-label="Parts went out" onClick={(e) => e.stopPropagation()}>
+            <header className="sm-look-top"><h2>Parts went out</h2><button type="button" className="button secondary small" onClick={() => setRoomBatchOut(false)}>Close</button></header>
+            <BatchOut manual items={items as never} photo={(p) => <ItemPhoto item={p as Item} peek />} onChanged={() => void refresh()} />
           </section>
         </div>
       )}
@@ -1716,6 +1726,8 @@ function App() {
                 <Plus size={18} /> {t("Register item")}
               </button>}
               {canAny("item_add", "price_edit") && <button className="button secondary" onClick={() => setBulkOpen(true)}>{t("Bulk tools")}</button>}
+              {can("stock_in") && <button className="button secondary" onClick={() => window.dispatchEvent(new Event("lifta:batch-in"))}>{t("Several came in")}</button>}
+              {can("stock_out") && <button className="button secondary" onClick={() => window.dispatchEvent(new Event("lifta:batch-out"))}>{t("Take out several")}</button>}
             </div>
             <section className="stock-panel">
               <div className="stock-tools">
