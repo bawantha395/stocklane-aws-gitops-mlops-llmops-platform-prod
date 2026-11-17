@@ -99,3 +99,26 @@ def test_mechanic_and_owner_can_both_use_stock(api):
     p, job = product(api, 5), new_job(api, role='OWNER')
     ok(use(api, job, p['id'], 1, role='OWNER'))
     assert stock(api, p['id']) == 4
+
+
+def test_a_batch_puts_several_parts_on_a_job_in_one_save_or_none(api):
+    p1 = product(api, 3)
+    p2 = ok(api('POST', '/api/inventory/products', {'partNumber': 'PN-2', 'sku': 'BP-1', 'name': 'Brake pad', 'category': 'Brakes', 'brand': 'Toyota', 'unit': 'UNIT', 'sellingPrice': 2500, 'reorderLevel': 1, 'openingQuantity': 3, 'location': 'A4'}))
+    job = new_job(api, role='OWNER')
+    r = ok(api('POST', '/api/workshop/jobs/%s/stock-batch' % job['id'], {'lines': [{'productId': p1['id'], 'quantity': 2}, {'productId': p2['id'], 'quantity': 1}]}))
+    assert sorted(x['product_id'] for x in r['stock']) == sorted([p1['id'], p2['id']]) and len(r['parts']) == 2
+    stocks = {x['id']: x['quantity'] for x in ok(api('GET', '/api/inventory/products'))}
+    assert stocks[p1['id']] == 1 and stocks[p2['id']] == 2
+    # one line short of stock: nothing at all moves, and the bill is unchanged
+    code, _ = api('POST', '/api/workshop/jobs/%s/stock-batch' % job['id'], {'lines': [{'productId': p1['id'], 'quantity': 1}, {'productId': p2['id'], 'quantity': 99}]})
+    assert code == 409
+    after = {x['id']: x['quantity'] for x in ok(api('GET', '/api/inventory/products'))}
+    assert after == stocks
+    # the same part twice, no lines, a job that is not there, a retry with the same key
+    assert api('POST', '/api/workshop/jobs/%s/stock-batch' % job['id'], {'lines': [{'productId': p1['id'], 'quantity': 1}, {'productId': p1['id'], 'quantity': 1}]})[0] == 400
+    assert api('POST', '/api/workshop/jobs/%s/stock-batch' % job['id'], {'lines': []})[0] == 400
+    assert api('POST', '/api/workshop/jobs/nope/stock-batch', {'lines': [{'productId': p1['id'], 'quantity': 1}]})[0] == 404
+    body = {'lines': [{'productId': p1['id'], 'quantity': 1}]}
+    ok(api('POST', '/api/workshop/jobs/%s/stock-batch' % job['id'], body, key='k-out-00000000001'))
+    ok(api('POST', '/api/workshop/jobs/%s/stock-batch' % job['id'], body, key='k-out-00000000001'))
+    assert {x['id']: x['quantity'] for x in ok(api('GET', '/api/inventory/products'))}[p1['id']] == 0

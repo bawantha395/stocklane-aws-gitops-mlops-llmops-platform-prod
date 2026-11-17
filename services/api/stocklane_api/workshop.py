@@ -29,7 +29,7 @@ METHODS = ('CASH', 'CARD', 'BANK', 'OTHER')
 CHANGED = 'Someone changed this just now. Reload it and try again.'
 DEFAULT_BUSINESS = {'name': 'Workshop Suite', 'address': '', 'phone': '', 'email': '', 'reg_no': '', 'bank': '',
                     'footer': 'Thank you for your business.', 'tax_name': 'VAT', 'tax_rate': ZERO, 'mechanic_discount_pct': Decimal('10'),
-                    'payment_terms_days': 0, 'warranty': '', 'qr_url': '', 'qr_bits': '', 'invoice_prefix': 'INV', 'default_reorder_level': 5, 'sinhala': False, 'default_markup_pct': ZERO,
+                    'payment_terms_days': 0, 'warranty': '', 'qr_url': '', 'qr_bits': '', 'invoice_prefix': 'INV', 'default_reorder_level': 5, 'sinhala': False, 'store_room_on': True, 'counter_on': True, 'default_markup_pct': ZERO,
                     'labour_items': [], 'mechanics': [], 'logo': None}
 
 
@@ -268,7 +268,7 @@ def shop_lists(b):
             raise bad('"%s" is in the mechanics list twice' % name)
         seen.add(name.lower())
         names.append(name)
-    return {'invoice_prefix': prefix, 'default_reorder_level': level, 'labour_items': labour, 'mechanics': names, 'sinhala': b.get('sinhala') is True, 'default_markup_pct': markup_pct(b.get('default_markup_pct'), 'Default markup')}
+    return {'invoice_prefix': prefix, 'default_reorder_level': level, 'labour_items': labour, 'mechanics': names, 'sinhala': b.get('sinhala') is True, 'store_room_on': b.get('store_room_on') is not False, 'counter_on': b.get('counter_on') is not False, 'default_markup_pct': markup_pct(b.get('default_markup_pct'), 'Default markup')}
 
 
 def save_logo(key, who, body):
@@ -322,6 +322,9 @@ def save_business(key, who, body):
         stored = get('WSET', 'business') or {}
         if 'default_markup_pct' not in b:  # someone who cannot see cost cannot send it: keep what is stored
             b = dict(b, default_markup_pct=stored.get('default_markup_pct'))
+        for flag in ('store_room_on', 'counter_on'):  # a screen that does not send a switch keeps it as it was
+            if flag not in b:
+                b = dict(b, **{flag: stored.get(flag, True)})
         item = {'pk': 'WSET', 'sk': 'business', 'logo': stored.get('logo'), **shop_lists(b), 'payment_terms_days': int(terms), 'warranty': lines_text(b.get('warranty'), 'Warranty note', 200), 'qr_url': text(b.get('qr_url'), 'QR link', 200), 'qr_bits': qr_bits(b.get('qr_url'), b.get('qr_bits')), 'name': text(b.get('name'), 'Business name', 60, True),
                 'address': lines_text(b.get('address'), 'Address', 200), 'phone': text(b.get('phone'), 'Phone', 60),
                 'email': text(b.get('email'), 'Email', 80), 'reg_no': text(b.get('reg_no'), 'Registration / tax number', 60),
@@ -611,7 +614,8 @@ def get_job(job_id, who='', owner=False):
         out['delete_request'] = public(req)
     car = get('VEHICLE', current['vehicle_key']) or {}
     out.update({k: car[k] for k in ('front_photo', 'plate_photo') if car.get(k)})
-    out['before_photos'] = (get('WJPH', job_id) or {}).get('before', [])
+    held_photos = get('WJPH', job_id) or {}
+    out['before_photos'], out['after_photos'], out['old_photos'] = held_photos.get('before', []), held_photos.get('after', []), held_photos.get('old', [])
     out['profit'] = profit_of(current)  # removed from the reply for anyone without the see-cost permission
     return out
 
@@ -652,15 +656,20 @@ def job_photos(job_id, key, who, body):
         if current['status'] != 'OPEN':
             raise conflict('This job already has an invoice')
         held = get('WJPH', job_id)
-        before = list((held or {}).get('before', []))
-        before = [p for p in before if p not in photos.many(b.get('remove'), 'Photos')]
-        for pid in photos.many(b.get('add'), 'Photos'):
-            if pid not in before:
-                before.append(pid)
-        if len(before) > 6:
-            raise bad('Up to 6 condition photos')
+        lists = {}
+        # three shelves of photos: the condition before fixing, the finished work, and the old parts that came off
+        for kind, add, remove, label in (('before', 'add', 'remove', 'condition photos'), ('after', 'add_after', 'remove_after', 'finished-work photos'), ('old', 'add_old', 'remove_old', 'old-part photos')):
+            drop = photos.many(b.get(remove), 'Photos')
+            now_list = [p for p in list((held or {}).get(kind, [])) if p not in drop]
+            for pid in photos.many(b.get(add), 'Photos'):
+                if pid not in now_list:
+                    now_list.append(pid)
+            if len(now_list) > 6:
+                raise bad('Up to 6 ' + label)
+            lists[kind] = now_list
+        before = lists['before']
         n = int((held or {}).get('n', 0)) + 1
-        row = {'pk': 'WJPH', 'sk': job_id, 'before': before, 'n': n, 'updated_at': now()}
+        row = {'pk': 'WJPH', 'sk': job_id, 'before': before, 'after': lists['after'], 'old': lists['old'], 'n': n, 'updated_at': now()}
         ops = [put(row, ConditionExpression='n = :n', ExpressionAttributeValues={':n': held['n']}) if held else put(row, ConditionExpression='attribute_not_exists(pk)'),
                check('WJOB', job_id, '#s = :open', {':open': 'OPEN'}, {'#s': 'status'})]
         labels = [None, 'This job already has an invoice']
@@ -668,7 +677,7 @@ def job_photos(job_id, key, who, body):
         if any(face.values()):
             ops.append(vehicle_put(current['vehicle_key'], face))
             labels.append(None)
-        return ops, labels, {'before_photos': before, **{k: v for k, v in face.items() if v}}
+        return ops, labels, {'before_photos': before, 'after_photos': lists['after'], 'old_photos': lists['old'], **{k: v for k, v in face.items() if v}}
     return command(key, 'job-photos:' + job_id, who, body, build)
 
 
@@ -811,6 +820,52 @@ def use_stock(job_id, key, who, body):
         # adding or returning a part never overwrites anyone's edit, so a concurrent save just makes this run again on the fresh job
         return ops, [None] * len(ops), {**view(j, rate), 'stock': {'product_id': product['id'], 'balance': balance}}
     return command(key, 'use-stock:' + job_id, who, body, build)
+
+
+def use_stock_batch(job_id, key, who, body):
+    """Several parts from stock onto one open job in a single save (the batch screen): every part goes on the bill and leaves the shelf, or
+    none does. Each part may appear once. Same rules as one part at a time: whole units, enough in stock, at most MAX_STOCK_LINES stock parts per job."""
+    def build():
+        current, b = job(job_id), body or {}
+        if current['status'] != 'OPEN':
+            raise conflict('This job already has an invoice')
+        lines = b.get('lines')
+        if not isinstance(lines, list) or not lines:
+            raise bad('Add at least one part')
+        if len(lines) > MAX_STOCK_LINES:
+            raise bad('Up to %d parts at a time. Save these, then add the rest' % MAX_STOCK_LINES)
+        parts, ops, seen, done = [dict(p) for p in current.get('parts', [])], [], set(), []
+        for raw in lines:
+            if not isinstance(raw, dict):
+                raise bad('Each line needs a part and a quantity')
+            qty = quantity(raw.get('quantity', 1))
+            product = inventory.load_product(raw.get('productId'))
+            if product['id'] in seen:
+                raise bad('%s is on two lines. Put them on one line' % product['name'])
+            seen.add(product['id'])
+            line = next((p for p in parts if p.get('product_id') == product['id']), None)
+            if line is None and len(stock_quantities(parts)) >= MAX_STOCK_LINES:
+                raise bad('At most %d stock parts on one job' % MAX_STOCK_LINES)
+            if line is None and len(parts) >= 60:
+                raise bad('Too many part lines on this job')
+            stock_ops, balance = inventory.job_stock_ops(product, 'ISSUE', qty, job_id, who, 'Used on ' + current['registration'], ref=job_ref(current))
+            ops += stock_ops
+            if line:
+                line['quantity'] += qty
+            else:
+                parts.append({'name': line_name(product), 'quantity': qty, 'unit_price': product['selling_price'], 'product_id': product['id'],
+                              'part_no': (product.get('part_number') or product['sku'])[:60], 'added_at': today().isoformat()})
+                line = parts[-1]
+            if product.get('last_cost') is not None:
+                line['cost_each'] = product['last_cost']
+            done.append({'product_id': product['id'], 'name': product['name'], 'quantity': qty, 'balance': balance})
+        j = clean(dict(current, parts=parts, revision=int(current['revision']) + 1, updated_at=now()))
+        rate = business()['tax_rate']
+        job_op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
+                     ExpressionAttributeValues={':r': current['revision'], ':open': 'OPEN'})
+        all_ops = [job_op, vehicle_put(j['vehicle_key'], vehicle_fields(j), fill_only=FROM_JOBS), history_put(j, rate)] + ops
+        return all_ops, [None] * len(all_ops), {**view(j, rate), 'stock': done}
+    return command(key, 'use-stock-batch:' + job_id, who, body, build)
 
 
 def release_stock(current, who, why):
@@ -1007,7 +1062,7 @@ def finalise(job_id, key, who, body):
         invoice = clean({'pk': 'WINV', 'sk': invoice_id, 'id': invoice_id, 'invoice_number': number, 'job_id': job_id,
                          **{k: current.get(k) for k in keep}, **t, 'tax_name': shop['tax_name'], 'tax_rate': rate, 'currency': 'LKR',
                          'paid': ZERO, 'payments': [], 'status': invoice_status(t['total'], ZERO), 'revision': 0, 'approved_by': who,
-                         'created_at': created, 'business': {k: v for k, v in shop.items() if k in DEFAULT_BUSINESS and k not in ('mechanic_discount_pct', 'labour_items', 'mechanics', 'default_reorder_level', 'sinhala', 'default_markup_pct')}})
+                         'created_at': created, 'business': {k: v for k, v in shop.items() if k in DEFAULT_BUSINESS and k not in ('mechanic_discount_pct', 'labour_items', 'mechanics', 'default_reorder_level', 'sinhala', 'default_markup_pct', 'store_room_on', 'counter_on')}})
         j = clean(dict(stamped, status='INVOICED', invoice_id=invoice_id, invoice_number=number,
                        revision=int(current['revision']) + 1, updated_at=created, out_at=created))
         op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},

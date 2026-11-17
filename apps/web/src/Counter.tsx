@@ -1,8 +1,11 @@
+import { SHELF_FOCUS, parseShelfCode } from "./StoreMap";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Camera as CameraIcon, Check, Loader2, Minus, Plus } from "lucide-react";
 import { t, useLang } from "./i18n";
 import { toast } from "./ui";
 import { SupplierPick, useSuppliers } from "./Suppliers";
+import { BatchIn, batchSize, clearBatch } from "./BatchIn";
+import { BatchOut, batchOutSize, clearBatchOut } from "./BatchOut";
 import { api, openPdf, shrink, type Match, type Product, type BarcodeLookup, type Movement } from "./api";
 
 const Camera = React.lazy(() => import("./Camera").then((m) => ({ default: m.Camera })));
@@ -22,6 +25,12 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
   useLang();
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<Mode>(initialMode);
+  // "Part came in" one by one, or a whole delivery as a batch. The batch list lives on this phone until it is saved.
+  const [style, setStyleNow] = useState<"one" | "batch">(() => { try { return batchSize() > 0 || batchOutSize() > 0 || localStorage.getItem("lifta.counter.style") === "batch" ? "batch" : "one"; } catch { return "one"; } });
+  const [leaving, setLeaving] = useState(false);
+  const setStyle = (v: "one" | "batch") => { setStyleNow(v); setLeaving(false); try { localStorage.setItem("lifta.counter.style", v); } catch { /* ignore */ } };
+  const chooseStyle = (v: "one" | "batch") => { if (v === style) return; if (v === "one" && (mode === "receive" ? batchSize() : batchOutSize()) > 0) { setLeaving(true); return; } setStyle(v); };
+  const batching = style === "batch";
   const [part, setPart] = useState<Item | null>(null);
   const [candidates, setCandidates] = useState<Item[]>([]);
   const [photoId, setPhotoId] = useState("");
@@ -58,7 +67,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
 
   useEffect(() => { setMode(initialMode); }, [initialMode]);
   // A new item registered from this screen comes back selected, ready for its quantity.
-  useEffect(() => { if (picked) { setPart(picked); setCandidates([]); setPhotoId(""); setQuantity(1); setError(""); } }, [picked]);
+  useEffect(() => { if (picked && !batching) { setPart(picked); setCandidates([]); setPhotoId(""); setQuantity(1); setError(""); } }, [picked]);
 
   const reset = (message = "") => {
     setPart(null); setCandidates([]); setPhotoId("");
@@ -71,6 +80,9 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
 
   const onQR = useCallback((value: string) => {
     setCamera(false);
+    // a shelf label opens that shelf on the map
+    const shelf = parseShelfCode(value);
+    if (shelf) { try { sessionStorage.setItem(SHELF_FOCUS, "id:" + shelf.rack + ":" + shelf.level); } catch { /* ignore */ } window.dispatchEvent(new Event("lifta:open-shelf")); return; }
     const found = partFromCode(value, items);
     if (found) { setPart(found); setCandidates([]); setPhotoId(""); setError(""); }
     else setError(t("This QR is not a stock item. Take a photo of the part instead."));
@@ -187,7 +199,22 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
           <button className="toast-close" aria-label="Dismiss error" onClick={() => setError("")}>×</button>
         </div>
       )}
-      {(mode === "give" || mode === "receive") && (
+      {(
+        <div className="ws-seg counter-style" role="group" aria-label={t("How parts come in")} data-tour="counter-style">
+          {([["one", t("One by one")], ["batch", t("Batch")]] as ["one" | "batch", string][]).map(([k, l]) => <button type="button" key={k} className={style === k ? "on" : ""} aria-pressed={style === k} onClick={() => chooseStyle(k)}>{l}</button>)}
+        </div>
+      )}
+      {leaving && (
+        <div className="counter-candidates" role="alert">
+          <p>{t("Your batch list has {n} parts that are not saved yet.", { n: mode === "receive" ? batchSize() : batchOutSize() })}</p>
+          <button type="button" onClick={() => setStyle("one")}>{t("Keep the list and switch")}</button>
+          <button type="button" onClick={() => { if (mode === "receive") clearBatch(); else clearBatchOut(); setStyle("one"); }}>{t("Throw the list away")}</button>
+          <button type="button" onClick={() => setLeaving(false)}>{t("Stay on the batch")}</button>
+        </div>
+      )}
+      {batching && mode === "receive" && <BatchIn items={items} picked={picked} photo={photo} onNewItem={onNewItem} onChanged={onChanged} />}
+      {batching && mode === "give" && <BatchOut items={items} photo={photo} onChanged={onChanged} />}
+      {!batching && (
         <>
           <div className="counter-step">
             <h2><span>1</span> {mode === "receive" ? t("Which part came in?") : t("Which part?")}</h2>

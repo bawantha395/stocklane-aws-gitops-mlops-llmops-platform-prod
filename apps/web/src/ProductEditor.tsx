@@ -1,10 +1,12 @@
+import { suggestShelf } from "./shelfRoute";
 import React, { useEffect, useRef, useState } from "react";
 import { Camera, Check, X } from "lucide-react";
 import { api, shrink, type Match, type Draft } from "./api";
 import { getDefaultReorder } from "./businessName";
 import { t } from "./i18n";
 import { suggestFields, type Field, type Suggestion } from "./suggestions";
-import { Item, uid, prettyModel, useCommand, Photo } from "./partsShared";
+import { Item, uid, prettyModel, useCommand, Photo, printLabelSheet } from "./partsShared";
+import { ShelfPicker } from "./ShelfPicker";
 import { ListPick } from "./ListPick";
 import { SupplierPick } from "./Suppliers";
 import { PriceBox } from "./Pricing";
@@ -76,6 +78,8 @@ export function ProductEditor({
   const command = useCommand();
   // A photo can be added while registering: it is stored now and attached to the new item on save.
   const [photoId, setPhotoId] = useState(imageId), [photoBusy, setPhotoBusy] = useState(false), [savedNote, setSavedNote] = useState("");
+  const [shelfMap, setShelfMap] = useState(false), [price, setPrice] = useState(""), [cost, setCost] = useState(""), [markup, setMarkup] = useState(() => { try { return localStorage.getItem("lifta.markup") || "30"; } catch { return "30"; } }), [madeNow, setMadeNow] = useState<Item[]>([]);
+  const askPrice = !item && can("price_edit") && !inTask;
   const addAnother = useRef(false), formEl = useRef<HTMLFormElement>(null);
   const [shootPhoto, setShootPhoto] = useState(false);
   const pickPhoto = async (f?: File) => {
@@ -195,7 +199,7 @@ export function ProductEditor({
           barcode: null,
           unit,
           openingQuantity: quantity,
-          sellingPrice: 0,
+          sellingPrice: askPrice && Number(price) > 0 ? Number(price) : 0,
           imageId: photoId || null,
         });
       let message = item
@@ -218,7 +222,9 @@ export function ProductEditor({
         // Keep the form open for the next part: the shelf, brand, category and unit usually stay the same.
         addAnother.current = false;
         await onAddedAnother(message);
+        setMadeNow((x) => [...x, result]);
         setSavedNote(t("Saved {name}. Add the next one.", { name: result.name }));
+        setPrice(""); setCost("");
         setName(""); setPart(""); setQuantity(0); setPhotoId(""); setSpec(""); setSize("");
         sku.current = "ITEM-" + uid().slice(0, 8).toUpperCase();
         setTimeout(() => (formEl.current?.querySelector("input:not([type=file])") as HTMLInputElement | null)?.focus(), 30);
@@ -318,8 +324,15 @@ export function ProductEditor({
                   onChange={(e) => edit(field, e.target.value)}
                 />}{badge(field)}</span>
                 {hint(field)}
+                {field === "location" && <button type="button" className="stock-link" onClick={() => setShelfMap(true)}>{t("Pick on the store room")}</button>}
               </label>
             ))}
+            {!item && !location && suggestShelf(products, category) && (
+              <p className="stock-help shelf-suggest" role="status">
+                {t("Most parts of this category are on")} <b>{suggestShelf(products, category)}</b>.{" "}
+                <button type="button" className="stock-link" onClick={() => edit("location", suggestShelf(products, category))}>{t("Use this shelf")}</button>
+              </p>
+            )}
             <datalist id="category-options">
               {[...new Set(products.filter((p) => !p.archived).map((p) => (p.category || "").trim()).filter(Boolean))].sort().map((c) => <option key={c} value={c} />)}
             </datalist>
@@ -355,6 +368,17 @@ export function ProductEditor({
                   </label>
                 )}
               </>
+            )}
+            {askPrice && (
+              <div className="stock-field reg-price">
+                <label>{t("Selling price")}<input type="number" inputMode="decimal" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" /></label>
+                <details>
+                  <summary>{t("Work it out from the cost")}</summary>
+                  <label>{t("Cost (each)")}<input type="number" inputMode="decimal" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></label>
+                  <label>{t("Markup %")}<input type="number" inputMode="decimal" min="0" step="1" value={markup} onChange={(e) => { setMarkup(e.target.value); try { localStorage.setItem("lifta.markup", e.target.value); } catch { /* ignore */ } }} /></label>
+                  <button type="button" className="button secondary small" disabled={!(Number(cost) > 0)} onClick={() => setPrice(String(Math.round(Number(cost) * (1 + Number(markup || 0) / 100) * 100) / 100))}>{t("Use this price")}</button>
+                </details>
+              </div>
             )}
             {item && can("price_edit") && <PriceBox item={item} />}
             <details className="product-more" open={moreOpen} onToggle={(e) => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}>
@@ -411,6 +435,9 @@ export function ProductEditor({
             >
               Cancel
             </button>
+            {madeNow.length > 0 && (
+              <button type="button" className="button secondary" onClick={() => void printLabelSheet(madeNow).catch((e) => setError((e as Error).message))}>{t("Print labels for {n} new parts", { n: madeNow.length })}</button>
+            )}
             {!item && !draft && !inTask && onAddedAnother && (
               <button className="button secondary" disabled={busy || !!duplicate} onClick={() => { addAnother.current = true; }}>
                 {t("Save and add another")}
@@ -422,6 +449,7 @@ export function ProductEditor({
           </div>
         </form>
       </section>
+      {shelfMap && <ShelfPicker value={location} onPick={(v) => { edit("location", v); setShelfMap(false); }} onClose={() => setShelfMap(false)} />}
     </div>
   );
 }

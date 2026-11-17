@@ -231,25 +231,42 @@ def stores_view(row=None):
             'revision': int(row.get('revision') or 0)}
 
 
+# A store room has exactly four walls. Their place is fixed (the person stands in the middle); only the names change.
+WALLS = (('W', 'Left wall'), ('E', 'Right wall'), ('N', 'Top wall'), ('S', 'Bottom wall'))
+
+
 def _clean_areas(raw, old):
+    """Always the four walls, in the order W, E, N, S. A wall keeps its id and place; the owner can only rename it. A screen that sends names
+    only (older ones) fills the walls in that order."""
+    old_pos = {a.get('pos') or '': a for a in old or [] if a.get('pos')}
+    for pos, default in WALLS:  # a shop that never saved its walls has the four standard ones
+        old_pos.setdefault(pos, {'id': 'wall-' + pos.lower(), 'name': default, 'pos': pos})
+    old_by_id = {a['id']: a for a in list(old_pos.values()) + list(old or [])}
     if raw is None:
-        return [dict(a) for a in old or []]
-    if not isinstance(raw, list) or len(raw) > MAX_AREAS:
-        raise bad('Up to %d areas (walls)' % MAX_AREAS)
-    keep = {a['id']: a for a in old or []}
-    out, names, ids = [], set(), set()
+        raw = []
+    if not isinstance(raw, list) or len(raw) > len(WALLS):
+        raise bad('A store room has 4 walls')
+    named, free = {}, [p for p, _ in WALLS]
     for a in raw:
         if not isinstance(a, dict):
-            raise bad('Check the areas')
-        name = text(a.get('name'), 'Area name', 40, True)
-        aid = str(a.get('id') or '')
-        if aid and aid not in keep:
-            raise missing('An area is no longer there. Reload and try again.')
-        aid = aid or new_id()
-        if name.lower() in names or aid in ids:
+            raise bad('Check the walls')
+        was = old_by_id.get(str(a.get('id') or ''))
+        if a.get('id') and not was:
+            raise missing('A wall is no longer there. Reload and try again.')
+        pos = str(a.get('pos') or (was or {}).get('pos') or '').upper()
+        if pos and pos not in free:
+            raise bad('A wall is on the list twice')
+        pos = pos or next(p for p in free)
+        free.remove(pos)
+        named[pos] = text(a.get('name'), 'Wall name', 40, True)
+    out, names = [], set()
+    for pos, default in WALLS:
+        was = old_pos.get(pos)
+        name = named.get(pos) or (was or {}).get('name') or default
+        if name.lower() in names:
             raise bad('"%s" is on the list twice' % name)
-        names.add(name.lower()); ids.add(aid)
-        out.append({'id': aid, 'name': name})
+        names.add(name.lower())
+        out.append({'id': (was or {}).get('id') or 'wall-' + pos.lower(), 'name': name, 'pos': pos})
     return out
 
 
@@ -295,7 +312,7 @@ def clean_stores(body, old_racks=(), old_areas=()):
         for l in raw_levels:
             lname = text(level_name(l), 'Level', 12, True)
             if lname.lower() in lseen:
-                raise bad('"%s" is on %s twice' % (lname, name))
+                raise bad('Level "%s" is on rack "%s" twice. Give each level its own name' % (lname, name))
             lseen.add(lname.lower())
             given = l.get('id') if isinstance(l, dict) else None
             old_l = was_by_id.get(given) if given else was_levels.get(lname.lower())
@@ -303,7 +320,7 @@ def clean_stores(body, old_racks=(), old_areas=()):
                 raise missing('A level is no longer there. Reload and try again.')
             lid = (old_l or {}).get('id') or new_id()
             if lid in lids:
-                raise bad('"%s" is on %s twice' % (lname, name))
+                raise bad('Level "%s" is on rack "%s" twice. Give each level its own name' % (lname, name))
             lids.add(lid)
             level = {'id': lid, 'name': lname}
             photo = photos_one(l.get('photo_id')) if isinstance(l, dict) and 'photo_id' in l else (old_l or {}).get('photo_id')
@@ -497,7 +514,10 @@ def layout_view(row=None):
             continue
         c = counts.setdefault(rid, {})
         c[lid or ''] = c.get(lid or '', 0) + 1
-    return {'areas': row.get('areas') or [], 'categories': row.get('categories') or [], 'revision': int(row.get('revision') or 0), 'not_shelved': loose, 'counts': counts,
+    counted = {}
+    for c in query('SHELFCOUNT'):
+        counted.setdefault(c['rack_id'], {})[c.get('level_id') or ''] = {'at': c['at'], 'by': c.get('by')}
+    return {'areas': _clean_areas(None, row.get('areas') or []), 'categories': row.get('categories') or [], 'revision': int(row.get('revision') or 0), 'not_shelved': loose, 'counts': counts, 'counted': counted,
             'racks': [{'id': r['id'], 'name': r['name'], 'area_id': r.get('area_id'), 'type': r.get('type') or 'RACK',
                        'levels': [{'id': l['id'], 'name': l['name'], **({'photo_id': l['photo_id']} if l.get('photo_id') else {})} for l in r.get('levels') or []]} for r in racks]}
 
@@ -528,6 +548,94 @@ def shelf_parts(rack, level=''):
             out.append({k: p.get(k) for k in ('id', 'sku', 'name', 'brand', 'part_number', 'unit', 'quantity', 'reorder_level', 'location', 'image_id')} | {'level_id': lid})
     out.sort(key=lambda r: (r.get('name') or '').lower())
     return {'rack_id': None if rack == 'none' else rack, 'level_id': level or None, 'parts': out}
+
+
+MAX_MOVE = 15  # one transaction holds 100 writes and each part needs 5
+
+
+def shelf_move(key, who, body):
+    """Move parts to another shelf: one part or many, in one save (all or none). Each part keeps its stock; its shelf text, the rack and level ids
+    the map reads, and a history row 'Moved Rack 1-A to Rack 2-C' change together. A part already on that shelf is left alone."""
+    def build():
+        b = body or {}
+        ids = b.get('productIds')
+        if not isinstance(ids, list) or not ids:
+            raise bad('Choose the parts to move')
+        if len(ids) > MAX_MOVE or len(set(map(str, ids))) != len(ids):
+            raise bad('Move up to %d different parts at a time' % MAX_MOVE)
+        racks = stores_row().get('racks') or []
+        rack = next((r for r in racks if r.get('id') == str(b.get('rackId') or '')), None)
+        if not rack:
+            raise missing('That rack is no longer there. Reload the store room.')
+        level = None
+        if rack.get('levels'):
+            level = next((l for l in rack['levels'] if l.get('id') == str(b.get('levelId') or '')), None)
+            if not level:
+                raise bad('Choose the level of %s' % rack['name'])
+        target = shelf_label(rack['name'], level['name'] if level else '')
+        created, ops, out = now(), [], []
+        for pid in ids:
+            product = load_product(pid)
+            if product.get('archived'):
+                raise conflict('%s is archived' % product['name'])
+            old = product.get('location') or ''
+            if old == target:
+                continue
+            expr = 'SET #loc = :loc, rack_id = :rid' + (', level_id = :lid' if level else ' REMOVE level_id')
+            values = {':loc': target, ':rid': rack['id']}
+            if level:
+                values[':lid'] = level['id']
+            ops.append(update('PRODUCT', product['id'], expr, values, names={'#loc': 'location'}, condition='attribute_exists(pk)'))
+            rows, _ = movement_items(product, 'SHELF_MOVE', ZERO, product['selling_price'], None, None, who, 'Moved %s to %s' % (old or 'no shelf', target), None, None, created,
+                                     {'from_shelf': old, 'to_shelf': target})
+            ops += rows
+            out.append({'product_id': product['id'], 'name': product['name'], 'from': old, 'to': target})
+        if not ops:
+            raise conflict('They are already on %s' % target)
+        return ops, [None] * len(ops), {'shelf': target, 'rack_id': rack['id'], 'level_id': level['id'] if level else None, 'moved': out}
+    result = command(key, 'shelf-move', who, body, build)
+    _cache['until'] = 0
+    return result
+
+
+def shelf_count(key, who, body):
+    """A shelf count: the person counts what is on one shelf (or rack) and saves all the differences at once. Each part that differs gets a COUNT
+    row (found extra / found missing); parts that match are left alone. The shelf remembers when it was last counted, even if nothing differed."""
+    def build():
+        b = body or {}
+        racks = stores_row().get('racks') or []
+        rack = next((r for r in racks if r.get('id') == str(b.get('rackId') or '')), None)
+        if not rack:
+            raise missing('That rack is no longer there. Reload the store room.')
+        level_id = str(b.get('levelId') or '')
+        if level_id and not any(l.get('id') == level_id for l in rack.get('levels') or []):
+            raise missing('That level is no longer there. Reload the store room.')
+        lines = b.get('counts')
+        if not isinstance(lines, list) or not lines or len(lines) > MAX_MOVE:
+            raise bad('Count up to %d parts at a time' % MAX_MOVE)
+        if len({str(l.get('productId')) for l in lines if isinstance(l, dict)}) != len(lines):
+            raise bad('Each part once')
+        on_shelf = {p['id'] for p in shelf_parts(rack['id'], level_id)['parts']}
+        created, ops, out = now(), [], []
+        for line in lines:
+            product = load_product(str(line.get('productId')))
+            if product['id'] not in on_shelf:
+                raise conflict('%s is not on this shelf any more. Reload it.' % product['name'])
+            counted = num(line.get('counted'), 'Counted')
+            if counted < 0:
+                raise bad('Counted cannot be below zero')
+            if counted == product['quantity']:
+                continue
+            kind, diff = ('COUNT_IN', counted - product['quantity']) if counted > product['quantity'] else ('COUNT_OUT', product['quantity'] - counted)
+            ops.append(update('PRODUCT', product['id'], 'SET quantity = :new', {':new': counted, ':old': product['quantity'], ':nf': False}, condition='quantity = :old and archived = :nf'))
+            rows, _ = movement_items(product, kind, diff, ZERO, None, None, who, 'Shelf count', None, None, created)
+            ops += rows
+            out.append({'product_id': product['id'], 'name': product['name'], 'was': product['quantity'], 'now': counted})
+        ops.append(put({'pk': 'SHELFCOUNT', 'sk': rack['id'] + '#' + level_id, 'rack_id': rack['id'], 'level_id': level_id, 'at': created, 'by': who}))
+        return ops, [None] * len(ops), {'changed': out, 'at': created}
+    result = command(key, 'shelf-count', who, body, build)
+    _cache['until'] = 0
+    return result
 
 
 def layout_save(key, who, body):
@@ -561,17 +669,15 @@ def layout_save(key, who, body):
     return dict(layout_view(row), moved=moved)
 
 
-QUICK_AREAS = ('Wall A', 'Wall B', 'Wall C', 'Wall D')
-
-
 def quick_start(key, who, body):
-    """Owner, a shop with no racks yet: 4 walls, each with 3 racks of 3 levels (A1-A, A1-B, A1-C ...). The owner then renames and trims."""
+    """Owner, a shop with no racks yet: the 4 walls with racks 1 to 12 (three on each wall), each with levels A, B and C, so the shelves are
+    named 1-A, 1-B, 1-C, 2-A and so on. The owner then renames, trims and rearranges."""
     def build():
         old = stores_row()
         if old.get('racks'):
             raise conflict('This shop already has racks. Change them in the list.')
-        areas = [{'id': new_id(), 'name': n} for n in QUICK_AREAS]
-        racks = [{'name': '%s%d' % (a['name'][-1], n), 'area_id': a['id'], 'type': 'RACK', 'levels': ['A', 'B', 'C']} for a in areas for n in (1, 2, 3)]
+        areas = _clean_areas(None, old.get('areas') or [])
+        racks = [{'name': str(n + 1), 'area_id': areas[n // 3]['id'], 'type': 'RACK', 'levels': ['A', 'B', 'C']} for n in range(12)]
         racks, cats, areas = clean_stores({'racks': racks, 'areas': areas, 'categories': old.get('categories') or []}, (), areas)
         op, row = _store_row(old, racks, cats, areas, who)
         return [op], [None], layout_view(row)
@@ -597,52 +703,121 @@ def listed(location, category, keep=()):
 
 
 # ---------- catalogue ----------
+def _new_product(p, who):
+    """The writes that make one catalogue part (and its opening count), and what to show for it. Used by one-at-a-time and by CSV import."""
+    part = text(p.get('partNumber'), 'Manufacturer part number')
+    sku = text(p.get('sku'), 'SKU').upper()
+    name, category, brand = text(p.get('name'), 'Name'), text(p.get('category'), 'Category', 80), text(p.get('brand'), 'Brand', 100)
+    grade, capacity = text(p.get('grade'), 'Grade', 80, False), text(p.get('capacity'), 'Capacity', 60, False)
+    location = text(p.get('location'), 'Location', 180, False)
+    location, category = listed(location, category)
+    rack_id, level_id = shelf_of(location)
+    unit = p.get('unit')
+    if unit not in ('UNIT', 'LITRE'):
+        raise bad('Unit must be UNIT or LITRE')
+    price, reorder, opening = non_negative(p.get('sellingPrice'), 'Price'), non_negative(p.get('reorderLevel'), 'Reorder level'), non_negative(p.get('openingQuantity'), 'Opening quantity')
+    if unit == 'UNIT' and opening != opening.to_integral_value():
+        raise bad('Sealed units require a whole number')
+    barcode = (p.get('barcode') or '').strip() or None
+    product_id = str(uuid.uuid4())
+    created = now()
+    item = {'pk': 'PRODUCT', 'sk': product_id, 'id': product_id, 'sku': sku, 'name': name, 'category': category,
+            'brand': brand, 'grade': grade, 'capacity': capacity, 'unit': unit, 'quantity': opening,
+            'selling_price': price, 'reorder_level': reorder, 'created_at': created, 'archived': False,
+            'manufacturer_key': brand.upper(), 'part_number': part_key(part), 'location': location,
+            **({'rack_id': rack_id, **({'level_id': level_id} if level_id else {})} if rack_id else {})}
+    from . import suppliers
+    sid, sname = suppliers.resolve(p.get('supplierId'), p.get('supplier'))
+    if sname:
+        item['supplier'] = sname
+    if sid:
+        item['supplier_id'] = sid
+    if barcode:
+        item['barcode'] = barcode
+    if p.get('imageId'):
+        item['image_id'] = str(p['imageId'])
+    ops, labels = [put(item), unique('sku', sku), unique('part', item['manufacturer_key'] + '|' + item['part_number'])], \
+        [None, 'SKU ' + sku + ' already exists', 'This manufacturer part number already exists']
+    if barcode:
+        ops.append(unique('barcode', barcode))
+        labels.append('This barcode already belongs to another item')
+    result = product_view(item)
+    if opening > 0:
+        extra, _ = movement_items(item, 'OPENING', opening, price, None, None, who, 'Approved initial physical count', None, None, created)
+        ops += extra
+        labels += [None] * len(extra)
+        result['opening_movement'] = True
+    return ops, labels, result
+
+
+MAX_IMPORT = 10      # one transaction holds 100 writes; a new part with its opening count needs about 9
+MAX_IMPORT_CHECK = 300
+
+
+def import_products(key, who, body):
+    """CSV import of the catalogue. dryRun checks every row and writes nothing: each row's problem is named with its row number, duplicates inside
+    the file and against the catalogue included. A real import takes up to 10 rows, all or none; the screen sends them in turns."""
+    b = body or {}
+    rows = b.get('rows')
+    if not isinstance(rows, list) or not rows:
+        raise bad('The file has no rows')
+    if b.get('dryRun'):
+        if len(rows) > MAX_IMPORT_CHECK:
+            raise bad('Up to %d rows at a time' % MAX_IMPORT_CHECK)
+        have_sku, have_part, have_bar = set(), set(), set()
+        for x in query('PRODUCT'):
+            have_sku.add((x.get('sku') or '').upper())
+            have_part.add((x.get('manufacturer_key') or '') + '|' + (x.get('part_number') or ''))
+            if x.get('barcode'):
+                have_bar.add(x['barcode'])
+        errors, good = [], 0
+        for n, r in enumerate(rows, start=1):
+            try:
+                r = dict(r) if isinstance(r, dict) else {}
+                r['sku'] = (r.get('sku') or '').strip() or 'ITEM-CHECK'
+                r['unit'] = r.get('unit') or 'UNIT'
+                _, _, view = _new_product(r, who)
+                part = (view.get('manufacturer_key') or '') + '|' + (view.get('part_number') or '')
+                if r['sku'].upper() in have_sku and r['sku'] != 'ITEM-CHECK':
+                    raise bad('SKU %s already exists' % r['sku'].upper())
+                if part in have_part:
+                    raise bad('This manufacturer part number already exists')
+                if view.get('barcode') and view['barcode'] in have_bar:
+                    raise bad('This barcode already belongs to another item')
+                if r['sku'] != 'ITEM-CHECK':
+                    have_sku.add(r['sku'].upper())
+                have_part.add(part)
+                if view.get('barcode'):
+                    have_bar.add(view['barcode'])
+                good += 1
+            except ApiError as e:
+                errors.append({'row': n, 'error': e.message})
+        return {'rows': len(rows), 'ok': good, 'errors': errors}
+
+    def build():
+        if len(rows) > MAX_IMPORT:
+            raise bad('Import up to %d parts at a time' % MAX_IMPORT)
+        ops, labels, made = [], [], []
+        for n, r in enumerate(rows, start=1):
+            r = dict(r) if isinstance(r, dict) else {}
+            r['sku'] = (r.get('sku') or '').strip() or 'ITEM-' + uuid.uuid4().hex[:8].upper()
+            r['unit'] = r.get('unit') or 'UNIT'
+            try:
+                o, l, view = _new_product(r, who)
+            except ApiError as e:
+                raise bad('Row %d: %s' % (n, e.message)) from None
+            ops += o
+            labels += [x if x is None else 'Row %d: %s' % (n, x) for x in l]
+            made.append({'id': view['id'], 'sku': view['sku'], 'name': view['name']})
+        return ops, labels, {'created': made}
+    result = command(key, 'import-products', who, body, build)
+    _cache['until'] = 0
+    return result
+
+
 def create_product(key, who, body):
     def build():
-        p = body or {}
-        part = text(p.get('partNumber'), 'Manufacturer part number')
-        sku = text(p.get('sku'), 'SKU').upper()
-        name, category, brand = text(p.get('name'), 'Name'), text(p.get('category'), 'Category', 80), text(p.get('brand'), 'Brand', 100)
-        grade, capacity = text(p.get('grade'), 'Grade', 80, False), text(p.get('capacity'), 'Capacity', 60, False)
-        location = text(p.get('location'), 'Location', 180, False)
-        location, category = listed(location, category)
-        rack_id, level_id = shelf_of(location)
-        unit = p.get('unit')
-        if unit not in ('UNIT', 'LITRE'):
-            raise bad('Unit must be UNIT or LITRE')
-        price, reorder, opening = non_negative(p.get('sellingPrice'), 'Price'), non_negative(p.get('reorderLevel'), 'Reorder level'), non_negative(p.get('openingQuantity'), 'Opening quantity')
-        if unit == 'UNIT' and opening != opening.to_integral_value():
-            raise bad('Sealed units require a whole number')
-        barcode = (p.get('barcode') or '').strip() or None
-        product_id = str(uuid.uuid4())
-        created = now()
-        item = {'pk': 'PRODUCT', 'sk': product_id, 'id': product_id, 'sku': sku, 'name': name, 'category': category,
-                'brand': brand, 'grade': grade, 'capacity': capacity, 'unit': unit, 'quantity': opening,
-                'selling_price': price, 'reorder_level': reorder, 'created_at': created, 'archived': False,
-                'manufacturer_key': brand.upper(), 'part_number': part_key(part), 'location': location,
-                **({'rack_id': rack_id, **({'level_id': level_id} if level_id else {})} if rack_id else {})}
-        from . import suppliers
-        sid, sname = suppliers.resolve(p.get('supplierId'), p.get('supplier'))
-        if sname:
-            item['supplier'] = sname
-        if sid:
-            item['supplier_id'] = sid
-        if barcode:
-            item['barcode'] = barcode
-        if p.get('imageId'):
-            item['image_id'] = str(p['imageId'])
-        ops, labels = [put(item), unique('sku', sku), unique('part', item['manufacturer_key'] + '|' + item['part_number'])], \
-            [None, 'SKU ' + sku + ' already exists', 'This manufacturer part number already exists']
-        if barcode:
-            ops.append(unique('barcode', barcode))
-            labels.append('This barcode already belongs to another item')
-        result = product_view(item)
-        if opening > 0:
-            extra, _ = movement_items(item, 'OPENING', opening, price, None, None, who, 'Approved initial physical count', None, None, created)
-            ops += extra
-            labels += [None] * len(extra)
-            result['opening_movement'] = True
-        return ops, labels, result
+        return _new_product(body or {}, who)
 
     result = command(key, 'create-product', who, body, build)
     announce(result)
@@ -779,10 +954,11 @@ def set_cost(key, movement_id, who, body):
         if cost is None:
             raise bad('Enter the cost price')
         marker = mv['created_at'] + '#' + mv['id']
-        ops = [update('MV#' + mv['id'], 'M', 'SET unit_cost = :c', {':c': cost}),
+        event = put({'pk': 'COSTEV', 'sk': now() + '#' + mv['id'], 'at': now(), 'by': who, 'name': mv.get('name', ''), 'old': str(mv['unit_cost']) if mv.get('unit_cost') is not None else '', 'new': str(cost)})
+        ops = [event, update('MV#' + mv['id'], 'M', 'SET unit_cost = :c', {':c': cost}),
                update('MOVE', marker, 'SET unit_cost = :c', {':c': cost}),
                archive_audit(mv['product_id'], who, 'COST', {'movement': mv['id'], 'unit_cost': str(cost)})]
-        labels = [None, None, None]
+        labels = [None, None, None, None]
         product = get('PRODUCT', mv['product_id'])
         if product and (product.get('last_cost_at') or '') <= mv['created_at']:
             # the newest receipt decides the item's last cost
@@ -995,7 +1171,7 @@ def record_document(key, who, body):
             if balance < 0:
                 raise conflict('Only %s of %s in stock' % (product['quantity'].normalize(), product['name']))
             row_extra = dict(extra, doc_ids=ids)
-            expr, values = 'SET quantity = :new', {':new': balance, ':old': product['quantity'], ':nf': False}
+            expr, values, names = 'SET quantity = :new', {':new': balance, ':old': product['quantity'], ':nf': False}, None
             if kind == 'RECEIPT':
                 cost = cost_of(line.get('unitCost'))
                 if cost is not None:
@@ -1011,13 +1187,28 @@ def record_document(key, who, body):
                     if extra.get('supplier_id'):
                         expr += ', supplier_id = :sid'
                         values[':sid'] = extra['supplier_id']
+                # the shelf it was put on (batch screen): written the way the owner's list spells it, with the ids the map uses
+                shelf = text(line.get('location'), 'Shelf', 180, False)
+                if shelf and shelf != (product.get('location') or ''):
+                    shelf, _ = listed(shelf, None, keep=(product.get('location') or '',))
+                    rid, lid = shelf_of(shelf)
+                    expr += ', #loc = :loc' + (', rack_id = :rid' if rid else '') + (', level_id = :lid' if lid else '')
+                    values[':loc'] = shelf
+                    names = {'#loc': 'location'}
+                    if rid:
+                        values[':rid'] = rid
+                    if lid:
+                        values[':lid'] = lid
+                    gone = ([] if rid else ['rack_id']) + ([] if lid else ['level_id'])
+                    if gone:
+                        expr += ' REMOVE ' + ', '.join(gone)
             if kind == 'SUPPLIER_RETURN':
                 # what the shop paid for them: the price on the line, else the last price paid; it lowers what is owed to the supplier
                 cost = cost_of(line.get('unitCost'))
                 cost = cost if cost is not None else product.get('last_cost')
                 if cost is not None:
                     row_extra['unit_cost'] = cost
-            ops.append(update('PRODUCT', product['id'], expr, values, condition='quantity = :old and archived = :nf'))
+            ops.append(update('PRODUCT', product['id'], expr, values, names=names, condition='quantity = :old and archived = :nf'))
             rows, _ = movement_items(product, kind, quantity, product['selling_price'], None, None, who, note,
                                      receiver_id, receiver_name, created, row_extra, doc_no=doc_no, movement_id=mid)
             ops += rows

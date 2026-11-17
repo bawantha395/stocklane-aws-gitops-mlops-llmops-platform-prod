@@ -8,10 +8,14 @@ import json
 import re
 import traceback
 
-from . import core, customers, forecast, inventory, orders, payables, perms, photos, platform, quotes, staff, suppliers, workshop
+from . import alerts, core, links, monthly, slowstock, customers, forecast, inventory, messages, orders, payables, perms, photos, platform, quotes, staff, suppliers, workshop
 from .core import ApiError, actor, bad, dumps, groups, remember_email, require
 
 OWNER, STAFF = ('OWNER',), perms.ROLES  # OWNER: the owner only. STAFF: anyone who works in the shop (reads everyone needs)
+
+
+class Open(str):
+    """A route anyone can call with no sign-in (the customer's own link). It must do its own checking and never touch another shop's data."""
 
 
 class P(str):
@@ -27,6 +31,10 @@ def is_owner(e):
 
 PLATFORM = ('PLATFORM',)  # the person who runs this deployment: opens and closes workshops, sees none of their data
 ROUTES = []
+
+
+def source(e):
+    return ((e.get('requestContext') or {}).get('http') or {}).get('sourceIp') or 'unknown'
 
 
 def route(method, pattern, roles, fn, needs_key=False, body=False):
@@ -60,6 +68,9 @@ route('POST', '/api/inventory/products/([^/]+)/archive', P('item_edit'), lambda 
 route('GET', '/api/inventory/movements/([^/]+)/note.pdf', STAFF, lambda e, p, b, k: ('pdf',) + workshop.stock_note_pdf(p[0], sees_cost(e) and q(e, 'cost') == '1'))
 route('GET', '/api/inventory/stores/shelf', STAFF, lambda e, p, b, k: inventory.shelf_parts(q(e, 'rack'), q(e, 'level')))
 route('GET', '/api/inventory/stores/layout', STAFF, lambda e, p, b, k: inventory.layout_view())
+route('POST', '/api/inventory/products/import', P('item_add'), lambda e, p, b, k: inventory.import_products(k, actor(e), b))
+route('POST', '/api/inventory/stores/count', P('stock_count'), lambda e, p, b, k: inventory.shelf_count(k, actor(e), b))
+route('POST', '/api/inventory/stores/move', P('shelf_move'), lambda e, p, b, k: inventory.shelf_move(k, actor(e), b))
 route('PUT', '/api/inventory/stores/layout', P('lists'), lambda e, p, b, k: inventory.layout_save(k, actor(e), b))
 route('POST', '/api/inventory/stores/quick-start', P('lists'), lambda e, p, b, k: inventory.quick_start(k, actor(e), b))
 route('GET', '/api/inventory/stores', STAFF, lambda e, p, b, k: inventory.stores_view())
@@ -125,6 +136,7 @@ route('POST', '/api/workshop/jobs', P('jobs'), lambda e, p, b, k: workshop.creat
 route('GET', '/api/workshop/archive', P('archive'), lambda e, p, b, k: workshop.archive())
 route('GET', '/api/workshop/jobs/([^/]+)', P('jobs_view'), lambda e, p, b, k: workshop.get_job(p[0], actor(e), is_owner(e) or perms.can(e, 'archive')))
 route('PATCH', '/api/workshop/jobs/([^/]+)', P('jobs'), lambda e, p, b, k: workshop.save_job(p[0], k, actor(e), b, is_owner(e)))
+route('POST', '/api/workshop/jobs/([^/]+)/stock-batch', P('job_stock'), lambda e, p, b, k: workshop.use_stock_batch(p[0], k, actor(e), b))
 route('POST', '/api/workshop/jobs/([^/]+)/stock', P('job_stock'), lambda e, p, b, k: workshop.use_stock(p[0], k, actor(e), b))
 route('POST', '/api/workshop/jobs/([^/]+)/invoice', P('bill'), lambda e, p, b, k: workshop.finalise(p[0], k, actor(e), b))
 route('POST', '/api/workshop/jobs/([^/]+)/archive', P('archive'), lambda e, p, b, k: workshop.archive_job(p[0], k, actor(e), b))
@@ -169,7 +181,27 @@ route('PATCH', '/api/workshop/customers/([^/]+)', P('customers_edit'), lambda e,
 route('POST', '/api/workshop/customers/([^/]+)/merge', P('customers_edit'), lambda e, p, b, k: customers.merge(p[0], k, actor(e), b))
 route('GET', '/api/workshop/customers/([^/]+)/statement.pdf', P('customers_view'), lambda e, p, b, k: ('pdf',) + customers.statement_pdf(p[0]))
 route('GET', '/api/workshop/owing', P('bills_view'), lambda e, p, b, k: workshop.owing(q(e, 'reg') or '', q(e, 'phone') or ''))
+route('GET', '/api/workshop/messages', P('messages'), lambda e, p, b, k: messages.rows(q(e, 'origin')))
+route('GET', '/api/workshop/messages/count', P('messages'), lambda e, p, b, k: messages.count())
+route('GET', '/api/workshop/messages/history', P('messages'), lambda e, p, b, k: messages.history())
+route('GET', '/api/workshop/messages/templates', P('messages'), lambda e, p, b, k: messages.templates_view())
+route('PUT', '/api/workshop/messages/templates', P('settings'), lambda e, p, b, k: messages.save_templates(k, actor(e), b))
+route('POST', '/api/workshop/messages/log', P('messages'), lambda e, p, b, k: messages.log(k, actor(e), b))
 route('GET', '/api/workshop/service-due', P('jobs_view'), lambda e, p, b, k: workshop.service_due())
+route('GET', '/api/workshop/slow-stock', P('reports'), lambda e, p, b, k: slowstock.slow(slowstock.parse_days(q(e, 'days')), q(e, 'category') or ''))
+route('GET', '/api/workshop/monthly.pdf', P('reports'), lambda e, p, b, k: ('pdf',) + monthly.pdf(q(e, 'month')))
+route('GET', '/api/workshop/quotes/([^/]+)/link', P('quotes'), lambda e, p, b, k: links.current(p[0], 'quote'))
+route('POST', '/api/workshop/quotes/([^/]+)/link', P('quotes'), lambda e, p, b, k: links.create(p[0], k, actor(e), b, 'quote'))
+route('POST', '/api/workshop/quotes/([^/]+)/link/revoke', P('quotes'), lambda e, p, b, k: links.revoke(p[0], k, actor(e), b, 'quote'))
+route('POST', '/api/public/track/([A-Za-z0-9~_-]{1,120})/decision', Open(), lambda e, p, b, k: links.decide(p[0], b, source(e)))
+route('GET', '/api/workshop/jobs/([^/]+)/link', P('jobs_view'), lambda e, p, b, k: links.current(p[0]))
+route('POST', '/api/workshop/jobs/([^/]+)/link', P('jobs'), lambda e, p, b, k: links.create(p[0], k, actor(e), b))
+route('POST', '/api/workshop/jobs/([^/]+)/link/revoke', P('jobs'), lambda e, p, b, k: links.revoke(p[0], k, actor(e), b))
+route('GET', '/api/public/track/([A-Za-z0-9~_-]{1,120})', Open(), lambda e, p, b, k: links.view(p[0], source(e)))
+route('GET', '/api/public/track/([A-Za-z0-9~_-]{1,120})/photo/([0-9a-f]{32})', Open(), lambda e, p, b, k: links.photo(p[0], p[1], source(e)))
+route('GET', '/api/workshop/cockpit', P('alerts'), lambda e, p, b, k: alerts.cockpit())
+route('GET', '/api/workshop/alerts', P('alerts'), lambda e, p, b, k: alerts.listing())
+route('POST', '/api/workshop/alerts/seen', P('alerts'), lambda e, p, b, k: alerts.mark_seen(k, actor(e), b))
 route('GET', '/api/workshop/dashboard', P('jobs_view'), dashboard)
 route('GET', '/api/workshop/suggestions', P('jobs_view'), lambda e, p, b, k: workshop.suggestions())
 route('GET', '/api/workshop/staff', OWNER, lambda e, p, b, k: staff.staff())
@@ -225,6 +257,15 @@ def handler(event, _context=None):
             match = pattern.match(path)
             if verb != method or not match:
                 continue
+            if isinstance(roles, Open):  # the customer's own link: no sign-in, the token inside it names the one shop and job
+                raw = event.get('body') or ''
+                if len(raw) > 2000:
+                    raise bad('That is too long')
+                try:
+                    given = json.loads(raw) if raw else {}
+                except ValueError:
+                    raise bad('The request body must be JSON') from None
+                return reply(200, fn(event, match.groups(), given if isinstance(given, dict) else {}, None), {'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex'})
             if roles == PLATFORM:  # the register of shops is outside every shop
                 require(event, *roles)
             else:

@@ -108,5 +108,7 @@ def test_every_route_names_a_permission_or_is_a_plain_read(api):
             assert roles in perms.KEYS, pattern.pattern
         elif roles == handler.STAFF:
             assert verb == 'GET' or pattern.pattern in ('^/api/inventory/movements$', '^/api/inventory/documents$', '^/api/workshop/photos$'), pattern.pattern
+        elif isinstance(roles, handler.Open):
+            assert verb in ('GET', 'POST') and pattern.pattern.startswith('^/api/public/track/'), pattern.pattern  # the customer's own link: only these are open
         else:
             assert roles in (None, handler.OWNER, handler.PLATFORM), pattern.pattern

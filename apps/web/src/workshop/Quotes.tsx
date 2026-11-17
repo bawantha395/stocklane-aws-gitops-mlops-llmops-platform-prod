@@ -4,6 +4,8 @@ import { toast, askConfirm } from "../ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PhotoStrip } from "./Photos";
 import { downloadQuotePdf } from "./quotePdf";
+import { isPractice } from "../practice";
+import { CustomerLink } from "./CustomerLink";
 import { Empty, Loading, Pill, addDays, dateOnly, kmText, lkr, num, regKey, today, useCommand, waLink, useDebounced, useLoad, useWs, type Quote, type QuoteWork, type Vehicle } from "./common";
 
 const SECTIONS: QuoteWork["section"][] = ["Rem/Refit", "Repaint", "Other"];
@@ -162,6 +164,8 @@ function QuoteForm({ start, newKind, reg }: { start?: Quote | null; newKind?: "E
         <div><h2>{f.registration || (isQuo ? t("New quotation") : t("New estimate"))}</h2><p className="muted">{quote ? word + " · " + quote.number + " · " + t("version") + " " + quote.rev_no : word + " · " + t("Not saved yet")}</p></div>
         {quote && <Pill s={st} />}
       </div>
+      {quote?.customer_decision && <p className="ws-note" role="status">{quote.customer_decision.decision === "APPROVE" ? t("Approved by the customer") : t("Declined by the customer")}: {quote.customer_decision.name} · {dateOnly(quote.customer_decision.at)}</p>}
+      {quote && !isPractice() && quote.status !== "CONVERTED" && <CustomerLink kind="quote" jobId={quote.id} phone={f.phone || ""} name={f.customer || ""} shop={business.name || ""} />}
       {locked && quote?.job_id && <p className="ws-warn" role="status">{t("This was made into a job.")} <button type="button" className="button secondary small" onClick={() => go({ name: "job", id: quote.job_id! })}>{t("Open job")}</button></p>}
       {!!quote?.history.length && (
         <details className="ws-card ws-versions"><summary>{t("Earlier versions")} ({quote.history.length})</summary>

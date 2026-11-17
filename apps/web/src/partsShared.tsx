@@ -158,3 +158,21 @@ export async function apiPhoto(id: string) {
   if (!r.ok) throw new Error("Photo unavailable");
   return r.blob();
 }
+/** Several parts on one A4 sheet: QR, name and shelf for each. Opens in a new tab and offers to print. */
+export async function printLabelSheet(items: Item[]) {
+  const popup = window.open("", "_blank");
+  if (!popup) throw new Error("Allow a new window to print the labels.");
+  try {
+    const esc = (v: string) => (v || "").replace(/[<&>"]/g, "");
+    const cells: string[] = [];
+    for (const item of items) {
+      const qr = await QRCode.toDataURL("stocklane:v1:" + item.id, { width: 300, margin: 1 });
+      cells.push('<div class="c"><img src="' + qr + '"><b>' + esc(item.name) + "</b><span>" + esc(item.part_number || item.sku) + "</span><span>" + esc(item.location || "") + "</span></div>");
+    }
+    popup.document.write("<!doctype html><title>Stock labels</title><style>body{font:12px sans-serif;margin:10mm}.g{display:grid;grid-template-columns:repeat(4,1fr);gap:4mm}.c{border:1px dashed #888;padding:3mm;text-align:center;break-inside:avoid}.c img{width:100%;max-width:34mm}.c b{display:block;font-size:11pt}.c span{display:block}button{margin:10px;padding:10px}@media print{button{display:none}}</style><button onclick='print()'>Print / Save as PDF</button><div class=g>" + cells.join("") + "</div>");
+    popup.document.close();
+  } catch (error) {
+    popup.close();
+    throw error;
+  }
+}

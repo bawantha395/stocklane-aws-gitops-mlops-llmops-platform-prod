@@ -1,3 +1,4 @@
+import { scanFeedback } from "./feedback";
 import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
 import { Camera as CameraIcon, X } from "lucide-react";
@@ -15,11 +16,15 @@ function LiveCamera({
   onBarcode,
   onPhoto,
   onClose,
+  continuous,
+  status,
 }: {
   onQR: (value: string) => void;
   onBarcode?: (value: string) => void;
   onPhoto: (file: File) => void;
   onClose: () => void;
+  continuous?: boolean;
+  status?: string;
 }) {
   useLang();
   const video = useRef<HTMLVideoElement>(null);
@@ -57,6 +62,14 @@ function LiveCamera({
     }
     const wide = document.createElement("canvas");
     let tick = 0;
+    // One-shot: the first code closes the camera. Continuous (batch): the camera stays on, and the same code counts again only after 1.5 s.
+    const seen = new Map<string, number>();
+    const found = (value: string, fn: (v: string) => void) => {
+      if (!continuous) { disposed = true; stop(); scanFeedback(); fn(value); return true; }
+      const now = Date.now();
+      if (now - (seen.get(value) || 0) >= 1500) { seen.set(value, now); scanFeedback(); fn(value); }
+      return false;
+    };
     const stop = () => stream?.getTracks().forEach((track) => track.stop());
     const read = () => {
       if (disposed) return;
@@ -69,21 +82,12 @@ function LiveCamera({
           context.drawImage(v, 0, 0, canvas.width, canvas.height);
           const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
           const code = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: "dontInvert" });
-          if (code) {
-            disposed = true;
-            stop();
-            onQR(code.data);
-            return;
-          }
+          if (code && found(code.data, onQR)) return;
         }
         if (barcodeDetector && onBarcode) {
           void barcodeDetector.detect(v).then((codes) => {
             const value = codes[0]?.rawValue;
-            if (value && !disposed) {
-              disposed = true;
-              stop();
-              onBarcode(value);
-            }
+            if (value && !disposed) found(value, onBarcode);
           }).catch(() => {});
         }
       }
@@ -94,12 +98,7 @@ function LiveCamera({
         wide.getContext("2d", { willReadFrequently: true })?.drawImage(v, 0, 0, wide.width, wide.height);
         try {
           const value = soft.decode(wide);
-          if (value && !disposed) {
-            disposed = true;
-            stop();
-            onBarcode(value);
-            return;
-          }
+          if (value && !disposed && found(value, onBarcode)) return;
         } catch {
           /* no barcode in this frame */
         }
@@ -127,7 +126,7 @@ function LiveCamera({
       clearTimeout(timer);
       stop();
     };
-  }, [onQR, onBarcode]);
+  }, [onQR, onBarcode, continuous]);
   const shoot = () => {
     const v = video.current;
     if (!v || !v.videoWidth) return;
@@ -162,7 +161,7 @@ function LiveCamera({
             <video ref={video} muted playsInline />
             <div className="scan-frame" />
             <span>
-              <CameraIcon size={18} /> {t("QR and product barcodes are detected automatically.")}
+              <CameraIcon size={18} /> {status || t("QR and product barcodes are detected automatically.")}
             </span>
           </div>
         )}
@@ -192,7 +191,7 @@ function LiveCamera({
   );
 }
 
-type CameraProps = { onQR: (value: string) => void; onBarcode?: (value: string) => void; onPhoto: (file: File) => void; onClose: () => void };
+type CameraProps = { onQR: (value: string) => void; onBarcode?: (value: string) => void; onPhoto: (file: File) => void; onClose: () => void; continuous?: boolean; status?: string };
 
 /** Practice mode: no real camera, one drawn sample part to "photograph". */
 function PracticeCamera({ onPhoto, onClose }: CameraProps) {

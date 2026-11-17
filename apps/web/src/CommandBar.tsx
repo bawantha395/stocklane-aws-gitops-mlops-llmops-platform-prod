@@ -7,6 +7,10 @@ import type { Page } from "./workshop/common";
 
 type Hit = { key: string; icon: ReactNode; title: string; sub: string; run: () => void };
 type Data = { jobs: any[]; invoices: any[]; vehicles: any[]; parts: any[] };
+const RECENT = "lifta.recent";
+type Recent = { kind: "p" | "j"; id: string };
+const loadRecent = (): Recent[] => { try { const v = JSON.parse(localStorage.getItem(RECENT) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } };
+const saveRecent = (r: Recent) => { try { const all = [r, ...loadRecent().filter((x) => !(x.kind === r.kind && x.id === r.id))]; localStorage.setItem(RECENT, JSON.stringify([...all.filter((x) => x.kind === "p").slice(0, 5), ...all.filter((x) => x.kind === "j").slice(0, 5)])); } catch { /* ignore */ } };
 const norm = (s: unknown) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /** Search anything: vehicle number, customer, part, invoice. Ctrl/Cmd+K on desktop. */
@@ -29,15 +33,25 @@ export function CommandBar({ open, onClose, workshop, openWorkshop, openPart }: 
     data.parts.filter((p) => has(p.name, p.sku, p.barcode, p.brand, p.part_number)).slice(0, 5).forEach((p) => out.push({ key: "p" + p.id, icon: <Package size={18} />, title: p.name, sub: t("Part") + " · " + p.sku + " · " + p.quantity + " " + (p.unit || ""), run: () => openPart(p.name) }));
     return out;
   }, [q, data, openWorkshop, openPart]);
+  const recent = useMemo<Hit[]>(() => {
+    if (!data || q.trim().length >= 2) return [];
+    const out: Hit[] = [];
+    for (const r of loadRecent()) {
+      if (r.kind === "p") { const p = data.parts.find((x) => x.id === r.id); if (p) out.push({ key: "rp" + p.id, icon: <Package size={18} />, title: p.name, sub: t("Part") + " · " + p.sku, run: () => { saveRecent({ kind: "p", id: p.id }); openPart(p.name); } }); }
+      else { const j = data.jobs.find((x) => x.id === r.id); if (j) out.push({ key: "rj" + j.id, icon: <ClipboardList size={18} />, title: j.registration + " · " + (j.customer || ""), sub: t("Job") + " · " + (j.summary || ""), run: () => { saveRecent({ kind: "j", id: j.id }); openWorkshop({ name: "job", id: j.id }); } }); }
+    }
+    return out;
+  }, [data, q, openPart, openWorkshop]);
   if (!open) return null;
-  const choose = (h?: Hit) => { if (!h) return; onClose(); h.run(); };
+  const choose = (h?: Hit) => { if (!h) return; onClose(); const k = h.key; if (k[0] === "p" || k[0] === "j") saveRecent({ kind: k[0] as "p" | "j", id: k.slice(1) }); h.run(); };
   return (
     <Sheet title={t("Search anything")} onClose={onClose}>
       <div className="cmd-input"><Search size={18} /><input ref={input} value={q} onChange={(e) => { setQ(e.target.value); setSel(0); }} placeholder={t("Vehicle number, customer, part or invoice")} inputMode="search" aria-label={t("Search anything")}
         onKeyDown={(e) => { if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => Math.min(s + 1, hits.length - 1)); } else if (e.key === "ArrowUp") { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)); } else if (e.key === "Enter") choose(hits[sel]); }} /></div>
       <div className="cmd-list" role="listbox">
         {!data && <p className="muted">{t("Loading…")}</p>}
-        {data && q.trim().length < 2 && <p className="muted">{t("Type at least 2 letters.")}</p>}
+        {data && q.trim().length < 2 && <p className="muted">{recent.length ? t("Recent") : t("Type at least 2 letters.")}</p>}
+        {recent.map((h) => <button key={h.key} className="cmd-hit" onClick={() => { onClose(); h.run(); }}><span className="cmd-ic">{h.icon}</span><span><b>{h.title}</b><small>{h.sub}</small></span></button>)}
         {data && q.trim().length >= 2 && !hits.length && <p className="muted">{t("Nothing found.")}</p>}
         {hits.map((h, i) => <button key={h.key} role="option" aria-selected={i === sel} className={"cmd-hit" + (i === sel ? " on" : "")} onClick={() => choose(h)}><span className="cmd-ic">{h.icon}</span><span><b>{h.title}</b><small>{h.sub}</small></span></button>)}
       </div>

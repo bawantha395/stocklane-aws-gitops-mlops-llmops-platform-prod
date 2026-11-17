@@ -1,3 +1,4 @@
+import PickList from "../PickList";
 import { can } from "../perms";
 import { t } from "../i18n";
 import { SupplierPick } from "../Suppliers";
@@ -5,11 +6,16 @@ import { toast, askConfirm } from "../ui";
 import { AlertTriangle } from "lucide-react";
 import { isPractice } from "../practice";
 import { JobPhotos } from "./Photos";
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api } from "../api";
 import { billTotals, partAmount } from "./Bill";
 import { PastRepairs } from "./Vehicles";
 import { StockPicker } from "./StockPicker";
 import { printJobCard } from "./jobCardPdf";
+
+const ScanCamera = React.lazy(() => import("../Camera").then((m) => ({ default: m.Camera })));
+type ScanPart = { id: string; name: string; barcode: string | null; quantity: number; archived?: boolean };
+import { CustomerLink } from "./CustomerLink";
 import { Loading, Pill, ReasonDialog, addDays, dateOnly, kmText, lkr, num, round2, today, useCommand, useLoad, useWs, type Invoice, type Job, STAGE_LABEL, type Stage, waLink, ProfitCard } from "./common";
 
 type PartRow = { name: string; quantity: string; unit_price: string; outside?: boolean; outside_cost?: string; outside_shop?: string; outside_supplier_id?: string; product_id?: string; discount_pct?: string; part_no?: string; returned?: number };
@@ -23,6 +29,8 @@ export function JobPage({ id }: { id: string }) {
   const [job, setJob] = useState<Job | null>(null);
   const [f, setF] = useState<Record<string, string>>({});
   const [parts, setParts] = useState<PartRow[]>([]), [labour, setLabour] = useState<LabourRow[]>([]);
+  const [picklist, setPicklist] = useState(false);
+  const [scanning, setScanning] = useState(false), [scanNote, setScanNote] = useState(""), payRef = useRef("CASH");
   const [picking, setPicking] = useState(false), [dialog, setDialog] = useState<"" | "delete" | "request" | "reject" | "approve">(""), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState("");
   useEffect(() => { if (saved) toast(saved); }, [saved]);
   const command = useCommand();
@@ -59,6 +67,26 @@ export function JobPage({ id }: { id: string }) {
   };
   const grossParts = round2(lines.parts.reduce((a, p) => a + p.quantity * p.unit_price, 0)), lineOff = round2(grossParts - totals.parts);
   useEffect(() => { if (lines.parts.length || lines.labour.length) setNeedLines(false); }, [lines]);
+  const stockCallRef = useRef<((productId: string, qty: number, op: "use" | "return") => Promise<number | undefined>) | null>(null);
+  // "Scan part": the camera stays on and every QR or barcode puts that part on this job (one more each time it is scanned again).
+  // The scans are handled one after another, so the job never sees two saves at once.
+  const scanQueue = useRef<Promise<unknown>>(Promise.resolve()), scanItems = useRef<ScanPart[] | null>(null);
+  const onScan = useCallback((value: string, qr: boolean) => {
+    scanQueue.current = scanQueue.current.then(async () => {
+      try {
+        scanItems.current = scanItems.current || await api<ScanPart[]>("/api/inventory/products");
+        const v = value.trim(), id = qr ? /^stocklane:v1:([0-9a-f-]{36})$/.exec(v)?.[1] : undefined;
+        const found = scanItems.current.find((x) => (qr ? x.id === id : x.barcode === v));
+        if (!found || found.archived) { setScanNote(t("Not recognised")); return; }
+        const left = await stockCallRef.current!(found.id, 1, "use");
+        found.quantity = Number(left ?? found.quantity);
+        try { navigator.vibrate?.(40); } catch { /* ignore */ }
+        setScanNote(found.name + " · " + t("In stock") + ": " + found.quantity);
+      } catch (e) { setScanNote((e as Error).message); }
+    });
+  }, []);
+  const onScanQR = useCallback((v: string) => onScan(v, true), [onScan]);
+  const onScanBar = useCallback((v: string) => onScan(v, false), [onScan]);
   if (!job) return <Loading error={loadError} />;
   const locked = job.status !== "OPEN";
 
@@ -76,18 +104,21 @@ export function JobPage({ id }: { id: string }) {
     adopt(j);
     return j.stock?.balance;
   };
+  stockCallRef.current = stockCall;
   const stepStock = (p: PartRow, op: "use" | "return", all = false) => void run(async () => {
     const have = num(p.quantity), qty = all ? have : Math.min(1, have);
     const left = await stockCall(p.product_id!, op === "use" ? 1 : qty, op);
     toast(op === "use" ? p.name + " +1. " + t("In stock") + ": " + left : p.name + " " + t("taken back to stock") + ". " + t("In stock") + ": " + left);
   });
-  const invoice = async () => {
+  const invoice = async (paid = false) => {
+    payRef.current = "CASH";
     // One review box before the bill is made: what will be billed, and a warning when a part has no price.
     const unpriced = lines.parts.filter((p) => num(p.unit_price) <= 0 && num(p.quantity) > 0);
     const body = (
       <div className="ui-review">
         <p className="ui-review-who"><b>{job.registration}</b>{job.customer ? " · " + job.customer : ""}</p>
         {unpriced.length > 0 && <p className="ui-review-warn" role="alert"><AlertTriangle size={16} aria-hidden="true" /> {t("No price on")}: {unpriced.map((p) => p.name).join(", ")}. {t("They will be billed at LKR 0.00.")}</p>}
+        {paid && <label className="ws-field">{t("Paid by")}<select defaultValue="CASH" onChange={(e) => { payRef.current = e.target.value; }}><option value="CASH">{t("Cash")}</option><option value="CARD">{t("Card")}</option><option value="BANK">{t("Bank transfer")}</option><option value="OTHER">{t("Other")}</option></select></label>}
         <table>
           <tbody>
             {lines.parts.map((p, i) => <tr key={"p" + i} className={num(p.unit_price) <= 0 ? "nop" : ""}><td>{num(p.quantity)} × {p.name}</td><td>{lkr(partAmount(p))}</td></tr>)}
@@ -99,7 +130,7 @@ export function JobPage({ id }: { id: string }) {
         </table>
       </div>
     );
-    if (!(await askConfirm("The job will be locked. You can still take payments and, as owner, void the bill.", { title: unpriced.length ? t("Some parts have no price") : t("Review the invoice"), confirm: unpriced.length ? t("Create anyway") : t("Create invoice"), danger: unpriced.length > 0, body }))) {
+    if (!(await askConfirm("The job will be locked. You can still take payments and, as owner, void the bill.", { title: unpriced.length ? t("Some parts have no price") : paid ? t("Bill and paid") : t("Review the invoice"), confirm: unpriced.length ? t("Create anyway") : paid ? t("Bill and take the payment") : t("Create invoice"), danger: unpriced.length > 0, body }))) {
       if (unpriced.length) toast(t("Set the price of") + " " + unpriced[0].name, { bad: true });
       return;
     }
@@ -107,6 +138,14 @@ export function JobPage({ id }: { id: string }) {
       const current = dirty ? await save() : job;
       const made = await command<Invoice>("/api/workshop/jobs/" + id + "/invoice", { revision: current.revision });
       try { sessionStorage.setItem("ws.print", made.id); } catch { /* ignore */ }
+      if (paid) {
+        // the bill is made first; if the payment does not go through, the bill stands and the person is told to take it on the invoice page
+        try {
+          await command("/api/workshop/invoices/" + made.id + "/payments", { amount: made.total, method: payRef.current, note: "" });
+          go({ name: "invoice", id: made.id }, "Invoice " + made.invoice_number + " created and paid.");
+          return;
+        } catch (e) { toast((e as Error).message, { bad: true }); go({ name: "invoice", id: made.id }, "Invoice " + made.invoice_number + " created, but the payment did not go through. Take it below."); return; }
+      }
       go({ name: "invoice", id: made.id }, "Invoice " + made.invoice_number + " created. Take a payment below.");
     });
   };
@@ -186,6 +225,8 @@ export function JobPage({ id }: { id: string }) {
         </section>
       )}
 
+      {can("jobs") && !isPractice() && <CustomerLink jobId={job.id} phone={f.brought_phone || f.phone || ""} name={f.brought_by || f.customer || ""} shop={business.name || ""} />}
+
       <section className="ws-card ws-cust">
         <div className="ws-cust-head"><h3>{t("Customer and vehicle")}</h3>{!locked && <button type="button" className="button secondary small" onClick={() => setEditing(!editing)}>{editing ? t("Done") : t("Edit")}</button>}</div>
         {editing && !locked ? (
@@ -216,6 +257,11 @@ export function JobPage({ id }: { id: string }) {
 
       {picking && <StockPicker taken={Object.fromEntries(parts.filter((p) => p.product_id).map((p) => [p.product_id!, num(p.quantity)]))} onClose={() => setPicking(false)}
         onPick={async (p, qty) => { const left = await stockCall(p.id, qty, "use"); setPicking(false); toast(p.name + " " + t("added to the job") + ". " + t("In stock") + ": " + left); }} />}
+      {scanning && (
+        <React.Suspense fallback={null}>
+          <ScanCamera continuous status={scanNote || t("Scan a part: it goes on this job.")} onQR={onScanQR} onBarcode={onScanBar} onPhoto={() => { setScanning(false); toast(t("Use the QR or barcode, or pick from stock."), { bad: true }); }} onClose={() => { setScanning(false); scanItems.current = null; }} />
+        </React.Suspense>
+      )}
       <JobPhotos id={id} start={job} locked={locked} />
 
       <section className="ws-card" ref={partsRef}>
@@ -259,12 +305,15 @@ export function JobPage({ id }: { id: string }) {
         {!locked && (
           <div className="ws-add" data-tour="part-chips">
             {can("job_stock") && <button className="button primary small" disabled={busy} onClick={() => setPicking(true)}>{t("Pick from stock")}</button>}
+            {can("job_stock") && !locked && <button className="button secondary small" data-tour="scan-part" disabled={busy} onClick={() => { setScanNote(""); setScanning(true); }}>{t("Scan part")}</button>}
             <button className="button secondary small" onClick={() => { setParts([...parts, { name: "", quantity: "1", unit_price: "" }]); setDirty(true); }}>+ Add part</button>
             <button className="button secondary small" data-tour="bought-outside" onClick={() => { setParts([...parts, { name: "", quantity: "1", unit_price: "", outside: true, outside_cost: "", outside_shop: "" }]); setDirty(true); }}>+ {t("Bought outside")}</button>
+            {can("job_stock") && parts.filter((x) => x.product_id).length > 1 && <button className="button secondary small" onClick={() => setPicklist(true)}>{t("Pick list")}</button>}
             {can("job_stock") && <NeedPart jobId={id} />}
             {sugg?.parts?.slice(0, 5).map((s) => <button key={s.name} className="ws-quick" onClick={() => { setParts([...parts, { name: s.name, quantity: "1", unit_price: String(s.price) }]); setDirty(true); }}>{s.name}</button>)}
           </div>
         )}
+        {picklist && <PickList lines={parts.filter((x) => x.product_id).map((x) => ({ product_id: x.product_id!, name: x.name, quantity: x.quantity }))} onClose={() => setPicklist(false)} />}
         <h3>{t("Labour")}</h3>
         {labour.map((l, i) => (
           <div className="ws-line labour" key={i}>
@@ -330,6 +379,7 @@ export function JobPage({ id }: { id: string }) {
           )}
           {!locked && <button className="button secondary" disabled={busy || !dirty} onClick={() => void run(async () => { await save(); setSaved("Saved."); })}>{t("Save")}</button>}
           {!locked && can("bill") && <button data-tour="create-invoice" className="button primary" disabled={busy} onClick={() => { if (!lines.parts.length && !lines.labour.length) { setNeedLines(true); partsRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }); return; } setNeedLines(false); void invoice(); }}>{t("Create invoice")}</button>}
+          {!locked && can("bill") && (f.invoice_type || "CASH") === "CASH" && <button data-tour="bill-and-paid" className="button primary" disabled={busy} onClick={() => { if (!lines.parts.length && !lines.labour.length) { setNeedLines(true); partsRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }); return; } setNeedLines(false); void invoice(true); }}>{t("Bill and paid")}</button>}
         </span>
       </div>
       {dialog === "delete" && <ReasonDialog title="Delete this job?" help="It moves to the Archive and disappears from jobs and the vehicle history. You can restore it later." label="Reason" confirm="Delete job"

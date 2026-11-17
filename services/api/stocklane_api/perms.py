@@ -22,10 +22,12 @@ PERMISSIONS = (
     ('bill', 'Workshop', 'Make bills and take payments'),
     ('void_refund', 'Workshop', 'Void bills, refunds and returns'),
     ('archive', 'Workshop', 'Cancel, delete and restore jobs'),
+    ('messages', 'Workshop', 'Send customer messages (ready, service, reminders)'),
     ('job_stock', 'Stock', 'Put stock parts on a job'),
     ('stock_in', 'Stock', 'Record parts that came in (GRN)'),
     ('stock_out', 'Stock', 'Record parts that went out (GIN)'),
     ('stock_count', 'Stock', 'Correct stock from a shelf count'),
+    ('shelf_move', 'Stock', 'Move parts to another shelf'),
     ('item_add', 'Stock', 'Register new parts'),
     ('item_edit', 'Stock', 'Edit and archive parts'),
     ('lists', 'Stock', 'Change shelves and categories'),
@@ -40,14 +42,15 @@ PERMISSIONS = (
     ('cost_edit', 'Money', 'Correct the cost on a delivery'),
     ('see_sales', 'Money', 'See sales totals on the home screen'),
     ('reports', 'Money', 'See reports'),
+    ('alerts', 'Money', 'See the owner summary and leak alerts'),
     ('settings', 'Business', 'Change business settings and logo'),
     ('export', 'Business', 'Download all data'),
 )
 KEYS = tuple(p[0] for p in PERMISSIONS)
 MECHANIC = {'jobs_view', 'jobs', 'quotes', 'vehicles', 'customers_view', 'bills_view', 'bill', 'job_stock', 'stock_in', 'stock_out', 'item_add', 'suppliers_view'}
-STOREKEEPER = {'jobs_view', 'job_stock', 'stock_in', 'stock_out', 'stock_count', 'item_add', 'people', 'suppliers_view', 'supplier_return', 'orders'}
+STOREKEEPER = {'jobs_view', 'job_stock', 'stock_in', 'stock_out', 'stock_count', 'shelf_move', 'item_add', 'people', 'suppliers_view', 'supplier_return', 'orders'}
 DEFAULTS = {'MECHANIC': MECHANIC, 'STOREKEEPER': STOREKEEPER,
-            'ADMIN': MECHANIC | STOREKEEPER | {'quotes_approve', 'archive', 'item_edit', 'lists', 'customers_edit', 'suppliers_edit', 'supplier_return', 'orders', 'price_edit'}}
+            'ADMIN': MECHANIC | STOREKEEPER | {'quotes_approve', 'archive', 'item_edit', 'lists', 'customers_edit', 'suppliers_edit', 'supplier_return', 'orders', 'price_edit', 'messages'}}
 _cache = PerShop(until=0, value=None)
 
 

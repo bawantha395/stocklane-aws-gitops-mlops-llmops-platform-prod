@@ -1,7 +1,8 @@
 import { Crash } from "./Crash";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, Package, ArrowDownLeft, ArrowUpRight, Activity, Plus, Printer, Search, RefreshCw, LogOut, Check, X, ScanLine, Home, ArrowRight, ArrowLeft, ClipboardCheck, ListChecks, Truck, Wrench, Warehouse, Menu as MenuIcon, FileText, PlusCircle, X as CloseIcon, Compass } from "lucide-react";
+import { Track } from "./workshop/Track";
+import { Camera, Package, ArrowDownLeft, ArrowUpRight, Activity, Plus, Printer, Search, RefreshCw, LogOut, Check, X, ScanLine, Home, ArrowRight, ArrowLeft, ClipboardCheck, ListChecks, Truck, Wrench, Warehouse, Menu as MenuIcon, FileText, PlusCircle, X as CloseIcon, Compass, Settings2 } from "lucide-react";
 import { api, ApiError, auth, openPdf, userEmail, shrink, signOut, type Match, type Draft, type Movement } from "./api";
 import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/manrope";
@@ -28,6 +29,8 @@ const Scanner = React.lazy(() =>
 );
 import { StockReport, MovementPdf } from "./StockReport";
 import { Orders } from "./Orders";
+import { setModules, useModules } from "./modules";
+import { BulkTools } from "./BulkTools";
 import { StoreMap, SHELF_FOCUS } from "./StoreMap";
 import { PriceReview } from "./Pricing";
 import { Suppliers } from "./Suppliers";
@@ -76,6 +79,7 @@ function App() {
   const [chooser, setChooser] = useState(false);
   const pr = usePractice();
   const prevPractice = useRef(false);
+  const mods = useModules();
   const [dockHidden, setDockHidden] = useState(() => {
     try { return localStorage.getItem("lifta.dock") === "hidden"; } catch { return false; }
   });
@@ -118,6 +122,7 @@ function App() {
   const [items, setItems] = useState<Item[]>([]),
     [moves, setMoves] = useState<Movement[]>([]);
   const [activitySearch, setActivitySearch] = useState("");
+  const [partsShown, setPartsShown] = useState(50), [movesShown, setMovesShown] = useState(50);
   const [activityKind, setActivityKind] = useSaved("stock.kind", "ALL");
   const [activityRange, setActivityRange] = useSaved<Range>("stock.range", ALL);
   const [session, setSession] = useState<Session | null>(null),
@@ -149,12 +154,16 @@ function App() {
   const fromCounter = useRef(false);
   const [newItem, setNewItem] = useState(false),
     [edit, setEdit] = useState<Item | null>(null),
-    [labelItem, setLabelItem] = useState<Item | null>(null);
+    [labelItem, setLabelItem] = useState<Item | null>(null),
+    [bulkOpen, setBulkOpen] = useState(false);
   const [counterKey, setCounterKey] = useState(0);
   const [archived, setArchived] = useState<Item[]>([]),
     [showArchived, setShowArchived] = useState(false),
     [query, setQuery] = useState(""),
     [lowOnly, setLowOnly] = useState(false);
+  useEffect(() => { setPartsShown(50); }, [query, lowOnly, showArchived]);
+  useEffect(() => { setMovesShown(50); }, [activitySearch, activityKind, activityRange]);
+
   const [countId, setCountId] = useState("");
   const [costEdit, setCostEdit] = useState<{ id: string; value: string; busy?: boolean } | null>(null);
   const saveCost = async (id: string, value: string) => {
@@ -197,7 +206,7 @@ function App() {
     return matchesKind && matchesText && inRange(movement.created_at, activityRange);
   });
   const movementDirection = (kind: string) =>
-    ["OPENING", "RECEIPT", "RETURN", "COUNT_IN"].includes(kind) ? "IN" : "OUT";
+    ["OPENING", "RECEIPT", "RETURN", "COUNT_IN"].includes(kind) ? "IN" : kind === "SHELF_MOVE" ? "MOVE" : "OUT";
   const actorEmail = (m: Movement) =>
     m.actor_email || (m.actor?.includes("@") ? m.actor : t("Staff member"));
   // an error must show where the person is looking, not only at the top of a long page
@@ -241,7 +250,7 @@ function App() {
       setSession(s);
       try { const dl = sessionStorage.getItem("lifta.deeplink"); if (dl) { sessionStorage.removeItem("lifta.deeplink"); openWorkshop({ name: "job", id: dl }); } } catch { /* ignore */ }
       setStatus(v);
-      api<{ name: string; default_reorder_level?: number; sinhala?: boolean }>("/api/workshop/settings").then((b) => { setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); setSinhalaAllowed(!!b.sinhala); }).catch(() => undefined);
+      api<{ name: string; default_reorder_level?: number; sinhala?: boolean; store_room_on?: boolean; counter_on?: boolean }>("/api/workshop/settings").then((b) => { setModules(b); setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); setSinhalaAllowed(!!b.sinhala); }).catch(() => undefined);
       const key = "stocklane.tasks.v2." + s.name;
       if (storageKey.current !== key) {
         storageKey.current = key;
@@ -324,6 +333,8 @@ function App() {
     setDraft(null);
     setSaveReference(false);
   };
+  useEffect(() => { const go = () => navigate("shelf"); window.addEventListener("lifta:open-shelf", go); return () => window.removeEventListener("lifta:open-shelf", go); });
+  useEffect(() => { const here = () => { try { localStorage.setItem("lifta.counter.style", "batch"); } catch { /* ignore */ } openCounter("receive"); }; window.addEventListener("lifta:receive-here", here); return () => window.removeEventListener("lifta:receive-here", here); });
   const navigate = (next: View, preserveCounterPick = false) => {
     if (submitting.current) return;
     setMenuOpen(false);
@@ -723,22 +734,24 @@ function App() {
           onSignOut={() => void signOut()} />
       );
   }
-  const navItems: ({ group: string } | { key: View | "tour"; full: string; short: string; sub: string; Icon: typeof Home; main?: boolean })[] = [
+  const navItems: ({ group: string } | { key: View | "settings" | "tour"; full: string; short: string; sub: string; Icon: typeof Home; main?: boolean })[] = [
     { key: "home", full: t("Home"), short: t("Home"), sub: "", Icon: Home, main: true },
     ...(can("jobs_view") ? [{ group: t("WORKSHOP MANAGEMENT") }, { key: "workshop" as View, full: t("Jobs & Invoices"), short: t("Jobs"), sub: t("Job cards, vehicles and bills"), Icon: Wrench, main: true }] : []),
     { group: t("STOCK MANAGEMENT") },
-    ...(canAny("stock_in", "stock_out") ? [{ key: "counter" as View, full: t("Parts counter"), short: t("Counter"), sub: t("A part came in or went out"), Icon: ScanLine, main: true }] : []),
-    { key: "stock", full: t("Parts list"), short: t("Parts"), sub: owner ? t("All parts, photos and QR labels") : t("See what is in stock"), Icon: Package },
-    { key: "shelf", full: t("Store room"), short: t("Store room"), sub: t("Where every part sits"), Icon: Warehouse },
+    ...(mods.counter && canAny("stock_in", "stock_out") ? [{ key: "counter" as View, full: t("Parts counter"), short: t("Counter"), sub: t("A part came in or went out"), Icon: ScanLine, main: true }] : []),
+    { key: "stock", full: t("Parts list"), short: t("Parts"), sub: owner ? t("All parts, photos and QR labels") : t("See what is in stock"), Icon: Package, main: true },
+    ...(mods.storeRoom ? [{ key: "shelf" as View, full: t("Store room"), short: t("Store room"), sub: t("Where every part sits"), Icon: Warehouse }] : []),
     { key: "activity", full: t("History"), short: t("History"), sub: t("Every part in and out"), Icon: Activity },
     ...(can("orders") ? [{ key: "orders" as View, full: t("To order"), short: t("To order"), sub: t("Parts to buy, and WhatsApp orders"), Icon: ListChecks }] : []),
-    ...(can("see_cost") && can("price_edit") ? [{ key: "prices" as View, full: t("Price review"), short: t("Prices"), sub: t("Cost plus markup, set prices"), Icon: ClipboardCheck }] : []),
     ...(can("suppliers_view") ? [{ key: "suppliers" as View, full: t("Suppliers"), short: t("Suppliers"), sub: t("Who you buy parts from"), Icon: Truck }] : []),
+    { group: t("BUSINESS") },
     ...(can("reports") ? [{ key: "analysis" as View, full: t("Reports"), short: t("Reports"), sub: t("Stock summary and low stock"), Icon: ClipboardCheck }] : []),
+    ...(can("see_cost") && can("price_edit") ? [{ key: "prices" as View, full: t("Price review"), short: t("Prices"), sub: t("Cost plus markup, set prices"), Icon: ClipboardCheck }] : []),
+    ...(can("settings") ? [{ key: "settings" as View, full: t("Settings"), short: t("Settings"), sub: t("Business details, staff, shelves"), Icon: Settings2 }] : []),
     { group: t("HELP") },
     { key: "tour", full: t("Walkthrough"), short: t("Walkthrough"), sub: t("Show me how it works"), Icon: Compass },
   ];
-  const pickNav = (key: View | "tour") => { if (key === "tour") { setMenuOpen(false); setChooser(true); } else navigate(key); };
+  const pickNav = (key: View | "settings" | "tour") => { if (key === "tour") { setMenuOpen(false); setChooser(true); } else if (key === "settings") { setMenuOpen(false); openWorkshop({ name: "settings" }); } else navigate(key); };
   const moreActive = view === "stock" || view === "activity" || view === "analysis" || view === "suppliers" || view === "orders" || view === "prices" || view === "shelf";
   return (
     <div className="stock-shell" data-dock={dockHidden ? "hidden" : "shown"} data-hdr={hdrHidden ? "hidden" : "shown"}>
@@ -904,7 +917,7 @@ function App() {
           </div>
         )}
         {view === "home" && session && !owner && (
-          <MechanicHome disabled={busy} onFind={() => navigate("find")} onIn={can("stock_in") ? () => openCounter("receive") : undefined} onOut={can("stock_out") ? () => openCounter("give") : undefined} onJob={can("jobs") ? () => openWorkshop({ name: "new" }) : undefined} />
+          <MechanicHome disabled={busy} low={can("orders") || can("stock_count") ? lowItems.slice(0, 8) : undefined} lowTotal={lowItems.length} onOrder={can("orders") ? () => navigate("orders") : undefined} onCount={mods.storeRoom && can("stock_count") ? () => navigate("shelf") : undefined} onLow={(id) => { setSelected(id); navigate("find"); }} onFind={() => navigate("find")} onIn={mods.counter && can("stock_in") ? () => openCounter("receive") : undefined} onOut={mods.counter && can("stock_out") ? () => openCounter("give") : undefined} onJob={can("jobs") ? () => openWorkshop({ name: "new" }) : undefined} />
         )}
         {view === "home" && !(session && !owner) && (
           <>
@@ -1637,6 +1650,7 @@ function App() {
               >
                 <Plus size={18} /> {t("Register item")}
               </button>}
+              {canAny("item_add", "price_edit") && <button className="button secondary" onClick={() => setBulkOpen(true)}>{t("Bulk tools")}</button>}
             </div>
             <section className="stock-panel">
               <div className="stock-tools">
@@ -1677,7 +1691,7 @@ function App() {
                 )}
               </div>
               <div className="catalogue-list">
-                {filtered(showArchived ? archived : items, query).map((p) => (
+                {filtered(showArchived ? archived : items, query).slice(0, partsShown).map((p) => (
                   <article className="catalogue-row" key={p.id}>
                     <ItemPhoto item={p} peek />
                     <div className="catalogue-description">
@@ -1686,7 +1700,7 @@ function App() {
                         {p.brand} · Part no. {p.part_number || "Not set"} · System no. {p.sku}
                       </small>
                       <span className="cat-chip">
-                        {p.category} · {p.location || "Shelf not set"}
+                        {p.category} · {p.location || "Shelf not set"}{Number(p.selling_price) > 0 ? " · " + Number(p.selling_price).toLocaleString() : ""}
                       </span>
                     </div>
                     <div className="catalogue-quantity">
@@ -1736,6 +1750,9 @@ function App() {
                   </article>
                 ))}
               </div>
+              {filtered(showArchived ? archived : items, query).length > partsShown && (
+                <p className="list-more"><button type="button" className="button secondary" onClick={() => setPartsShown((n) => n + 50)}>{t("Show more")} ({filtered(showArchived ? archived : items, query).length - partsShown})</button></p>
+              )}
               {filtered(showArchived ? archived : items, query).length ===
                 0 && (
                 <div className="stock-empty">
@@ -1802,6 +1819,7 @@ function App() {
                 </p>
               </div>
             </div>
+            <details className="filters-fold" open={activityKind !== "ALL" || !!activitySearch}><summary>{t("Filter")}{activityKind !== "ALL" || activitySearch ? " •" : ""}</summary>
             <section className="activity-filters" aria-label="Activity filters">
               <label className="stock-field">
                 Search activity
@@ -1821,7 +1839,7 @@ function App() {
                 </select>
               </label>
               <button className="button secondary small" onClick={() => { setActivitySearch(""); setActivityKind("ALL"); setActivityRange(ALL); }}>{t("Clear filters")}</button>
-            </section>
+            </section></details>
             <DateChips value={activityRange} onChange={setActivityRange} />
             {owner && <MovementPdf range={bounds(activityRange)} />}
             <SummaryBar text={"Movements: " + visibleMoves.length} file="stock-history"
@@ -1839,7 +1857,7 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleMoves.map((m) => (
+                  {visibleMoves.slice(0, movesShown).map((m) => (
                     <tr key={m.id}>
                       <td>{when(m.created_at)}</td>
                       <td>
@@ -1865,7 +1883,7 @@ function App() {
                               : "in")
                           }
                         >
-                          {m.kind === "SUPPLIER_RETURN" ? t("Sent back to supplier") : m.kind === "COUNT_IN" ? t("Count: found extra") : m.kind === "COUNT_OUT" ? t("Count: found missing") : m.kind === "STOCK_OUT" || m.kind === "ISSUE"
+                          {m.kind === "SHELF_MOVE" ? t("Moved to another shelf") : m.kind === "SUPPLIER_RETURN" ? t("Sent back to supplier") : m.kind === "COUNT_IN" ? t("Count: found extra") : m.kind === "COUNT_OUT" ? t("Count: found missing") : m.kind === "STOCK_OUT" || m.kind === "ISSUE"
                             ? m.kind === "ISSUE"
                               ? "Issued to workshop"
                               : "Given out"
@@ -1879,6 +1897,7 @@ function App() {
                           <button type="button" className="doc-link" title={t("Print this note")} onClick={() => void openPdf("/api/inventory/movements/" + m.id + "/note.pdf", m.doc_no + ".pdf").catch((e) => toast((e as Error).message, { bad: true }))}>{m.doc_no}</button>
                         )}
                         {(m.kind === "RECEIPT" || m.kind === "SUPPLIER_RETURN") && (m.supplier || m.reference) && <small>{[m.supplier, m.reference, m.terms === "CREDIT" ? t("On credit") : ""].filter(Boolean).join(" · ")}</small>}
+                        {m.kind === "SHELF_MOVE" && m.note && <small>{m.note}</small>}
                         {(m.kind === "RETURN" || m.kind === "ISSUE") && (m.reference || (m.note && !m.note.startsWith("Undo"))) && <small>{m.reference || m.note}</small>}
                         {can("cost_edit") && m.kind === "RECEIPT" && !(m.note || "").startsWith("Undo") && (costEdit?.id === m.id ? (
                           <small className="cost-edit">
@@ -1903,6 +1922,7 @@ function App() {
                   ))}
                 </tbody>
               </table>
+              {visibleMoves.length > movesShown && <p className="list-more"><button type="button" className="button secondary" onClick={() => setMovesShown((n) => n + 50)}>{t("Show more")} ({visibleMoves.length - movesShown})</button></p>}
               {!visibleMoves.length && (
                 <div className="stock-empty"><h3>{t("No history yet")}</h3><p>{t("Every part you receive or give out will be listed here, with who did it and when.")}</p></div>
               )}
@@ -1910,6 +1930,7 @@ function App() {
           </>
         )}
       </main>
+      {bulkOpen && <BulkTools items={items} onClose={() => setBulkOpen(false)} onChanged={() => void refresh()} />}
       {scanner && (
         <React.Suspense
           fallback={
@@ -1971,4 +1992,4 @@ function App() {
 applyTheme(getTheme());
 // A job card QR opens /?job=<id>. Keep the id before sign-in can redirect away, then open that job once the session is ready.
 try { const jobId = new URLSearchParams(location.search).get("job"); if (jobId && /^[0-9a-f-]{36}$/i.test(jobId)) { sessionStorage.setItem("lifta.deeplink", jobId); history.replaceState(null, "", location.pathname); } } catch { /* ignore */ }
-createRoot(document.getElementById("root")!).render(<><Crash><App /></Crash><ToastHost /><ConfirmHost /></>);
+createRoot(document.getElementById("root")!).render(/^\/t\/[A-Za-z0-9~_-]+\/?$/.test(location.pathname) ? <Track /> : <><Crash><App /></Crash><ToastHost /><ConfirmHost /></>);

@@ -177,6 +177,22 @@ resource "aws_apigatewayv2_route" "api" {
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
+# The customer's own job link: the only route anyone can call without signing in. GET only; the code checks the secret in the address.
+resource "aws_apigatewayv2_route" "public" {
+  api_id             = aws_apigatewayv2_api.main.id
+  route_key          = "GET /api/public/{proxy+}"
+  target             = "integrations/${aws_apigatewayv2_integration.api.id}"
+  authorization_type = "NONE"
+}
+
+# The customer answers an estimate from the same link: Approve or Decline (POST, small body, once).
+resource "aws_apigatewayv2_route" "public_post" {
+  api_id             = aws_apigatewayv2_api.main.id
+  route_key          = "POST /api/public/{proxy+}"
+  target             = "integrations/${aws_apigatewayv2_integration.api.id}"
+  authorization_type = "NONE"
+}
+
 resource "aws_apigatewayv2_route" "vision" {
   count              = local.with_vision ? 1 : 0
   api_id             = aws_apigatewayv2_api.main.id
@@ -198,6 +214,17 @@ resource "aws_apigatewayv2_stage" "default" {
   default_route_settings {
     throttling_rate_limit  = var.throttle_rate
     throttling_burst_limit = var.throttle_burst
+  }
+  # a low ceiling on the open route, for every caller together: a flood cannot run up the Lambda bill
+  route_settings {
+    route_key              = aws_apigatewayv2_route.public.route_key
+    throttling_rate_limit  = 5
+    throttling_burst_limit = 10
+  }
+  route_settings {
+    route_key              = aws_apigatewayv2_route.public_post.route_key
+    throttling_rate_limit  = 2
+    throttling_burst_limit = 5
   }
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.access.arn

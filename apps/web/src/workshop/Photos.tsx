@@ -95,17 +95,18 @@ export function PhotoStrip({ ids, onAdd, onRemove, max = 6, disabled }: { ids: s
 }
 
 /** The Photos card on a job page. Saved at once, apart from the bill, so it never clashes with someone editing the lines. */
-export function JobPhotos({ id, start, locked }: { id: string; start: { before_photos?: string[]; front_photo?: string; plate_photo?: string }; locked: boolean }) {
+export function JobPhotos({ id, start, locked }: { id: string; start: { before_photos?: string[]; after_photos?: string[]; old_photos?: string[]; front_photo?: string; plate_photo?: string }; locked: boolean }) {
+  const [after, setAfter] = useState(start.after_photos || []), [old, setOld] = useState(start.old_photos || []);
   const [before, setBefore] = useState(start.before_photos || []), [front, setFront] = useState(start.front_photo || ""), [plate, setPlate] = useState(start.plate_photo || "");
   const [error, setError] = useState("");
   const send = async (body: Record<string, unknown>) => {
     setError("");
     try {
-      const r = await api<{ before_photos: string[] }>("/api/workshop/jobs/" + id + "/photos", { method: "POST", body: JSON.stringify(body) }, newKey());
-      setBefore(r.before_photos);
+      const r = await api<{ before_photos: string[]; after_photos: string[]; old_photos: string[] }>("/api/workshop/jobs/" + id + "/photos", { method: "POST", body: JSON.stringify(body) }, newKey());
+      setBefore(r.before_photos); setAfter(r.after_photos || []); setOld(r.old_photos || []);
     } catch (e) { setError((e as Error).message); }
   };
-  if (locked && !before.length && !front && !plate) return null;
+  if (locked && !before.length && !after.length && !old.length && !front && !plate) return null;
   return (
     <section className="ws-card ws-photos">
       <h3>Photos <small>(optional)</small></h3>
@@ -115,6 +116,10 @@ export function JobPhotos({ id, start, locked }: { id: string; start: { before_p
       </div>
       <span className="ws-photo-label">Condition when it arrived (before fixing)</span>
       <PhotoStrip ids={before} disabled={locked} onAdd={(p) => void send({ add: [p] })} onRemove={(p) => void send({ remove: [p] })} />
+      <span className="ws-photo-label">{t("After the work (finished)")}</span>
+      <PhotoStrip ids={after} disabled={locked} onAdd={(p) => void send({ add_after: [p] })} onRemove={(p) => void send({ remove_after: [p] })} />
+      <span className="ws-photo-label">{t("Old parts that came off")}</span>
+      <PhotoStrip ids={old} disabled={locked} onAdd={(p) => void send({ add_old: [p] })} onRemove={(p) => void send({ remove_old: [p] })} />
       {error && <p role="alert" className="stock-error">{error}</p>}
     </section>
   );

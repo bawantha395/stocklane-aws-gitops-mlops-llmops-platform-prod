@@ -219,6 +219,23 @@ def set_status(quote_id, key, who, body):
     return command(key, 'quote-status:' + quote_id, who, body, build)
 
 
+def decide(quote_id, decision, name):
+    """The customer's own answer, from their link. One answer only: it needs the estimate to be sent and still unanswered, checked again when saving."""
+    current = one(quote_id)
+    if current['status'] != 'SENT':
+        raise conflict('This has already been answered, or is not ready yet. Please contact the workshop.')
+    left = validity(current)
+    if decision == 'APPROVE' and left is not None and left < 0:
+        raise conflict('This offer has run out. Please contact the workshop.')
+    at = now()
+    new = clean(dict(current, status='APPROVED' if decision == 'APPROVE' else 'REJECTED', revision=int(current['revision']) + 1, updated_at=at, status_by='customer',
+                     customer_decision={'decision': decision, 'name': name, 'at': at}))
+    from .core import transact
+    transact([put(new, ConditionExpression='revision = :r and #s = :sent', ExpressionAttributeNames={'#s': 'status'},
+                  ExpressionAttributeValues={':r': current['revision'], ':sent': 'SENT'})], ['This has already been answered. Please contact the workshop.'])
+    return {'status': new['status'], 'decision': decision, 'name': name, 'at': at}
+
+
 def remove(quote_id, key, who, body):
     def build():
         current = one(quote_id)

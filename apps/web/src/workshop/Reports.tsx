@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { csv, download } from "../api";
 import { t } from "../i18n";
+import { SlowStock } from "./SlowStock";
 import { Num, Loading, addDays, lkr, today, useLoad, useWs } from "./common";
 
 type Rep = {
@@ -123,9 +124,11 @@ export function Reports() {
           <label>From<input type="date" value={from} max={until} onChange={(e) => e.target.value && setFrom(e.target.value)} /></label>
           <label>{t("Until")}<input type="date" value={until} min={from} onChange={(e) => e.target.value && setUntil(e.target.value)} /></label>
           <button className="button secondary small" onClick={() => void download("/api/workshop/report.pdf?from=" + from + "&until=" + until, "workshop-report-" + from + "_" + until + ".pdf").catch((e) => setErr(e.message))}>PDF</button>
+          <button className="button secondary small" onClick={() => void download("/api/workshop/monthly.pdf?month=" + from.slice(0, 7), "monthly-summary-" + from.slice(0, 7) + ".pdf").catch((e) => setErr(e.message))}>{t("Month summary")}</button>
           {data && <button className="button secondary small" onClick={() => csv("billed-per-day-" + from + "_" + until + ".csv", data.by_day.map((d) => ({ Date: d.date, "Billed (LKR)": d.billed })))}>CSV</button>}
         </div>
       </div>
+      <SlowStock />
       {(error || err) && <Loading error={error || err} />}
       {!data ? !error && <Loading /> : (
         <>

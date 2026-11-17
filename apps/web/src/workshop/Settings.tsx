@@ -4,10 +4,11 @@ import { api } from "../api";
 import { useState, useEffect, useRef } from "react";
 import { logoFromFile, resetLogo } from "../logoStore";
 import { useLogo } from "../BizLogo";
-import { Building2, FileText, Landmark, Percent, Wrench } from "lucide-react";
+import { MessageCircle, Boxes, Building2, FileText, Landmark, ListChecks, Percent, ShieldCheck, Users, Wrench, Database, type LucideIcon } from "lucide-react";
 import QRCode from "qrcode";
 import { BizLogo } from "../BizLogo";
 import { StoresSection } from "./StoresSection";
+import { MessageTemplatesSection } from "./MessageTemplatesSection";
 import { StoreRoomSection } from "./StoreRoom";
 import { PlatformSection } from "./PlatformSection";
 import { PermissionsSection } from "./PermissionsSection";
@@ -21,10 +22,21 @@ function qrBits(url?: string) {
   try { const m = QRCode.create(url.trim(), { errorCorrectionLevel: "M" }).modules; let b = ""; for (let r = 0; r < m.size; r++) for (let c = 0; c < m.size; c++) b += m.get(r, c) ? "1" : "0"; return m.size + ":" + b; } catch { return ""; }
 }
 
+type Sec = "biz" | "tax" | "pay" | "bill" | "data" | "workshop" | "staff" | "perms" | "store" | "lists" | "msgs";
+const NAV: { group: string; items: { id: Sec; label: string; Icon: LucideIcon; owner?: boolean }[] }[] = [
+  { group: "Stock", items: [{ id: "store", label: "Store room", Icon: Boxes }, { id: "lists", label: "Shelves and categories", Icon: ListChecks }] },
+  { group: "Workshop", items: [{ id: "workshop", label: "Workshop", Icon: Wrench }, { id: "staff", label: "Staff", Icon: Users, owner: true }, { id: "perms", label: "Who can do what", Icon: ShieldCheck, owner: true }, { id: "msgs", label: "Customer messages", Icon: MessageCircle, owner: true }] },
+  { group: "Business", items: [{ id: "biz", label: "Business details", Icon: Building2 }, { id: "tax", label: "Tax and discount", Icon: Percent }, { id: "pay", label: "Getting paid", Icon: Landmark }, { id: "bill", label: "Bill notes", Icon: FileText }, { id: "data", label: "Your data", Icon: Database, owner: true }] },
+];
+const OWN_SAVE: string[] = ["store", "lists", "staff", "perms", "data", "msgs"]; // these sections save themselves
+const SEC_KEY = "lifta.settingsSec";
+
 export function Settings() {
   const { business, reloadBusiness, owner } = useWs();
   const logo = useLogo(), fileRef = useRef<HTMLInputElement>(null), [logoBusy, setLogoBusy] = useState(false);
   const [f, setF] = useState({ ...business, qr_url: business.qr_url || "", tax_rate: String(business.tax_rate), mechanic_discount_pct: String(business.mechanic_discount_pct ?? 10), payment_terms_days: String(business.payment_terms_days ?? 0), warranty: business.warranty || "", invoice_prefix: business.invoice_prefix || "INV", default_reorder_level: String(business.default_reorder_level ?? 5), sinhala: !!business.sinhala, default_markup_pct: business.default_markup_pct == null ? "" : String(business.default_markup_pct), mechanics: [...(business.mechanics || [])], labour_items: (business.labour_items || []).map((l) => ({ description: l.description, amount: String(l.amount) })) });
+  const [sec, setSec] = useState<Sec>(() => { try { const v = sessionStorage.getItem(SEC_KEY) as Sec | null; return v && NAV.some((g) => g.items.some((x) => x.id === v)) ? v : "biz"; } catch { return "biz"; } });
+  const pickSec = (id: Sec) => { setSec(id); try { sessionStorage.setItem(SEC_KEY, id); } catch { /* ignore */ } window.scrollTo({ top: 0 }); };
   const [msg, setMsg] = useState(""), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   useEffect(() => { if (msg) toast(msg); }, [msg]);
   const command = useCommand();
@@ -71,8 +83,19 @@ export function Settings() {
         </span>
       </section>
 
-      <div className="ws-set-grid">
-        <div className="ws-set-col">
+      <div className="ws-set-layout">
+        <nav className="ws-set-nav" aria-label={t("Settings sections")}>
+          {NAV.map((g) => (
+            <div className="ws-set-navgroup" key={g.group}>
+              <span className="ws-set-navhead">{t(g.group)}</span>
+              {g.items.filter((x) => !x.owner || owner).map((x) => (
+                <button type="button" key={x.id} className={sec === x.id ? "on" : ""} aria-current={sec === x.id ? "page" : undefined} onClick={() => pickSec(x.id)}><x.Icon size={16} /> {t(x.label)}</button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="ws-set-pane">
+        <div hidden={sec !== "biz"}>
           <section className="ws-sec">
             <h3><span className="ws-sec-ico"><Building2 size={18} /></span>{t("Business details")}</h3>
             <p className="muted">{t("Printed at the top of every invoice. English letters only.")}</p>
@@ -99,6 +122,8 @@ export function Settings() {
             <label className="ws-field">{t("Registration or tax number")}<input value={f.reg_no} onChange={(e) => set("reg_no", e.target.value)} placeholder="VAT 123456789" /></label>
             <small className="ws-hint">{t("Shows on the bill: under the phone number. Fill this if you are tax registered. Empty = bill says 'not a tax invoice'.")}</small>
           </section>
+        </div>
+        <div hidden={sec !== "tax"}>
           <section className="ws-sec">
             <h3><span className="ws-sec-ico"><Percent size={18} /></span>{t("Tax and discount")}</h3>
             <div className="ws-grid2">
@@ -109,6 +134,8 @@ export function Settings() {
             <label className="ws-field">{t("Mechanic discount limit (%)")}<input inputMode="decimal" value={f.mechanic_discount_pct} onChange={(e) => set("mechanic_discount_pct", e.target.value)} /></label>
             <small className="ws-hint">{t("Not printed. A mechanic can give a discount up to this percent of parts and labour (bill discount and line discounts together). More needs the owner. 0 = no discounts.")}</small>
           </section>
+        </div>
+        <div hidden={sec !== "workshop"}>
           <section className="ws-sec">
             <h3><span className="ws-sec-ico"><Wrench size={18} /></span>{t("Workshop")}</h3>
             <label className="ws-field">{t("Mechanics")}</label>
@@ -140,13 +167,12 @@ export function Settings() {
             <small className="ws-hint">{t("Not printed. A new part shows in Running low when its stock is at or below this number. You can still change it per part.")}</small>
           </section>
         </div>
-
-        <div className="ws-set-col">
-          <StoreRoomSection />
-          <StoresSection />
-          <StaffSection />
-          <PermissionsSection />
-          <PlatformSection />
+        <div hidden={sec !== "store"}><StoreRoomSection /></div>
+        <div hidden={sec !== "lists"}><StoresSection /></div>
+        <div hidden={sec !== "staff"}><StaffSection /></div>
+        <div hidden={sec !== "perms"}><PermissionsSection /></div>
+        <div hidden={sec !== "msgs"}>{sec === "msgs" && <MessageTemplatesSection sinhala={!!business.sinhala} />}</div>
+        <div hidden={sec !== "pay"}>
           <section className="ws-sec">
             <h3><span className="ws-sec-ico"><Landmark size={18} /></span>{t("Getting paid")}</h3>
             <label className="ws-field">{t("Bank details for payments")}<textarea rows={3} value={f.bank} onChange={(e) => set("bank", e.target.value)} placeholder={"Bank of Ceylon\nAccount 1234567"} /></label>
@@ -156,6 +182,8 @@ export function Settings() {
             <label className="ws-field">{t("QR on the bill (optional)")}<input inputMode="url" value={f.qr_url || ""} onChange={(e) => set("qr_url", e.target.value)} placeholder="https://share.google/your-link" /></label>
             <small className="ws-hint">{t("Shows on the bill: a QR next to How to pay. Customer scans to leave a review or open your payment page.")}</small>
           </section>
+        </div>
+        <div hidden={sec !== "bill"}>
           <section className="ws-sec">
             <h3><span className="ws-sec-ico"><FileText size={18} /></span>{t("Bill notes")}</h3>
             <label className="ws-field">{t("Bill number prefix")}<input value={f.invoice_prefix} maxLength={6} onChange={(e) => set("invoice_prefix", e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())} /></label>
@@ -165,6 +193,9 @@ export function Settings() {
             <label className="ws-field">{t("Footer note")}<textarea rows={2} value={f.footer} onChange={(e) => set("footer", e.target.value)} /></label>
             <small className="ws-hint">{t("Shows on the bill: the last line, for example a thank you.")}</small>
           </section>
+        </div>
+        <div hidden={sec !== "data"}>
+          <PlatformSection />
           {owner && (
             <section className="ws-sec" data-tour="export-data">
               <h3>{t("Your data")}</h3>
@@ -173,11 +204,12 @@ export function Settings() {
             </section>
           )}
         </div>
+        </div>
       </div>
 
       {error && <p role="alert" className="stock-error">{error}</p>}
       
-      <div className="ws-savebar"><button className="button primary large" disabled={busy}>{busy ? t("Saving…") : t("Save changes")}</button></div>
+      <div className="ws-savebar" hidden={OWN_SAVE.includes(sec)}><button className="button primary large" disabled={busy}>{busy ? t("Saving…") : t("Save changes")}</button></div>
     </form>
   );
 }

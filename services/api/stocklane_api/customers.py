@@ -108,7 +108,7 @@ def groups():
 def row_of(c, g):
     regs = [v['registration'] for v in g['vehicles']]
     return {'id': c['id'], 'name': c['name'], 'phone': c.get('phone', ''), 'phone2': c.get('phone2', ''), 'kind': c.get('kind', 'WALKIN'),
-            'active': c.get('active', True), 'birthday': c.get('birthday', ''), 'vehicles': len(regs), 'regs': regs[:3], 'jobs': g['jobs'],
+            'active': c.get('active', True), 'birthday': c.get('birthday', ''), 'no_messages': bool(c.get('no_messages')), 'lang': c.get('lang') or 'en', 'vehicles': len(regs), 'regs': regs[:3], 'jobs': g['jobs'],
             'owing': g['owing'], 'updated_at': c['updated_at']}
 
 
@@ -225,7 +225,7 @@ def create(key, who, body):
         cid, at = str(uuid.uuid4()), now()
         c = clean({'pk': 'CUST', 'sk': cid, 'id': cid, 'name': text(b.get('name'), 'Name', 100, True), 'phone': number_in(b.get('phone'), 'Phone'),
                    'phone2': number_in(b.get('phone2'), 'Second phone'), 'address': lines_text(b.get('address'), 'Address', 200),
-                   'birthday': birthday(b.get('birthday')), 'kind': kind(b.get('kind')), 'notes': lines_text(b.get('notes'), 'Notes', 1000),
+                   'birthday': birthday(b.get('birthday')), 'no_messages': b.get('no_messages') is True, 'lang': 'si' if b.get('lang') == 'si' else 'en', 'kind': kind(b.get('kind')), 'notes': lines_text(b.get('notes'), 'Notes', 1000),
                    'active': True, 'names': [], 'aliases': [], 'revision': 0, 'created_by': who, 'created_at': at, 'updated_at': at})
         ops = [put(c, ConditionExpression='attribute_not_exists(pk)')] + claim(c, numbers(c), set())
         return ops, [None] * len(ops), public(c)
@@ -249,6 +249,10 @@ def edit(customer_id, key, who, body):
             n['address'] = lines_text(b['address'], 'Address', 200)
         if 'birthday' in b:
             n['birthday'] = birthday(b['birthday'])
+        if 'lang' in b:
+            n['lang'] = 'si' if b['lang'] == 'si' else 'en'
+        if 'no_messages' in b:
+            n['no_messages'] = b['no_messages'] is True
         if 'kind' in b:
             n['kind'] = kind(b['kind'])
         if 'notes' in b:

@@ -241,6 +241,19 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       if (method === "PATCH") Object.assign(item, { name: body.name, brand: body.brand, category: body.category, grade: body.grade, capacity: body.capacity, part_number: body.partNumber, location: body.location, ...(body.supplier !== undefined ? { supplier: body.supplier } : {}), reorder_level: body.reorderLevel });
       return clone(item);
     }
+    if (a === "documents" && method === "POST") {
+      const lines = (body.lines || []) as any[]; if (!lines.length) throw new ApiError("Add at least one part", 400);
+      if (lines.length > 15) throw new ApiError("One note holds up to 15 parts. Save this one, then start the next", 400);
+      const out: any[] = [], docNo = (body.kind === "STOCK_OUT" ? "GIN-P" : "GRN-P") + String(++db.moved).padStart(4, "0");
+      for (const l of lines) {
+        const it = db.products.find((x) => x.id === l.productId); if (!it) throw new ApiError("Part not found", 404);
+        const q = Number(l.quantity), isOut = body.kind === "STOCK_OUT"; if (isOut && q > Number(it.quantity)) throw new ApiError("Only " + it.quantity + " of " + it.name + " in stock", 409);
+        it.quantity = round2(Number(it.quantity) + (isOut ? -q : q)); if (l.location) it.location = l.location;
+        const m = { id: next("m"), product_id: it.id, sku: it.sku, name: it.name, unit: it.unit, kind: isOut ? "STOCK_OUT" : "RECEIPT", quantity: q, unit_price: 0, balance: it.quantity, job_id: null, issue_id: null, actor: "Practice", note: body.note || "", doc_no: docNo, created_at: now() } as any;
+        db.movements.unshift(m); out.push({ id: m.id, product_id: it.id, name: it.name, quantity: q, balance: it.quantity });
+      }
+      return { doc_no: docNo, kind: body.kind || "RECEIPT", id: out[0].id, lines: out };
+    }
     if (a === "movements") {
       if (method === "GET" && seg[4] === "note.pdf") return samplePdf("Stock note");
       if (method === "GET") return clone(db.movements);
@@ -305,7 +318,11 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
     if (a === "report") return reportFor(url.searchParams.get("from") || "0000-01-01", url.searchParams.get("until") || "9999-12-31");
     if (a === "archive") return clone({ jobs: db.archived, log: db.log });
     if (a === "suggestions") return { parts: [{ name: "Demo Motor Oil 5W-30 1L", price: 1500, uses: 3 }, { name: "Oil filter small", price: 900, uses: 2 }], labour: [{ description: "Oil change", amount: 1500, uses: 3 }] };
+    if (a === "cockpit") return { today: { received: 0, profit: 0, profit_unknown: 0 }, month: { profit: 0, profit_unknown: 0 }, owing: 0, owing_count: 0, overdue_count: 0, to_order: 0, approvals: 0, messages: 0, alerts: 0 };
+    if (a === "alerts") return { alerts: [], unseen: 0, types: [] };
+    if (a === "slow-stock") return { days: 90, items: [], count: 0, value: 0, unknown_cost: 0, categories: [] };
     if (a === "service-due") return [];
+    if (a === "messages") return seg[3] === "templates" ? { templates: {}, defaults: {}, variables: ["name", "shop"], custom: {} } : seg[3] === "history" ? [] : seg[3] === "count" ? { count: 0 } : seg[3] === "log" ? { logged: 1 } : { rows: [], count: 0, counts: {} };
     if (a === "dashboard") {
       const open = db.jobs.filter((j) => j.status === "OPEN");
       const owing = db.invoices.filter((i) => i.status === "UNPAID" || i.status === "PARTIAL");
@@ -367,6 +384,20 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
         db.moved++; return Number(item.quantity);
       };
       const release = (j: Row) => { for (const l of (j.parts || []) as Row[]) if (l.product_id) { moveStock(l.product_id, Number(l.quantity), "RETURN", j, Number(l.unit_price)); delete l.product_id; } };
+      if (b && seg[4] === "stock-batch" && method === "POST") {
+        const j = db.jobs.find((x) => x.id === b); if (!j) throw new ApiError("Not found", 404);
+        if (j.status !== "OPEN") throw new ApiError("This job already has an invoice", 409);
+        const ls = (body.lines || []) as any[]; if (!ls.length) throw new ApiError("Add at least one part", 400);
+        for (const l of ls) { const it = db.products.find((x) => x.id === l.productId); if (!it) throw new ApiError("Product not found", 404); if (Number(it.quantity) < Number(l.quantity)) throw new ApiError("Only " + it.quantity + " of " + it.name + " in stock", 409); }
+        const done: any[] = [];
+        for (const l of ls) {
+          const it = db.products.find((x) => x.id === l.productId)!, q = Number(l.quantity);
+          const balance = moveStock(it.id, q, "ISSUE", j, Number(it.selling_price)); const line = (j.parts as Row[]).find((x) => x.product_id === it.id);
+          if (line) line.quantity = Number(line.quantity) + q; else j.parts.push({ name: it.name, quantity: q, unit_price: Number(it.selling_price), product_id: it.id, part_no: it.part_number || it.sku });
+          done.push({ product_id: it.id, name: it.name, quantity: q, balance });
+        }
+        priced(j); j.revision++; return { ...clone(j), stock: done };
+      }
       if (b && seg[4] === "stock" && method === "POST") {
         const j = db.jobs.find((x) => x.id === b); if (!j) throw new ApiError("Not found", 404);
         if (j.status !== "OPEN") throw new ApiError("This job already has an invoice", 409);
@@ -473,14 +504,24 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
     }
   }
   if (path.includes("/api/workshop/export")) return { exported_at: now(), format: "lifta-export-1", note: "Practice sample. Nothing here is real.", jobs: clone(db.jobs), invoices: clone(db.invoices) };
+  if (path.includes("/api/inventory/products/import")) {
+    const b = (() => { try { return JSON.parse(String(options.body || "{}")); } catch { return {}; } })();
+    if (b.dryRun) return { rows: (b.rows || []).length, ok: (b.rows || []).length, errors: [] };
+    throw new ApiError("Practice mode does not import parts. In your real workshop the file is saved.", 400);
+  }
+  if (path.includes("/api/inventory/stores/count")) return { changed: [], at: now() };
+  if (path.includes("/api/inventory/stores/move")) {
+    const b = (() => { try { return JSON.parse(String(options.body || "{}")); } catch { return {}; } })();
+    return { shelf: "Rack 1-B (sample)", rack_id: b.rackId, level_id: b.levelId || null, moved: (b.productIds || []).map((id: string) => ({ product_id: id, name: "Sample part", from: "Rack 1-A", to: "Rack 1-B (sample)" })) };
+  }
   if (path.includes("/api/inventory/stores/shelf")) {
     const rack = new URL(path, "http://demo").searchParams.get("rack");
     return { rack_id: rack, level_id: null, parts: rack === "r1" ? [{ id: "p1", sku: "S-1", name: "Oil filter (sample)", part_number: "OF-1", unit: "UNIT", quantity: 4, reorder_level: 2, location: "Rack 1-A", level_id: "l1" }] : [] };
   }
   if (path.includes("/api/inventory/stores/layout") || path.includes("/api/inventory/stores/quick-start")) {
     if (method !== "GET") throw new ApiError("Practice mode does not save the store room. In your real workshop your walls, racks and levels are saved.", 400);
-    return { revision: 1, not_shelved: 1, categories: [], counts: { "r1": { "l1": 2 } }, areas: [{ id: "a1", name: "Wall A (sample)" }, { id: "a2", name: "Wall B (sample)" }],
-      racks: [{ id: "r1", name: "Rack 1", area_id: "a1", type: "RACK", levels: [{ id: "l1", name: "A" }, { id: "l2", name: "B" }] }, { id: "r2", name: "Cupboard", area_id: "a2", type: "CUPBOARD", levels: [] }] };
+    return { revision: 1, not_shelved: 1, categories: [], counts: { "r1": { "l1": 2 } }, areas: [{ id: "wall-w", name: "Left wall", pos: "W" }, { id: "wall-e", name: "Right wall", pos: "E" }, { id: "wall-n", name: "Top wall", pos: "N" }, { id: "wall-s", name: "Bottom wall", pos: "S" }],
+      racks: [{ id: "r1", name: "1", area_id: "wall-w", type: "RACK", levels: [{ id: "l1", name: "A" }, { id: "l2", name: "B" }, { id: "l3", name: "C" }] }, { id: "r2", name: "2", area_id: "wall-n", type: "RACK", levels: [{ id: "l4", name: "A" }, { id: "l5", name: "B" }] }, { id: "r3", name: "Cupboard", area_id: "wall-e", type: "CUPBOARD", levels: [] }] };
   }
   if (path.includes("/api/inventory/stores")) {
     if (method !== "GET") { const b = (() => { try { return JSON.parse(String(options.body || "{}")); } catch { return {}; } })(); return { racks: b.racks || [], categories: b.categories || [], shelves: [], revision: 1 }; }
@@ -499,6 +540,7 @@ export async function demoApi(path: string, options: RequestInit = {}): Promise<
     let body: Row = {};
     if (typeof options.body === "string") { try { body = JSON.parse(options.body); } catch { body = {}; } }
     if (method === "POST" && p === "/api/inventory/products") mark("api:product");
+    else if (method === "POST" && p === "/api/inventory/documents") mark(body.kind === "STOCK_OUT" ? "api:out" : "api:in");
     else if (method === "POST" && p === "/api/inventory/movements") mark(body.kind === "STOCK_OUT" ? "api:out" : "api:in");
     else if (method === "POST" && p === "/api/workshop/jobs") mark("api:job");
     else if (method === "PATCH" && p.startsWith("/api/workshop/jobs/")) mark("api:jobsave");

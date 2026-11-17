@@ -5,7 +5,7 @@ import { download } from "../api";
 import { askConfirm } from "../ui";
 import { Empty, Loading, Pill, dateOnly, kmText, lkr, useCommand, useDebounced, useLoad, useWs, waLink } from "./common";
 
-export type CustomerRow = { id: string; name: string; phone: string; phone2?: string; kind: string; active: boolean; birthday?: string; vehicles: number; regs: string[]; jobs: number; owing: number; updated_at: string };
+export type CustomerRow = { id: string; name: string; phone: string; phone2?: string; kind: string; active: boolean; birthday?: string; no_messages?: boolean; lang?: string; vehicles: number; regs: string[]; jobs: number; owing: number; updated_at: string };
 type Line = { id: string; job_no?: string; registration: string; created_at: string; status: string; stage?: string; summary?: string; name?: string; total?: number; paid?: number; balance?: number; pay_status?: string; invoice_id?: string; invoice_number?: string };
 export type CustomerFull = CustomerRow & { address?: string; notes?: string; names?: string[]; aliases?: string[]; revision: number; spent: number; bills: number; vehicle_list: { registration: string; make: string; last_km?: number | null; owner?: string }[]; timeline: Line[] };
 export type Suggest = { id: string; name: string; phone: string; address?: string; kind: string; vehicles: { registration: string; make: string; last_km?: number | null }[] };
@@ -41,20 +41,21 @@ export function Customers() {
 }
 
 export function CustomerPage({ id }: { id: string }) {
-  const { go } = useWs();
+  const { go, business } = useWs();
   const fresh = id === "new";
   const { data: c, error, reload } = useLoad<CustomerFull>(fresh ? null : "/api/workshop/customers/" + id);
   const [edit, setEdit] = useState(fresh), [msg, setMsg] = useState(""), [merge, setMerge] = useState(false);
   const [f, setF] = useState({ name: "", phone: "", phone2: "", address: "", birthday: "", kind: "REGULAR", notes: "" });
+  const [noMsg, setNoMsg] = useState(false), [lang, setLang] = useState("en");
   const command = useCommand();
   if (!fresh && !c) return <Loading error={error} />;
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
-  const startEdit = () => { if (!c) return; setF({ name: c.name, phone: c.phone || "", phone2: c.phone2 || "", address: c.address || "", birthday: c.birthday || "", kind: c.kind, notes: c.notes || "" }); setEdit(true); setMsg(""); };
+  const startEdit = () => { if (!c) return; setF({ name: c.name, phone: c.phone || "", phone2: c.phone2 || "", address: c.address || "", birthday: c.birthday || "", kind: c.kind, notes: c.notes || "" }); setNoMsg(!!c.no_messages); setLang(c.lang || "en"); setEdit(true); setMsg(""); };
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setMsg("");
     try {
-      if (fresh) { const made = await command<CustomerRow>("/api/workshop/customers", f); go({ name: "customer", id: made.id }, t("Customer saved.")); return; }
-      await command("/api/workshop/customers/" + id, { ...f, revision: c!.revision }, "PATCH"); setEdit(false); await reload();
+      if (fresh) { const made = await command<CustomerRow>("/api/workshop/customers", { ...f, no_messages: noMsg, lang }); go({ name: "customer", id: made.id }, t("Customer saved.")); return; }
+      await command("/api/workshop/customers/" + id, { ...f, no_messages: noMsg, lang, revision: c!.revision }, "PATCH"); setEdit(false); await reload();
     } catch (err) { setMsg((err as Error).message); }
   };
   const setActive = async (active: boolean) => {
@@ -71,6 +72,8 @@ export function CustomerPage({ id }: { id: string }) {
           <label className="ws-field">{t("Second phone")}<input inputMode="tel" value={f.phone2} onChange={(e) => set("phone2", e.target.value)} /></label>
           <label className="ws-field">{t("Birthday")} <small>({t("month and day, like 12-25")})</small><input value={f.birthday} onChange={(e) => set("birthday", e.target.value)} placeholder="MM-DD" /></label>
           <label className="ws-field">{t("Address")}<textarea rows={2} value={f.address} onChange={(e) => set("address", e.target.value)} /></label>
+          {business.sinhala && <label className="ws-field">{t("Message language")}<select value={lang} onChange={(e) => setLang(e.target.value)}><option value="en">English</option><option value="si">සිංහල</option></select></label>}
+          <label className="ws-field ws-check"><input type="checkbox" checked={noMsg} onChange={(e) => setNoMsg(e.target.checked)} /> {t("Do not send this customer messages")}</label>
           <label className="ws-field">{t("Notes")}<textarea rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} /></label>
         </div>
         <div className="ws-field" role="group" aria-label={t("Customer type")}>{t("Customer type")}
@@ -92,6 +95,7 @@ export function CustomerPage({ id }: { id: string }) {
           <div><dt>{t("Phone")}</dt><dd>{c.phone || "-"}{c.phone2 ? " · " + c.phone2 : ""}</dd></div>
           {c.address && <div><dt>{t("Address")}</dt><dd>{c.address}</dd></div>}
           {c.birthday && <div><dt>{t("Birthday")}</dt><dd>{c.birthday}</dd></div>}
+          {c.no_messages && <div><dt>{t("Messages")}</dt><dd>{t("Not wanted")}</dd></div>}
           {other.length > 0 && <div><dt>{t("Also written as")}</dt><dd>{other.join(", ")}</dd></div>}
           {c.notes && <div><dt>{t("Notes")}</dt><dd>{c.notes}</dd></div>}
           <div><dt>{t("Total billed")}</dt><dd>LKR {lkr(c.spent)} · {c.bills} {t("bills")}</dd></div>

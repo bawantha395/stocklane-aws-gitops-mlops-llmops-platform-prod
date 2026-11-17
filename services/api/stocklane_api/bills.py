@@ -360,6 +360,54 @@ def report(r, business):
     return d.render()
 
 
+def monthly(x, business):
+    """One page for the owner: the month's money, what is owed both ways, stock that is not moving, and what to look at."""
+    r = x['report']
+    d = Doc(footer=(business.get('name') or 'Workshop') + ' | monthly summary')
+    letterhead(d, business, 'MONTHLY SUMMARY', [(x['month'] + '   (' + x['from'] + ' to ' + x['until'] + ')', True), ('Printed: ' + x['printed'], False)])
+    p = r['profit']
+    cards = [('Billed', m(r['total'])), ('Received', m(r['received'])), ('Profit', m(p['profit'])), ('Customers owe (all time)', m(r['outstanding_all_time'])),
+             ('Invoices', str(r['invoices'])), ('Parts margin', m(p['parts_margin'])), ('Labour', m(p['labour'])), ('We owe suppliers', m(x['payables']['total']))]
+    cw = (R - MARGIN - 3 * 8) / 4
+    for k, (label, value) in enumerate(cards):
+        cx, cy = MARGIN + (k % 4) * (cw + 8), d.y + (k // 4) * 52
+        d.rect(cx, cy, cw, 44, WASH)
+        d.text(cx + 8, cy + 15, label, 8, color=MUTED)
+        d.text(cx + 8, cy + 34, value, 13, True)
+    d.y += 112
+    if p['unknown']:
+        d.paragraph(MARGIN, str(p['unknown']) + ' parts had no known cost and are left out of the profit.', R - MARGIN, 8, bold=False)
+        d.y += 4
+
+    def table(title, heads, rows_, aligns, xs):
+        if not rows_:
+            return
+        d.room(50)
+        d.text(MARGIN, d.y + 8, title, 8, True, color=MUTED)
+        d.y += 14
+        d.rect(MARGIN, d.y, R - MARGIN, 17, GREY)
+        for h, a, px in zip(heads, aligns, xs):
+            d.text(px, d.y + 12, h, 8, True, a)
+        d.y += 17
+        for row in rows_:
+            d.room(16)
+            for cell, a, px in zip(row, aligns, xs):
+                d.text(px, d.y + 12, fit(cell, 240 if a == 'l' else 100, 9), 9, align=a)
+            d.y += 16
+            d.line(MARGIN, d.y, R, d.y)
+        d.y += 12
+    table('TOP PARTS', ['PART', 'QTY', 'AMOUNT'], [(i['name'], q(i['quantity']), m(i['amount'])) for i in r['top_parts'][:5]], ['l', 'r', 'r'], [MARGIN + 6, 400, R - 6])
+    table('TOP LABOUR', ['WORK', 'TIMES', 'AMOUNT'], [(i['name'], str(i['times']), m(i['amount'])) for i in r['top_labour'][:5]], ['l', 'r', 'r'], [MARGIN + 6, 400, R - 6])
+    ag = r['ageing']
+    table('CUSTOMERS OWE, BY AGE', ['AGE', 'AMOUNT'], [('0 - 7 days', m(ag['d0_7'])), ('8 - 30 days', m(ag['d8_30'])), ('31 - 60 days', m(ag['d31_60'])), ('Over 60 days', m(ag['d60_plus']))], ['l', 'r'], [MARGIN + 6, R - 6])
+    table('WE OWE SUPPLIERS', ['SUPPLIER', 'OVERDUE', 'BALANCE'], [(i['name'], m(i['overdue']), m(i['balance'])) for i in x['payables']['suppliers']], ['l', 'r', 'r'], [MARGIN + 6, 400, R - 6])
+    s = x['slow']
+    table('SLOW STOCK (NO SALES FOR 90 DAYS): ' + str(s['count']) + ' ITEMS, LKR ' + format(s['value'], ',.2f'), ['CATEGORY', 'ITEMS', 'VALUE'], [(c['category'] or 'No category', str(c['items']), m(c['value'])) for c in s['categories']], ['l', 'r', 'r'], [MARGIN + 6, 400, R - 6])
+    names = {'BELOW_COST': 'Sold below cost', 'DISCOUNT': 'Big discounts', 'VOID': 'Bills voided', 'REFUND': 'Refunds', 'COUNT': 'Stock count changes', 'COST_EDIT': 'Cost price changes', 'STOCK_RETURN': 'Sent back to supplier'}
+    table('THINGS TO LOOK AT: ' + str(x['alert_total']), ['WHAT', 'TIMES'], [(names.get(k, k), str(v)) for k, v in sorted(x['alerts'].items())], ['l', 'r'], [MARGIN + 6, R - 6])
+    return d.render()
+
+
 def stock_report(r, business):
     """Stock movement per item between two dates: opening, came in, went out, returned, count corrections, closing."""
     d = Doc(footer=(business.get('name') or 'Workshop') + ' | stock movement report')
