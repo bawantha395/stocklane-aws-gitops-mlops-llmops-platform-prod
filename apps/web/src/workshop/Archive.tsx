@@ -41,7 +41,7 @@ export function Archive() {
       <div className="ws-card ws-logcard">
         {data.log.map((a) => (
           <div className="ws-log" key={a.sk}>
-            <small>{new Date(a.sk.split("#")[0]).toLocaleString("en-GB", { timeZone: "Asia/Colombo", dateStyle: "medium", timeStyle: "short" })}</small>
+            <small>{a.sk ? new Date(a.sk.split("#")[0]!).toLocaleString("en-GB", { timeZone: "Asia/Colombo", dateStyle: "medium", timeStyle: "short" }) : ""}</small>
             <span><b>{ACTION[a.action] || a.action}</b> {a.registration} <em>{a.customer}</em></span>
             <small>{a.actor_email || a.actor}{a.reason ? ": " + a.reason : ""}</small>
           </div>
