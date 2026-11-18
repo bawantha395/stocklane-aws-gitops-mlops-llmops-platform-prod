@@ -10,6 +10,7 @@ Data (one DynamoDB table, pk/sk):
 Every change is one DynamoDB transaction: quantity, ledger, day totals and the idempotency record
 commit together or not at all.
 """
+import hashlib
 import json
 import os
 import time
@@ -128,9 +129,24 @@ def archive_audit(product_id, who, action, details):
 
 
 # ---------- people ----------
+def mech_id(name):
+    """The shop's mechanics list (Settings) is also the list of people who can be handed parts. A mechanic has no row of their own:
+    the id is made from the name, so it is the same every time the list is read."""
+    return 'm-' + hashlib.sha1(' '.join(str(name).lower().split()).encode()).hexdigest()[:12]
+
+
+def mechanics():
+    return [str(n) for n in ((get('WSET', 'business') or {}).get('mechanics') or []) if str(n).strip()]
+
+
 def people():
-    return sorted(({'id': p['id'], 'name': p['name']} for p in query('PERSON') if p.get('active')),
-                  key=lambda p: p['name'])
+    """Everyone who can be handed a part: the mechanics list, plus anyone added to the older separate list who is not a mechanic."""
+    out = {mech_id(n): {'id': mech_id(n), 'name': n} for n in mechanics()}
+    taken = {p['name'].lower() for p in out.values()}
+    for p in query('PERSON'):
+        if p.get('active') and p['name'].lower() not in taken:
+            out[p['id']] = {'id': p['id'], 'name': p['name']}
+    return sorted(out.values(), key=lambda p: p['name'].lower())
 
 
 def add_person(key, who, body):
@@ -146,6 +162,11 @@ def add_person(key, who, body):
 
 
 def active_person(person_id):
+    if person_id and str(person_id).startswith('m-'):
+        name = next((n for n in mechanics() if mech_id(n) == str(person_id)), None)
+        if not name:
+            raise conflict('That mechanic is no longer on the list')
+        return {'id': str(person_id), 'name': name, 'active': True}
     person = get('PERSON', str(person_id)) if person_id else None
     if not person:
         raise bad('Choose who receives the part')
@@ -187,6 +208,20 @@ def handovers(person_id):
 # shelf written on a part is "Rack 1-A". While no list exists the fields stay free text, so a shop can start without them.
 RACK_TYPES = ('RACK', 'CUPBOARD', 'FLOOR')
 MAX_AREAS, MAX_RACKS, MAX_LEVELS = 8, 100, 20
+MARK_KINDS, MAX_MARKS, MAX_GRID = ('IN', 'OUT', 'STAGING'), 30, 40  # the floor plan: doors and staging squares, on a grid of up to 40 x 40
+
+
+def grid_pos(row, col):
+    """A square on the floor plan, or (None, None) when the rack is not placed yet."""
+    if row in (None, '') and col in (None, ''):
+        return None, None
+    try:
+        r, c = int(row), int(col)
+    except (TypeError, ValueError):
+        raise bad('Check the floor plan squares')
+    if not (0 <= r < MAX_GRID and 0 <= c < MAX_GRID) or isinstance(row, bool) or isinstance(col, bool):
+        raise bad('Check the floor plan squares')
+    return r, c
 
 
 def new_id():
@@ -275,7 +310,7 @@ def clean_stores(body, old_racks=(), old_areas=()):
     screens, which send names only, never lose ids). New ones get new ids. Returns racks, categories, areas."""
     areas = _clean_areas(body.get('areas'), old_areas)
     area_ids = {a['id'] for a in areas}
-    racks, seen, rids = [], set(), set()
+    racks, seen, rids, cells = [], set(), set(), set()
     raw = body.get('racks') or []
     if not isinstance(raw, list) or len(raw) > MAX_RACKS:
         raise bad('Up to %d racks' % MAX_RACKS)
@@ -328,6 +363,15 @@ def clean_stores(body, old_racks=(), old_areas=()):
                 level['photo_id'] = photo
             levels.append(level)
         rack = {'id': rid, 'name': name, 'area_id': area or None, 'type': rtype, 'levels': levels}
+        if 'row' in r or 'col' in r:
+            gr, gc = grid_pos(r.get('row'), r.get('col'))
+        else:
+            gr, gc = grid_pos((was or {}).get('row'), (was or {}).get('col'))
+        if gr is not None:
+            if (gr, gc) in cells:
+                raise bad('Two racks are on the same square of the floor plan')
+            cells.add((gr, gc))
+            rack['row'], rack['col'] = gr, gc
         rphoto = photos_one(r.get('photo_id')) if 'photo_id' in r else (was or {}).get('photo_id')
         if rphoto:
             rack['photo_id'] = rphoto
@@ -356,8 +400,32 @@ def photos_one(value):
     return photos.one(value, 'Shelf photo')
 
 
-def _store_row(old, racks, cats, areas, who):
-    row = {'pk': 'STORES', 'sk': 'main', 'racks': racks, 'categories': cats, 'areas': areas, 'revision': int(old.get('revision') or 0) + 1, 'updated_at': now(), 'updated_by': who}
+def clean_marks(raw, old_marks, racks):
+    """Doors (IN, OUT) and staging squares on the floor plan. They hold no parts. Each sits on its own square, away from every rack."""
+    if not isinstance(raw, list) or len(raw) > MAX_MARKS:
+        raise bad('Up to %d doors and staging squares' % MAX_MARKS)
+    was = {m['id']: m for m in old_marks or [] if m.get('id')}
+    cells = {(r['row'], r['col']) for r in racks if r.get('row') is not None}
+    out = []
+    for m in raw:
+        if not isinstance(m, dict):
+            raise bad('Check the floor plan')
+        kind = str(m.get('kind') or '').upper()
+        if kind not in MARK_KINDS:
+            raise bad('A square on the floor plan is IN, OUT or Staging')
+        r, c = grid_pos(m.get('row'), m.get('col'))
+        if r is None:
+            raise bad('Place each door and staging square on the floor plan')
+        if (r, c) in cells:
+            raise bad('Two things are on the same square of the floor plan')
+        cells.add((r, c))
+        mid = m.get('id') if m.get('id') in was else new_id()
+        out.append({'id': mid, 'kind': kind, 'row': r, 'col': c})
+    return out
+
+
+def _store_row(old, racks, cats, areas, who, marks=None):
+    row = {'pk': 'STORES', 'sk': 'main', 'racks': racks, 'categories': cats, 'areas': areas, 'marks': old.get('marks') or [] if marks is None else marks, 'revision': int(old.get('revision') or 0) + 1, 'updated_at': now(), 'updated_by': who}
     cond = {'ConditionExpression': 'revision = :r', 'ExpressionAttributeValues': {':r': old['revision']}} if old.get('pk') else {'ConditionExpression': 'attribute_not_exists(pk)'}
     return put(row, **cond), row
 
@@ -521,8 +589,8 @@ def layout_view(row=None):
     counted = {}
     for c in query('SHELFCOUNT'):
         counted.setdefault(c['rack_id'], {})[c.get('level_id') or ''] = {'at': c['at'], 'by': c.get('by')}
-    return {'areas': _clean_areas(None, row.get('areas') or []), 'categories': row.get('categories') or [], 'revision': int(row.get('revision') or 0), 'not_shelved': loose, 'counts': counts, 'counted': counted,
-            'racks': [{'id': r['id'], 'name': r['name'], 'area_id': r.get('area_id'), 'type': r.get('type') or 'RACK', **({'photo_id': r['photo_id']} if r.get('photo_id') else {}),
+    return {'marks': row.get('marks') or [], 'areas': _clean_areas(None, row.get('areas') or []), 'categories': row.get('categories') or [], 'revision': int(row.get('revision') or 0), 'not_shelved': loose, 'counts': counts, 'counted': counted,
+            'racks': [{'id': r['id'], 'name': r['name'], 'area_id': r.get('area_id'), 'type': r.get('type') or 'RACK', **({'photo_id': r['photo_id']} if r.get('photo_id') else {}), **({'row': r['row'], 'col': r['col']} if r.get('row') is not None else {}),
                        'levels': [{'id': l['id'], 'name': l['name'], **({'photo_id': l['photo_id']} if l.get('photo_id') else {})} for l in r.get('levels') or []]} for r in racks]}
 
 
@@ -667,7 +735,8 @@ def layout_save(key, who, body):
         for l in (r.get('levels') or [None]):
             new_labels[(r['id'], l['id'] if l else None)] = shelf_label(r['name'], l['name'] if l else '')
     moves = {labels[k][1].lower(): new_labels[k] for k in new_labels if k in labels and labels[k][1] != new_labels[k]}
-    op, row = _store_row(old, racks, old.get('categories') or [], areas, who)
+    marks = clean_marks(b['marks'], old.get('marks'), racks) if 'marks' in b else clean_marks(old.get('marks') or [], old.get('marks'), racks)
+    op, row = _store_row(old, racks, old.get('categories') or [], areas, who, marks)
     transact([op], ['Someone changed the store room just now. Reload and try again.'])
     moved = _move_parts(moves, 'location') if moves else 0
     return dict(layout_view(row), moved=moved)
@@ -951,6 +1020,32 @@ def hide_cost(rows):
     return cleaned[0] if one else cleaned
 
 
+def restate_bills(mv, cost, room):
+    """A delivery's cost price was added or corrected: the open jobs and bills that took this part keep telling the truth.
+    A line pinned to this delivery (cost_at) gets the new cost; a line with no known cost, taken on or after the delivery's day, gets it too.
+    Lines pinned to any other delivery, and lines bought outside, are left alone. At most `room` bills per save (the rest of the transaction is full)."""
+    from . import workshop
+    since = workshop.local_date(mv['created_at']).isoformat()
+    ops, labels, n = [], [], 0
+    docs = [('WJOB', j) for j in query('WJOB') if j.get('status') == 'OPEN'] + [('WINV', i) for i in query('WINV') if i.get('status') != 'VOID']
+    for pk, d in docs:
+        parts, hit = [], False
+        for p in d.get('parts') or []:
+            if p.get('product_id') == mv['product_id'] and not p.get('outside'):
+                if p.get('cost_at') == mv['created_at']:
+                    p, hit = dict(p, cost_each=cost), True
+                elif p.get('cost_each') is None and (p.get('added_at') or workshop.local_date(d['created_at']).isoformat()) >= since:
+                    p, hit = {k: v for k, v in dict(p, cost_each=cost, cost_at=mv['created_at']).items() if k != 'no_cost'}, True
+            parts.append(p)
+        if hit:
+            if len(ops) >= room:
+                break
+            ops.append(update(pk, d['sk'], 'SET parts = :p, revision = :n', {':p': parts, ':n': int(d.get('revision') or 0) + 1, ':r': int(d.get('revision') or 0)}, None, 'revision = :r'))
+            labels.append('A bill changed just now. Try again.')
+            n += 1
+    return ops, labels, n
+
+
 def set_cost(key, movement_id, who, body):
     """Owner: add or correct the supplier price on a goods received movement."""
     def build():
@@ -966,12 +1061,15 @@ def set_cost(key, movement_id, who, body):
                update('MOVE', marker, 'SET unit_cost = :c', {':c': cost}),
                archive_audit(mv['product_id'], who, 'COST', {'movement': mv['id'], 'unit_cost': str(cost)})]
         labels = [None, None, None, None]
+        extra_ops, extra_labels, restated = restate_bills(mv, cost, 85 - len(ops))
+        ops += extra_ops
+        labels += extra_labels
         product = get('PRODUCT', mv['product_id'])
         if product and (product.get('last_cost_at') or '') <= mv['created_at']:
             # the newest receipt decides the item's last cost
             ops.append(update('PRODUCT', product['id'], 'SET last_cost = :c, last_cost_at = :at', {':c': cost, ':at': mv['created_at']}))
             labels.append(None)
-        return ops, labels, {'id': mv['id'], 'unit_cost': cost}
+        return ops, labels, {'id': mv['id'], 'unit_cost': cost, 'restated': restated}
     result = command(key, 'movement-cost:' + movement_id, who, body, build)
     _cache['until'] = 0
     return result

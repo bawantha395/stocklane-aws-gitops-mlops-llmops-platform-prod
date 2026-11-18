@@ -307,3 +307,20 @@ def test_a_rack_can_hold_a_photo(api):
     d = ok(save(api, {'areas': [], 'racks': [dict(c['racks'][0], photo_id='')]}))  # empty: removed
     assert 'photo_id' not in d['racks'][0]
     assert save(api, {'areas': [], 'racks': [dict(r, photo_id='nope')]})[0] == 400
+
+
+def test_racks_sit_on_floor_plan_squares_with_doors_and_staging(api):
+    a = ok(save(api, {'areas': [], 'racks': [{'name': 'R1', 'levels': ['A'], 'row': 0, 'col': 0}, {'name': 'R2', 'levels': ['A']}],
+                      'marks': [{'kind': 'IN', 'row': 0, 'col': 2}, {'kind': 'staging', 'row': 1, 'col': 0}]}))
+    assert (a['racks'][0]['row'], a['racks'][0]['col']) == (0, 0) and 'row' not in a['racks'][1]
+    assert [(m['kind'], m['row'], m['col']) for m in a['marks']] == [('IN', 0, 2), ('STAGING', 1, 0)] and all(m['id'] for m in a['marks'])
+    # no position fields on a later save: racks and doors stay where they were
+    b = ok(save(api, {'areas': [], 'racks': [{k: v for k, v in r.items() if k not in ('row', 'col')} for r in a['racks']]}))
+    assert (b['racks'][0]['row'], b['racks'][0]['col']) == (0, 0) and len(b['marks']) == 2 and b['marks'][0]['id'] == a['marks'][0]['id']
+    # moving a rack onto a taken square, or two racks on one square, is refused; an empty row/col takes a rack off the plan
+    assert save(api, {'areas': [], 'racks': [dict(b['racks'][1], row=0, col=2)], 'marks': b['marks']})[0] == 400
+    assert save(api, {'areas': [], 'racks': [dict(b['racks'][0]), dict(b['racks'][1], row=0, col=0)], 'marks': b['marks']})[0] == 400
+    assert save(api, {'areas': [], 'racks': b['racks'], 'marks': [{'kind': 'DOOR', 'row': 3, 'col': 3}]})[0] == 400
+    assert save(api, {'areas': [], 'racks': [dict(b['racks'][0], row=99, col=0)], 'marks': []})[0] == 400
+    c = ok(save(api, {'areas': [], 'racks': [dict(b['racks'][0], row=None, col=None), b['racks'][1]], 'marks': []}))
+    assert 'row' not in c['racks'][0] and c['marks'] == []

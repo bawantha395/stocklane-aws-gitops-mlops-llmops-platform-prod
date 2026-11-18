@@ -42,6 +42,7 @@ PERMISSIONS = (
     ('cost_edit', 'Money', 'Correct the cost on a delivery'),
     ('see_sales', 'Money', 'See sales totals on the home screen'),
     ('reports', 'Money', 'See reports'),
+    ('cash_up', 'Money', 'Close the day and count the cash (when Cash-up is on)'),
     ('alerts', 'Money', 'See the owner summary and leak alerts'),
     ('settings', 'Business', 'Change business settings and logo'),
     ('export', 'Business', 'Download all data'),

@@ -1067,3 +1067,170 @@ button.shelf-chip { cursor: pointer; font: inherit; color: inherit; }
 .track-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
 .track-photos img { width: 100%; border-radius: 10px; }
 .track .ws-contact { margin: 12px 0 8px; } .track input { width: 100%; padding: 10px; font-size: 16px; }
+
+/* ===== Settings, modern layout =====
+   One look for every field: label on top, a visible box, its hint underneath. The old glass rule gave a field a white border on a white card, so the boxes could not be seen. */
+.ws .ws-set { display: grid; gap: 18px; }
+.ws .ws-set-hero { display: grid; gap: 16px; padding: 18px 20px; border-radius: 24px; overflow: visible; animation: none;
+  background: color-mix(in srgb, hsl(var(--h, 150) 55% 45%) 7%, var(--surface)); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 14px 32px -20px rgba(0, 0, 0, .25); }
+.ws .ws-set-id { display: flex; align-items: center; gap: 14px; margin: 0; padding: 0; min-width: 0; }
+.ws .ws-set-logo { border: 0; border-radius: 18px; box-shadow: 0 6px 16px -8px rgba(0, 0, 0, .45); flex: none; }
+.ws .ws-set-name { margin: 0; padding: 0; align-self: center; }
+.ws .ws-set-name strong { font-size: 20px; }
+.ws .ws-set-stats { padding: 0; gap: 10px; }
+.ws .ws-set-stats > span { align-items: flex-start; padding: 10px 14px; border-radius: 16px; background: color-mix(in srgb, var(--surface) 80%, transparent); border: 1px solid var(--line); }
+.ws .ws-set-stats small { text-align: left; }
+@media (min-width: 1000px) { .ws .ws-set-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: center; } }
+
+.ws .ws-set-nav { gap: 6px; }
+.ws .ws-set-navhead { padding: 0 4px; }
+.ws .ws-set-nav button { border: 0; background: transparent; color: var(--ink-2, inherit); font-weight: 600; box-shadow: none; }
+.ws .ws-set-nav button:hover { background: var(--wash-2, #eef0ee); }
+.ws .ws-set-nav button.on { background: #e3f0ea; color: #0f5a43; }
+html[data-theme="dark"] .ws .ws-set-nav button.on { background: #1f3a2f; color: #bfe9d6; }
+@media (min-width: 900px) { .ws .ws-set-nav { padding: 12px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); } }
+@media (max-width: 899px) { .ws .ws-set-nav { padding-bottom: 8px; } .ws .ws-set-navgroup { padding-right: 14px; border-right: 1px solid var(--line); } .ws .ws-set-navgroup:last-child { border-right: 0; } .ws .ws-set-nav button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; } .ws .ws-set-nav button.on { border-color: transparent; } }
+
+.ws .ws-set-pane { gap: 18px; }
+.ws .ws-stack { display: grid; gap: 18px; }
+.ws .ws-set .ws-sec { gap: 16px; padding: 22px; border-radius: 22px; animation: none; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(0, 0, 0, .04); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.ws .ws-set .ws-sec-head { display: flex; align-items: flex-start; gap: 12px; }
+.ws .ws-set .ws-sec-head h3 { font-size: 17px; line-height: 34px; }
+.ws .ws-set .ws-sec-head .muted { margin: 2px 0 0; font-size: 13px; line-height: 1.5; max-width: 70ch; }
+
+.ws .ws-set .ws-fld { display: grid; gap: 6px; min-width: 0; font-size: 14px; }
+.ws .ws-set .ws-fld-l { font-size: 13px; font-weight: 700; color: var(--ink-2, inherit); }
+.ws .ws-set .ws-hint { display: block; margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.ws .ws-set .ws-grid2 { gap: 16px; align-items: start; }
+.ws .ws-set .ws-sec input:not([type="checkbox"]):not([type="file"]), .ws .ws-set .ws-sec select, .ws .ws-set .ws-sec textarea {
+  width: 100%; min-height: 46px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink, inherit); font: inherit; font-size: 15px;
+  -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: inset 0 1px 1px rgba(0, 0, 0, .03); transition: border-color .15s, box-shadow .15s; }
+.ws .ws-set .ws-sec textarea { min-height: 76px; }
+.ws .ws-set .ws-sec input:hover, .ws .ws-set .ws-sec select:hover, .ws .ws-set .ws-sec textarea:hover { border-color: color-mix(in srgb, var(--ink, #000) 28%, var(--line)); }
+.ws .ws-set .ws-sec input:focus, .ws .ws-set .ws-sec select:focus, .ws .ws-set .ws-sec textarea:focus, .ws .ws-set .ws-sec input:focus-visible, .ws .ws-set .ws-sec select:focus-visible, .ws .ws-set .ws-sec textarea:focus-visible {
+  outline: none; border-color: #2f7d5b; box-shadow: 0 0 0 3px rgba(47, 125, 91, .2); }
+
+.ws .ws-set .ws-rows { display: grid; gap: 8px; }
+.ws .ws-set .ws-list-row { display: flex; gap: 8px; align-items: center; margin: 0; }
+.ws .ws-set .ws-list-row input { flex: 1; min-width: 0; }
+.ws .ws-set .ws-list-row .ws-lr-amt { flex: 0 0 120px; width: 120px; text-align: right; }
+.ws .ws-set .ws-l-del { flex: 0 0 46px; width: 46px; min-width: 46px; height: 46px; min-height: 46px; display: inline-grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--muted); cursor: pointer; font-size: 0; }
+.ws .ws-set .ws-l-del:hover { color: #b42318; border-color: #f1b8b3; background: #fff4f3; }
+html[data-theme="dark"] .ws .ws-set .ws-l-del:hover { background: #3a1f1d; border-color: #6b2f2b; }
+.ws .ws-set .ws-empty-row { margin: 0; padding: 14px; text-align: center; border: 1px dashed var(--line); border-radius: 14px; color: var(--muted); font-size: 13px; animation: none; }
+.ws .ws-set .ws-add { align-self: flex-start; width: auto; min-height: 42px; display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border-radius: 999px; }
+.ws .ws-set .ws-common { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--wash-2, #f4f6f5); }
+.ws .ws-set .ws-common > summary { padding: 0; min-height: 32px; display: flex; align-items: center; }
+.ws .ws-set .ws-common[open] > summary { margin-bottom: 8px; }
+.ws .ws-set .ws-chip { min-height: 36px; font-size: 13px; background: var(--surface); }
+
+.ws .ws-set .ws-switch { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); cursor: pointer; }
+.ws .ws-set .ws-sw-t { display: grid; gap: 3px; min-width: 0; }
+.ws .ws-set .ws-sw-t b { font-size: 15px; }
+.ws .ws-set .ws-sw-t small { font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.ws .ws-set .ws-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; min-height: 0; padding: 0; margin: 0; pointer-events: none; }
+.ws .ws-set .ws-switch .trk { flex: none; position: relative; width: 48px; height: 28px; border-radius: 999px; background: #c5cbc8; transition: background .2s; }
+.ws .ws-set .ws-switch .trk::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); transition: transform .2s; }
+.ws .ws-set .ws-switch input:checked ~ .trk { background: #1f7a57; }
+.ws .ws-set .ws-switch input:checked ~ .trk::after { transform: translateX(20px); }
+.ws .ws-set .ws-switch input:focus-visible ~ .trk { outline: 3px solid rgba(47, 125, 91, .35); outline-offset: 2px; }
+
+.ws .ws-set .ws-savebar { position: sticky; bottom: 12px; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 10px 10px 18px; border-radius: 20px; background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--line); box-shadow: 0 14px 32px -14px rgba(0, 0, 0, .35); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.ws .ws-set .ws-savebar[hidden] { display: none; }
+.ws .ws-set .ws-savebar .button { box-shadow: none; min-height: 46px; padding: 0 26px; }
+.ws .ws-set .ws-dirty { font-size: 13px; color: var(--muted); }
+.ws .ws-set .ws-dirty.on { color: #b45309; font-weight: 700; }
+@media (max-width: 700px) {
+  .ws .ws-set-hero { padding: 14px; } .ws .ws-set .ws-sec { padding: 16px; border-radius: 20px; }
+  .ws .ws-set .ws-list-row .ws-lr-amt { flex-basis: 96px; width: 96px; }
+  .ws .ws-set .ws-savebar { padding-left: 14px; }
+}
+@media (min-width: 900px) { .ws .ws-set-nav { gap: 14px; } .ws .ws-set-navgroup { gap: 2px; } .ws .ws-set-navhead { margin-bottom: 4px; } }
+@media (max-width: 700px) { .ws .ws-set-stats { grid-template-columns: 1fr 1.7fr 1fr; gap: 6px; } .ws .ws-set-stats > span { padding: 8px 10px; } .ws .ws-set-stats b { font-size: 13.5px; white-space: nowrap; } }
+
+/* ===== Settings: the other tabs get the same look (printer, daily summary, staff, permissions, messages, categories, store room) ===== */
+.ws .ws-set .ws-l-del { font-size: 18px; line-height: 1; }
+.ws .ws-set input[type="checkbox"] { width: 20px; height: 20px; min-height: 20px; padding: 0; flex: none; accent-color: #1f7a57; }
+.ws .ws-set .ws-sec > h3 { font-size: 17px; }
+.ws .ws-set .ws-field { display: grid; gap: 6px; min-width: 0; font-size: 13px; font-weight: 700; color: var(--ink-2, inherit); }
+.ws .ws-set .ws-field input, .ws .ws-set .ws-field select, .ws .ws-set .ws-field textarea { font-weight: 400; }
+.ws .ws-set .ws-field b { font-size: 14px; }
+.ws .ws-set .stock-check, .ws .ws-set .ws-autoprint { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); font-size: 14px; font-weight: 500; cursor: pointer; flex-wrap: wrap; }
+.ws .ws-set .stock-check.ws-sub { margin-left: 22px; }
+.ws .ws-set .stock-check small, .ws .ws-set .ws-autoprint small { flex-basis: 100%; margin-left: 32px; color: var(--muted); font-size: 12.5px; font-weight: 400; }
+.ws .ws-set .stock-check:has(input:disabled) { opacity: .6; }
+.ws .ws-set .ws-err, .ws .ws-set .stock-error { margin: 0; padding: 10px 14px; border-radius: 12px; background: #fff1f0; color: #b42318; font-size: 13px; }
+html[data-theme="dark"] .ws .ws-set .ws-err, html[data-theme="dark"] .ws .ws-set .stock-error { background: #3a1f1d; color: #ffb4ad; }
+
+/* buttons that save a tab: a clear green pill, left aligned, grey while there is nothing to save */
+.ws .ws-set .ws-sec > .button, .ws .ws-set .ws-sec > .ws-bar > .button { align-self: flex-start; width: auto; min-height: 44px; padding: 0 22px; border-radius: 999px; }
+.ws .ws-set .ws-sec .button:not(.secondary):not(.ws-chip):not(:disabled) { background: #1f7a57; border-color: #1f7a57; color: #fff; }
+.ws .ws-set .ws-sec .button:not(.secondary):not(.ws-chip):not(:disabled):hover { background: #19694b; }
+.ws .ws-set .ws-sec .button:disabled { opacity: .55; }
+.ws .ws-set .ws-sec > .ws-bar { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* receipt printer */
+.ws .ws-set .ws-printer { border: 0; padding: 0; background: none; }
+.ws .ws-set .ws-printer > summary { list-style: none; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px; border-radius: 999px; background: var(--wash-2, #eef0ee); font-weight: 700; font-size: 13px; cursor: default; }
+.ws .ws-set .ws-printer > summary::-webkit-details-marker { display: none; }
+.ws .ws-set .ws-printer > summary::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #b8bfbc; }
+.ws .ws-set .ws-printer > summary.on::before { background: #1f9d63; }
+.ws .ws-set .ws-printer-menu { display: grid; gap: 12px; max-width: 460px; margin-top: 12px; padding: 0; border: 0; background: none; }
+.ws .ws-set .ws-printer-menu .button { justify-self: start; width: auto; min-height: 42px; padding: 0 18px; border-radius: 999px; }
+.ws .ws-set .ws-printer-menu > label:not(.ws-autoprint) { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
+.ws .ws-set .ws-printer-menu select { font-weight: 400; }
+
+/* staff */
+.ws .ws-set .ws-staff { display: grid; grid-template-columns: minmax(0, 1fr) 180px 46px; gap: 10px; align-items: center; margin: 0; padding: 10px 0; border: 0; border-top: 1px solid var(--line); background: none; }
+.ws .ws-set .ws-staff-who { display: grid; gap: 2px; min-width: 0; } .ws .ws-set .ws-staff-who strong { overflow: hidden; text-overflow: ellipsis; } .ws .ws-set .ws-staff-who small { color: var(--muted); font-size: 12px; }
+.ws .ws-set .ws-staff.off .ws-staff-who strong { text-decoration: line-through; color: var(--muted); }
+.ws .ws-set .ws-staff > .button { grid-column: 2 / -1; justify-self: end; }
+@media (max-width: 700px) {
+  .ws .ws-set .ws-staff { grid-template-columns: minmax(0, 1fr) 46px; } .ws .ws-set .ws-staff > :first-child { grid-column: 1 / -1; }
+  .ws .ws-set .ws-staff > input { grid-column: 1 / -1; } .ws .ws-set .ws-staff > .button { grid-column: 1 / -1; justify-self: start; }
+}
+
+/* permissions table */
+.ws .ws-set .ws-perm-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; }
+.ws .ws-set .ws-perm { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ws .ws-set .ws-perm th { padding: 12px 10px; font-size: 12.5px; text-align: center; color: var(--ink-2, inherit); }
+.ws .ws-set .ws-perm td { padding: 10px; text-align: center; border-top: 1px solid var(--line); } .ws .ws-set .ws-perm td:first-child { text-align: left; }
+.ws .ws-set .ws-perm .ws-perm-sec td { text-align: left; padding: 8px 12px; background: var(--wash-2, #f4f6f5); font-size: 11.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.ws .ws-set .ws-perm input[type="checkbox"] { display: inline-block; vertical-align: middle; }
+
+/* customer messages */
+.ws .ws-set .ws-contact { display: flex; flex-wrap: wrap; gap: 6px; }
+.ws .ws-set .ws-sec .ws-field > div { display: grid; gap: 6px; }
+.ws .ws-set .ws-sec textarea { height: auto; }
+.ws .ws-set .ws-field .ws-hint { font-weight: 400; }
+
+/* store room tab */
+.ws .ws-set .ws-modules { display: grid; gap: 8px; }
+.ws .ws-set .fp-ed, .ws .ws-set .sr-panel { border-radius: 18px; }
+.ws .ws-set .sr-room { border-radius: 18px; }
+.ws .ws-set .ws-autoprint { justify-content: flex-start; text-align: left; }
+.ws .ws-set .ws-autoprint small { text-align: left; }
+
+/* ===== Every workshop form: the box must be visible =====
+   The glass rules above gave a field a white border and a see-through white fill, so on a white card the box vanished (New customer, the job page, Quotes, Settings). Same size and look everywhere. */
+.ws input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]), .ws select, .ws textarea {
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink, inherit); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: inset 0 1px 1px rgba(0, 0, 0, .03); transition: border-color .15s, box-shadow .15s; }
+.ws input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):hover, .ws select:hover, .ws textarea:hover { border-color: color-mix(in srgb, var(--ink, #000) 28%, var(--line)); }
+.ws input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):focus, .ws select:focus, .ws textarea:focus { outline: none; border-color: #2f7d5b; box-shadow: 0 0 0 3px rgba(47, 125, 91, .2); }
+.ws input[type="checkbox"], .ws input[type="radio"] { width: 20px; height: 20px; min-height: 20px; flex: none; padding: 0; accent-color: #1f7a57; }
+
+/* Cash-up */
+.ws-cashup { display: grid; gap: 14px; max-width: 760px; }
+.ws-cashup .ws-card-head h3 { display: flex; align-items: center; gap: 8px; }
+.ws-cashup .ws-pill { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; background: rgba(60, 80, 70, .1); color: #3b4a42; }
+.ws-cashup .ws-pill.ok { background: #dff3e8; color: #17583f; }
+.ws-cashup table { width: 100%; border-collapse: collapse; }
+.ws-cashup td, .ws-cashup th { padding: 8px 4px; text-align: left; border-bottom: 1px solid var(--ws-line, rgba(127,127,127,.2)); }
+.ws-cashup th { font-size: 12px; color: var(--muted, #6b7770); font-weight: 700; }
+.ws-cashup .num { text-align: right; font-variant-numeric: tabular-nums; }
+.ws-cashup .bad { color: #b42318; font-weight: 700; }
+.ws-cash-expect { display: flex; justify-content: space-between; align-items: baseline; margin: 14px 0 4px; padding: 12px 14px; border-radius: 14px; background: rgba(31, 122, 87, .08); }
+.ws-cash-expect b { font-size: 20px; }
+.ws-cash-diff { margin: 8px 0; font-weight: 700; } .ws-cash-diff.ok { color: #17583f; } .ws-cash-diff.bad { color: #b42318; }
+.ws-cashup .ws-field { margin: 10px 0; }
+.ws-cash-reopen { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--ws-line, rgba(127,127,127,.3)); }

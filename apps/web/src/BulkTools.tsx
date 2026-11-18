@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getDefaultMarkup, priceFromCost } from "./businessName";
 import { api } from "./api";
 import { t } from "./i18n";
 import { can } from "./perms";
@@ -120,10 +121,10 @@ function ImportCsv({ items, onChanged }: { items: Item[]; onChanged: () => void 
 
 function BulkPrice({ items, onChanged }: { items: Item[]; onChanged: () => void }) {
   const cats = useMemo(() => [...new Set(items.filter((p) => !p.archived).map((p) => p.category).filter(Boolean))].sort(), [items]);
-  const [cat, setCat] = useState(""), [markup, setMarkup] = useState("30"), [round, setRound] = useState("1"), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
-  const step = Math.max(1, Number(round) || 1);
-  const preview = useMemo(() => items.filter((p) => !p.archived && (!cat || p.category === cat) && Number(p.last_cost) > 0).map((p) => {
-    const price = Math.ceil((Number(p.last_cost) * (1 + Number(markup || 0) / 100)) / step) * step;
+  const [cat, setCat] = useState(""), [round, setRound] = useState("5"), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
+  const markup = getDefaultMarkup(), step = Math.max(1, Number(round) || 1);
+  const preview = useMemo(() => markup <= 0 ? [] : items.filter((p) => !p.archived && (!cat || p.category === cat) && Number(p.last_cost) > 0).map((p) => {
+    const price = priceFromCost(Number(p.last_cost), markup, step);
     return { p, price };
   }).filter((r) => r.price !== Number(r.p.selling_price)), [items, cat, markup, step]);
   const noCost = items.filter((p) => !p.archived && (!cat || p.category === cat) && !(Number(p.last_cost) > 0)).length;
@@ -136,10 +137,9 @@ function BulkPrice({ items, onChanged }: { items: Item[]; onChanged: () => void 
   };
   return (
     <div className="bulk-pane">
-      <p className="muted">{t("New price = last cost + markup, rounded up. Nothing changes until you press Apply.")}</p>
+      <p className="muted">{markup > 0 ? t("New price = last cost + {n}% (the shop markup), rounded up. Nothing changes until you press Apply.", { n: markup }) : t("Set the Default markup in Settings first.")}</p>
       <div className="bulk-form">
         <label>{t("Category")}<select value={cat} onChange={(e) => setCat(e.target.value)}><option value="">{t("All categories")}</option>{cats.map((c) => <option key={c}>{c}</option>)}</select></label>
-        <label>{t("Markup %")}<input type="number" inputMode="decimal" min="0" value={markup} onChange={(e) => setMarkup(e.target.value)} /></label>
         <label>{t("Round up to")}<select value={round} onChange={(e) => setRound(e.target.value)}><option value="1">1</option><option value="5">5</option><option value="10">10</option><option value="50">50</option></select></label>
       </div>
       {noCost > 0 && <p className="muted">{t("{n} parts have no cost yet and are left out.", { n: noCost })}</p>}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { csv, download } from "../api";
+import { api, csv, download } from "../api";
 import { t } from "../i18n";
 import { SlowStock } from "./SlowStock";
 import { Num, Loading, addDays, lkr, today, useLoad, useWs } from "./common";
@@ -112,6 +112,27 @@ const ranges = () => {
   return [["Today", t, t], ["Last 7 days", addDays(t, -6), t], ["This month", first, t], ["Last month", lastFirst, lastEnd], ["This year", t.slice(0, 4) + "-01-01", t]] as [string, string, string][];
 };
 
+type Books = { checked_at: string; bills: number; products: number; ok: boolean; problems: { kind: string; ref: string; text: string }[]; notes: string[] };
+/** Owner: the books tested against themselves (bills, payments, stock). Changes nothing. */
+function BooksCheck() {
+  const [res, setRes] = useState<Books | null>(null), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const run = async () => { setBusy(true); setErr(""); try { setRes(await api<Books>("/api/workshop/books-check")); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
+  return (
+    <section className="ws-sec books-check">
+      <div className="ws-toolbar"><b>{t("Books check")}</b><button type="button" className="button secondary small" disabled={busy} onClick={() => void run()}>{busy ? t("Checking…") : res ? t("Check again") : t("Check the books")}</button></div>
+      <small className="ws-hint">{t("Tests every bill, payment and stock count against each other. It changes nothing.")}</small>
+      {err && <p role="alert" className="ws-err">{err}</p>}
+      {res && (
+        <div role="status">
+          <p><b>{res.ok ? t("All agree") : res.problems.length + " " + t("to look at")}</b> · {res.bills} {t("bills")}, {res.products} {t("parts")}</p>
+          {res.problems.length > 0 && <ul className="books-problems">{res.problems.map((p, i) => <li key={i}><b>{p.ref}</b> {p.text}</li>)}</ul>}
+          {res.notes.length > 0 && <ul className="muted books-notes">{res.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function Reports() {
   const { go } = useWs();
   const [from, setFrom] = useState(today().slice(0, 8) + "01"), [until, setUntil] = useState(today()), [err, setErr] = useState("");
@@ -129,6 +150,7 @@ export function Reports() {
         </div>
       </div>
       <SlowStock />
+      <BooksCheck />
       {(error || err) && <Loading error={error || err} />}
       {!data ? !error && <Loading /> : (
         <>

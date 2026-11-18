@@ -2,7 +2,7 @@ import { suggestShelf } from "./shelfRoute";
 import React, { useEffect, useRef, useState } from "react";
 import { Camera, Check, X } from "lucide-react";
 import { api, shrink, type Match, type Draft } from "./api";
-import { getDefaultReorder } from "./businessName";
+import { getDefaultMarkup, getDefaultReorder, priceFromCost } from "./businessName";
 import { t } from "./i18n";
 import { suggestFields, type Field, type Suggestion } from "./suggestions";
 import { Item, uid, prettyModel, useCommand, Photo, printLabelSheet } from "./partsShared";
@@ -78,7 +78,8 @@ export function ProductEditor({
   const command = useCommand();
   // A photo can be added while registering: it is stored now and attached to the new item on save.
   const [photoId, setPhotoId] = useState(imageId), [photoBusy, setPhotoBusy] = useState(false), [savedNote, setSavedNote] = useState("");
-  const [shelfMap, setShelfMap] = useState(false), [price, setPrice] = useState(""), [cost, setCost] = useState(""), [markup, setMarkup] = useState(() => { try { return localStorage.getItem("lifta.markup") || "30"; } catch { return "30"; } }), [madeNow, setMadeNow] = useState<Item[]>([]);
+  const shopMarkup = getDefaultMarkup();
+  const [shelfMap, setShelfMap] = useState(false), [price, setPrice] = useState(""), [cost, setCost] = useState(""), [madeNow, setMadeNow] = useState<Item[]>([]);
   const askPrice = !item && can("price_edit") && !inTask;
   const addAnother = useRef(false), formEl = useRef<HTMLFormElement>(null);
   const [shootPhoto, setShootPhoto] = useState(false);
@@ -398,8 +399,8 @@ export function ProductEditor({
                 <details>
                   <summary>{t("Work it out from the cost")}</summary>
                   <label>{t("Cost (each)")}<input type="number" inputMode="decimal" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></label>
-                  <label>{t("Markup %")}<input type="number" inputMode="decimal" min="0" step="1" value={markup} onChange={(e) => { setMarkup(e.target.value); try { localStorage.setItem("lifta.markup", e.target.value); } catch { /* ignore */ } }} /></label>
-                  <button type="button" className="button secondary small" disabled={!(Number(cost) > 0)} onClick={() => setPrice(String(Math.round(Number(cost) * (1 + Number(markup || 0) / 100) * 100) / 100))}>{t("Use this price")}</button>
+                  <button type="button" className="button secondary small" disabled={!(Number(cost) > 0) || !(shopMarkup > 0)} onClick={() => setPrice(String(priceFromCost(Number(cost), shopMarkup)))}>{t("Use this price")}</button>
+                  <small className="ws-hint">{shopMarkup > 0 ? t("Cost + {n}% (the shop markup), rounded up to the next 5.", { n: shopMarkup }) : t("Set the Default markup in Settings first.")}</small>
                 </details>
               </div>
             )}

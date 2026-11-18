@@ -8,7 +8,7 @@ import json
 import re
 import traceback
 
-from . import alerts, core, links, monthly, slowstock, customers, forecast, inventory, messages, orders, payables, perms, claims, ownermail, photos, platform, quotes, staff, suppliers, workshop
+from . import alerts, bookscheck, cashup, core, links, monthly, slowstock, customers, forecast, inventory, messages, orders, payables, perms, claims, ownermail, photos, platform, quotes, staff, suppliers, workshop
 from .core import ApiError, actor, bad, dumps, groups, remember_email, require
 
 OWNER, STAFF = ('OWNER',), perms.ROLES  # OWNER: the owner only. STAFF: anyone who works in the shop (reads everyone needs)
@@ -221,6 +221,11 @@ route('GET', '/api/workshop/owner-mail', OWNER, lambda e, p, b, k: ownermail.vie
 route('PUT', '/api/workshop/owner-mail', OWNER, lambda e, p, b, k: ownermail.save(k, actor(e), b))
 route('POST', '/api/workshop/owner-mail/test', OWNER, lambda e, p, b, k: ownermail.send_test(actor(e)))
 route('PUT', '/api/workshop/settings', P('settings'), lambda e, p, b, k: workshop.save_business(k, actor(e), b))
+route('GET', '/api/workshop/cashup', P('cash_up'), lambda e, p, b, k: cashup.view(q(e, 'date')))
+route('GET', '/api/workshop/cashup/history', P('cash_up'), lambda e, p, b, k: cashup.history())
+route('POST', '/api/workshop/cashup', P('cash_up'), lambda e, p, b, k: cashup.close(k, actor(e), b))
+route('POST', '/api/workshop/cashup/reopen', OWNER, lambda e, p, b, k: cashup.reopen(k, actor(e), b))
+route('GET', '/api/workshop/books-check', P('reports'), lambda e, p, b, k: bookscheck.run())
 route('GET', '/api/workshop/export', P('export'), lambda e, p, b, k: workshop.export_all())
 route('GET', '/api/workshop/report', P('reports'), lambda e, p, b, k: workshop.report(q(e, 'from'), q(e, 'until')))
 route('GET', '/api/workshop/report.pdf', P('reports'), lambda e, p, b, k: ('pdf',) + workshop.report_pdf(q(e, 'from'), q(e, 'until')))

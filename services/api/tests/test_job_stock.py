@@ -28,6 +28,7 @@ def test_use_and_take_back(api):
     assert j['parts'] == [] and stock(api, p['id']) == 10  # fully taken back: the line goes, stock is whole again
     kinds = [m['kind'] for m in ok(api('GET', '/api/inventory/movements', role='MECHANIC')) if m['kind'] in ('ISSUE', 'RETURN')]
     assert sorted(kinds) == ['ISSUE', 'ISSUE', 'RETURN', 'RETURN']
+    assert ok(api('GET', '/api/workshop/books-check', role='OWNER'))['ok']
 
 
 def test_negative_cases(api):

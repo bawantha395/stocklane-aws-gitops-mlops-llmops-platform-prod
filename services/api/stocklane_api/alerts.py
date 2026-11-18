@@ -7,7 +7,7 @@ An alert has a stable key (type#reference), so ticking it off once is enough.
 from datetime import timedelta
 from decimal import Decimal
 
-from .core import bad, command, get, now, put, query
+from .core import bad, command, emails, get, now, put, query
 
 TYPES = ('BELOW_COST', 'DISCOUNT', 'VOID', 'REFUND', 'COUNT', 'COST_EDIT', 'STOCK_RETURN', 'ESTIMATE_DECISION')
 DISCOUNT_PCT = Decimal('10')   # a bill discounted by more than this share of its value
@@ -70,8 +70,9 @@ def found(days=WINDOW_DAYS):
 
 
 def listing():
-    seen = _seen()
-    rows = [dict(a, seen=a['key'] in seen, seen_by=(seen.get(a['key']) or {}).get('by', '')) for a in found()]
+    seen, who = _seen(), emails()  # a sign-in id is shown as the person's e-mail, never as the raw id
+    name = lambda v: who.get(v, v)  # noqa: E731
+    rows = [dict(a, by=name(a['by']), seen=a['key'] in seen, seen_by=name((seen.get(a['key']) or {}).get('by', ''))) for a in found()]
     return {'alerts': rows[:200], 'unseen': sum(1 for a in rows if not a['seen']), 'types': list(TYPES)}
 
 

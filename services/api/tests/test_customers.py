@@ -192,3 +192,12 @@ def test_each_shop_has_its_own_customers(api):
 def test_export_includes_customers(api):
     job(api)
     assert [c['name'] for c in ok(api('GET', '/api/workshop/export'))['customers']] == ['Nimal Perera']
+
+
+def test_a_vehicle_form_opened_earlier_cannot_undo_what_someone_else_saved_since(api):
+    ok(api('POST', '/api/workshop/jobs', {'registration': 'CAB-1234', 'customer': 'Nimal', 'phone': '0771234567', 'vehicle': 'Axio', 'summary': 'Service'}))
+    base = {'owner': 'Nimal', 'phone': '0771234567', 'make': 'Axio', 'notes': ''}  # what both people saw when they opened Edit
+    ok(api('PATCH', '/api/workshop/vehicles/CAB1234', {'notes': 'Rusty door', 'base': base}))  # the first one saves
+    assert api('PATCH', '/api/workshop/vehicles/CAB1234', {'notes': 'Needs tyres', 'base': base})[0] == 409  # the second form is out of date
+    assert ok(api('GET', '/api/workshop/vehicles/CAB1234'))['notes'] == 'Rusty door'
+    ok(api('PATCH', '/api/workshop/vehicles/CAB1234', {'notes': 'Needs tyres'}))  # callers that send no base still work

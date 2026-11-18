@@ -3,9 +3,9 @@ import { t } from "../i18n";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
-export type PageName = "home" | "jobs" | "vehicles" | "customers" | "customer" | "due" | "invoices" | "archive" | "report" | "settings" | "new" | "job" | "vehicle" | "invoice" | "quotes" | "quote" | "messages" | "alerts" | "quickbill";
+export type PageName = "home" | "jobs" | "vehicles" | "customers" | "customer" | "due" | "invoices" | "archive" | "report" | "settings" | "new" | "job" | "vehicle" | "invoice" | "quotes" | "quote" | "messages" | "alerts" | "quickbill" | "cashup";
 export type Page = { name: PageName; id?: string; reg?: string; kind?: "ESTIMATE" | "QUOTATION"; tab?: "JOBS" | "ESTIMATE" | "QUOTATION" };
-export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string; qr_url?: string; invoice_prefix?: string; default_reorder_level?: number; default_markup_pct?: number; sinhala?: boolean; labour_items?: Labour[]; mechanics?: string[]; logo?: { v: string; w: number; h: number; c: number } | null };
+export type Business = { name: string; address: string; phone: string; email: string; reg_no: string; bank: string; footer: string; tax_name: string; tax_rate: number; mechanic_discount_pct?: number; payment_terms_days?: number; warranty?: string; qr_url?: string; invoice_prefix?: string; default_reorder_level?: number; default_markup_pct?: number; sinhala?: boolean; cash_up_on?: boolean; day_lock_on?: boolean; labour_items?: Labour[]; mechanics?: string[]; logo?: { v: string; w: number; h: number; c: number } | null };
 export type Part = { name: string; quantity: number; unit_price: number; outside?: boolean; outside_cost?: number | string; outside_shop?: string; outside_supplier_id?: string; product_id?: string; discount_pct?: number; part_no?: string; added_at?: string; returned?: number; returned_at?: string };
 export type Labour = { description: string; amount: number };
 export type Stage = "WAITING" | "IN_PROGRESS" | "PARTS" | "READY";
@@ -69,7 +69,8 @@ export const today = () => dateOnly(new Date().toISOString());
 export const addDays = (iso: string, n: number) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 export const regKey = (s: string) => s.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 export const num = (s: string | number | undefined) => (Number.isFinite(Number(s)) ? Number(s) : 0);
-export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+/** Half a cent rounds up, like the server. The nudge covers float error (7 x 42273 x 92.5% is 273709.57499999997 in floats, but exactly .575). */
+export const round2 = (n: number) => (n < 0 ? -Math.round(-n * 100 + 1e-6) : Math.round(n * 100 + 1e-6)) / 100;
 /** WhatsApp click-to-chat link for a Sri Lankan number (07x becomes 947x). */
 /** Days past the payment terms (Setup; 7 days when none is set) for a bill that still has a balance. 0 when it is not late. */
 /** Days past due. Uses the server's own count when the bill carries it (same Colombo-date clock, and 30 days for Insurance/Credit bills); otherwise counts Colombo calendar days here. */
@@ -103,9 +104,11 @@ export function useCommand() {
 /** Load once (and again on reload()). A null path loads nothing. */
 export function useLoad<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null), [error, setError] = useState("");
+  const latest = useRef(0);  // an older answer that arrives late (a slow search) must never replace a newer one
   const load = useCallback(async () => {
+    const mine = ++latest.current;
     if (!path) { setData(null); return; }
-    try { setData(await api<T>(path)); setError(""); } catch (e) { setError((e as Error).message); }
+    try { const d = await api<T>(path); if (mine === latest.current) { setData(d); setError(""); } } catch (e) { if (mine === latest.current) setError((e as Error).message); }
   }, [path]);
   useEffect(() => { void load(); }, [load]);
   return { data, error, reload: load };

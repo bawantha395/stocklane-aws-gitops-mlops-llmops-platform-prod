@@ -55,6 +55,7 @@ def test_void_refund_count_cost_edit_and_stock_return(api):
     got = {a['type']: a for a in alerts(api)['alerts']}
     assert {'VOID', 'REFUND', 'COUNT', 'COST_EDIT', 'STOCK_RETURN'} <= set(got)
     assert got['COST_EDIT']['detail'] == 'from 800 to 950' and got['REFUND']['amount'] == 500
+    assert ok(api('GET', '/api/workshop/books-check', role='OWNER'))['ok']  # void, refund, count, delivery and a supplier return leave the books in agreement
 
 
 def test_seen_sticks_and_is_per_shop(api):

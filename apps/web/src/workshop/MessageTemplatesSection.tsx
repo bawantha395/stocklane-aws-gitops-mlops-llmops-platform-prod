@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MessageCircle } from "lucide-react";
 import { t } from "../i18n";
 import { toast } from "../ui";
 import { api } from "../api";
@@ -28,8 +29,8 @@ export function MessageTemplatesSection({ sinhala }: { sinhala: boolean }) {
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   return (
-    <section className="ws-card">
-      <h3>{t("Customer messages")}</h3>
+    <section className="ws-sec">
+      <h3><span className="ws-sec-ico"><MessageCircle size={18} /></span>{t("Customer messages")}</h3>
       <small className="ws-hint">{t("The words of each WhatsApp message. Tap a word below to add it where the cursor is; it is filled in for each customer.")}</small>
       <div className="ws-contact">{view.variables.map((v) => <button key={v} type="button" className="button secondary small" onClick={() => insert(v)}>{"{" + v + "}"}</button>)}</div>
       {KIND.map(([k, label]) => (

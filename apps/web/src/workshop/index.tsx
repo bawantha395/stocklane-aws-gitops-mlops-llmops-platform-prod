@@ -18,10 +18,12 @@ import { Messages } from "./Messages";
 import { Alerts } from "./Alerts";
 import { reconnectPrinter } from "./printer";
 import { QuickBill } from "./QuickBill";
+import { CashUp } from "./CashUp";
 import { WsContext, useScrollFeel, type Business, type Page, type PageName } from "./common";
 
 import { toast } from "../ui";
-import { getBusinessName, setBusinessName, setDefaultReorder } from "../businessName";
+import { setSinhalaAllowed } from "../i18n";
+import { getBusinessName, setBusinessName, setDefaultMarkup, setDefaultReorder } from "../businessName";
 const HELP: Partial<Record<PageName, string>> = {
   home: "Today in your workshop.", jobs: "Every vehicle that came in, with its repairs and bill.", new: "Fill in the vehicle and what needs doing.",
   quotes: "Estimates (the price can still change, like an insurance repair) and quotations (a fixed price). Send a PDF, revise it, then make the job.", quote: "Fill in the vehicle, the damage and the work by section.",
@@ -36,7 +38,8 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
   const [page, setPage] = useState<Page>(start || { name: "home" });
   const [, setNotice] = useState("");
   const [business, setBusiness] = useState<Business>({ ...FALLBACK, name: getBusinessName() });
-  const reloadBusiness = useCallback(() => { api<Business>("/api/workshop/settings").then((b) => { setBusiness(b); setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); }).catch(() => undefined); }, []);
+  const [bizLoaded, setBizLoaded] = useState(false);  // the Settings form copies the shop details once when it opens, so it waits for the real ones
+  const reloadBusiness = useCallback(() => { api<Business>("/api/workshop/settings").then((b) => { setBusiness(b); setBizLoaded(true); setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); setDefaultMarkup(b.default_markup_pct); setSinhalaAllowed(!!b.sinhala); }).catch(() => undefined); }, []);
   useEffect(reloadBusiness, [reloadBusiness]);
   useEffect(() => { void reconnectPrinter(); }, []);
   const go = useCallback((next: Page, message = "") => {
@@ -61,11 +64,11 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
     { key: "home", label: t("Home"), pages: ["home"] },
     { key: "jobs", label: t("Jobs"), pages: ["jobs"] },
     { key: "vehicles", label: t("Vehicles"), pages: ["vehicles", ...(can("customers_view") ? ["customers"] : []), "due", ...(can("messages") ? ["messages"] : [])] as PageName[] },
-    ...(can("bills_view") || can("reports") || can("alerts") ? [{ key: "money", label: t("Bills"), pages: [...(can("bills_view") ? ["invoices"] : []), ...(can("reports") ? ["report"] : []), ...(can("alerts") ? ["alerts"] : [])] as PageName[] }] : []),
+    ...(can("bills_view") || can("reports") || can("alerts") || (business.cash_up_on && can("cash_up")) ? [{ key: "money", label: t("Bills"), pages: [...(can("bills_view") ? ["invoices"] : []), ...(can("reports") ? ["report"] : []), ...(business.cash_up_on && can("cash_up") ? ["cashup"] : []), ...(can("alerts") ? ["alerts"] : [])] as PageName[] }] : []),
     ...(owner ? [{ key: "setup", label: t("Setup"), pages: ["archive", "settings"] as PageName[] }] : []),
   ];
   const tab: PageName = page.name === "job" || page.name === "new" ? "jobs" : page.name === "quote" || page.name === "quotes" ? "jobs" : page.name === "vehicle" ? "vehicles" : page.name === "customer" ? "customers" : page.name === "invoice" || page.name === "quickbill" ? "invoices" : page.name;
-  const TITLES: Partial<Record<PageName, string>> = { home: t("Today"), messages: t("Messages"), alerts: t("Alerts"), jobs: t("Jobs"), new: t("New job"), job: t("Job"), quotes: t("Estimates and quotations"), quote: t("Estimate or quotation"), vehicles: t("Vehicles"), vehicle: t("Vehicle"), customers: t("Customers"), customer: t("Customer"), due: t("Service due"), invoices: t("Invoices"), quickbill: t("Quick bill"), invoice: t("Invoice"), archive: t("Archive"), report: t("Sales report"), settings: t("Settings") };
+  const TITLES: Partial<Record<PageName, string>> = { home: t("Today"), messages: t("Messages"), alerts: t("Alerts"), jobs: t("Jobs"), new: t("New job"), job: t("Job"), quotes: t("Estimates and quotations"), quote: t("Estimate or quotation"), vehicles: t("Vehicles"), vehicle: t("Vehicle"), customers: t("Customers"), customer: t("Customer"), due: t("Service due"), invoices: t("Invoices"), quickbill: t("Quick bill"), invoice: t("Invoice"), archive: t("Archive"), report: t("Sales report"), settings: t("Settings"), cashup: t("Cash-up") };
   const title = TITLES[page.name] || business.name;
   const headRef = useRef<HTMLHeadingElement>(null), pageRef = useRef<HTMLDivElement>(null), [shrunk, setShrunk] = useState(false);
   useEffect(() => { const h = headRef.current; if (!h || !("IntersectionObserver" in window)) return; const io = new IntersectionObserver((es) => setShrunk(!es[0]!.isIntersecting), { rootMargin: (window.innerWidth <= 760 ? "-150px" : "-10px") + " 0px 0px 0px" }); io.observe(h); return () => io.disconnect(); }, [page.name]);
@@ -89,7 +92,7 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
       <section className="ws" aria-label="Workshop">
         <div className="ws-top">
           <div><p className="eyebrow">{business.name}</p><h1 ref={headRef} className="ws-large">{title}</h1></div>
-          <div className="ws-top-actions">{can("jobs") && <button className="button primary" onClick={() => go({ name: "new" })}>+ {t("New job")}</button>}</div>
+          <div className="ws-top-actions">{can("jobs") && page.name !== "settings" && <button className="button primary" onClick={() => go({ name: "new" })}>+ {t("New job")}</button>}</div>
         </div>
         {!online && <p className="ws-offline" role="alert">{t("You are offline. Changes will not save until the internet is back.")}</p>}
         <div className={"ws-sticky" + (shrunk ? " shrunk" : "")}>
@@ -120,7 +123,8 @@ export function Workshop({ owner, start }: { owner: boolean; start?: Page }) {
         {page.name === "invoice" && page.id && <InvoicePage key={page.id} id={page.id} />}
         {page.name === "archive" && owner && <Archive />}
         {page.name === "report" && can("reports") && <Reports />}
-        {page.name === "settings" && owner && <Settings />}
+        {page.name === "cashup" && business.cash_up_on && can("cash_up") && <CashUp />}
+        {page.name === "settings" && owner && (bizLoaded ? <Settings /> : <p className="muted" role="status">{t("Loading…")}</p>)}
         </div>
       </section>
     </WsContext.Provider>

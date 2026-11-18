@@ -9,9 +9,11 @@ import { setModules } from "../modules";
 import { counterStartIsAuto, getCounterStart, setCounterStart } from "../counterStart";
 
 type Lv = { id?: string; name: string; photo_id?: string };
-type Rk = { id?: string; photo_id?: string; name: string; area: string; type: "RACK" | "CUPBOARD" | "FLOOR"; levels: Lv[] };
+type Rk = { id?: string; photo_id?: string; row?: number; col?: number; name: string; area: string; type: "RACK" | "CUPBOARD" | "FLOOR"; levels: Lv[] };
+type Mk = { id?: string; kind: "IN" | "OUT" | "STAGING"; row: number; col: number };
 type Ar = { id?: string; name: string; pos?: string };
-type Layout = { areas: { id: string; name: string; pos?: string }[]; racks: { id: string; photo_id?: string; name: string; area_id: string | null; type: Rk["type"]; levels: Lv[] }[]; counts: Record<string, Record<string, number>>; not_shelved: number; revision: number };
+type Layout = { marks?: Mk[]; areas: { id: string; name: string; pos?: string }[]; racks: { id: string; photo_id?: string; row?: number; col?: number; name: string; area_id: string | null; type: Rk["type"]; levels: Lv[] }[]; counts: Record<string, Record<string, number>>; not_shelved: number; revision: number };
+const MARK_TEXT: Record<Mk["kind"], string> = { IN: "IN", OUT: "OUT", STAGING: "Staging" };
 const TYPE: Record<Rk["type"], string> = { RACK: "Rack", CUPBOARD: "Cupboard", FLOOR: "Floor" };
 const move = <T,>(list: T[], i: number, d: number) => { const j = i + d; if (j < 0 || j >= list.length) return list; const c = [...list]; [c[i], c[j]] = [c[j], c[i]]; return c; };
 
@@ -19,10 +21,12 @@ const move = <T,>(list: T[], i: number, d: number) => { const j = i + d; if (j <
  *  rename keeps the label and the shelf the same shelf. A shelf with parts on it cannot be removed. */
 export function StoreRoomSection() {
   const [areas, setAreas] = useState<Ar[]>([]), [racks, setRacks] = useState<Rk[]>([]), [counts, setCounts] = useState<Layout["counts"]>({}), [loose, setLoose] = useState(0);
+  const [marks, setMarks] = useState<Mk[]>([]), [grid, setGrid] = useState({ rows: 4, cols: 6 }), [put, setPut] = useState<Mk["kind"] | null>(null), [selMark, setSelMark] = useState<number | null>(null);
   const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState(""), [loaded, setLoaded] = useState(false), [dirty, setDirty] = useState(false);
   const adopt = (l: Layout) => {
     setAreas(l.areas.map((a) => ({ id: a.id, name: a.name, pos: a.pos }))); setCounts(l.counts); setLoose(l.not_shelved); setRevision(l.revision); setDirty(false);
-    setRacks(l.racks.map((r) => ({ id: r.id, photo_id: r.photo_id, name: r.name, area: r.area_id || "", type: r.type, levels: r.levels.map((x) => ({ ...x })) })));
+    setMarks(l.marks || []); setGrid({ rows: Math.max(4, ...l.racks.map((r) => (r.row ?? -1) + 2), ...(l.marks || []).map((m) => m.row + 2)), cols: Math.max(6, ...l.racks.map((r) => (r.col ?? -1) + 2), ...(l.marks || []).map((m) => m.col + 2)) });
+    setRacks(l.racks.map((r) => ({ id: r.id, photo_id: r.photo_id, row: r.row, col: r.col, name: r.name, area: r.area_id || "", type: r.type, levels: r.levels.map((x) => ({ ...x })) })));
   };
   const load = () => api<Layout>("/api/inventory/stores/layout").then((l) => { adopt(l); setLoaded(true); }).catch((e) => setError((e as Error).message));
   useEffect(() => { void load(); }, []);
@@ -31,8 +35,8 @@ export function StoreRoomSection() {
   const save = async () => {
     setBusy(true); setError("");
     try {
-      const body = { revision, areas: areas.map((a) => ({ ...(a.id ? { id: a.id } : {}), ...(a.pos ? { pos: a.pos } : {}), name: a.name.trim() })).filter((a) => a.name),
-        racks: racks.filter((r) => r.name.trim()).map((r) => ({ ...(r.id ? { id: r.id } : {}), name: r.name.trim(), type: r.type, photo_id: r.photo_id || "", area_id: r.area ? (areas.find((a) => (a.id || a.name) === r.area)?.id || areas.find((a) => a.name === r.area)?.name || null) : null,
+      const body = { revision, marks: marks.map((m) => ({ ...(m.id ? { id: m.id } : {}), kind: m.kind, row: m.row, col: m.col })), areas: areas.map((a) => ({ ...(a.id ? { id: a.id } : {}), ...(a.pos ? { pos: a.pos } : {}), name: a.name.trim() })).filter((a) => a.name),
+        racks: racks.filter((r) => r.name.trim()).map((r) => ({ ...(r.id ? { id: r.id } : {}), name: r.name.trim(), type: r.type, photo_id: r.photo_id || "", row: r.row ?? null, col: r.col ?? null, area_id: r.area ? (areas.find((a) => (a.id || a.name) === r.area)?.id || areas.find((a) => a.name === r.area)?.name || null) : null,
           levels: r.levels.filter((l) => l.name.trim()).map((l) => ({ ...(l.id ? { id: l.id } : {}), name: l.name.trim(), ...(l.photo_id ? { photo_id: l.photo_id } : { photo_id: "" }) })) })) };
       const res = await api<Layout & { moved: number }>("/api/inventory/stores/layout", { method: "PUT", body: JSON.stringify(body) }, crypto.randomUUID());
       adopt(res); window.dispatchEvent(new Event("lifta:stock-changed"));
@@ -54,10 +58,42 @@ export function StoreRoomSection() {
     if (j < 0 || j >= x.length) return x; const c = [...x]; [c[i], c[j]] = [c[j], c[i]]; return c; });
   const [sel, setSel] = useState<number | null>(null);
   const nextNumber = () => String(racks.reduce((n, r) => (/^\d+$/.test(r.name.trim()) ? Math.max(n, Number(r.name.trim())) : n), 0) + 1);
+  const taken = () => new Set([...racks.filter((r) => r.row !== undefined).map((r) => r.row + "," + r.col), ...marks.map((m) => m.row + "," + m.col)]);
+  /** The first empty square, reading left to right, top to bottom; a new row is added when the plan is full. */
+  const freeSquare = () => {
+    const used = taken();
+    for (let r = 0; r < grid.rows; r++) for (let c = 0; c < grid.cols; c++) if (!used.has(r + "," + c)) return { row: r, col: c };
+    if (grid.rows < 40) setGrid({ ...grid, rows: grid.rows + 1 });
+    return { row: grid.rows, col: 0 };
+  };
+  const tapSquare = (r: number, c: number) => {
+    const rk = racks.findIndex((x) => x.row === r && x.col === c), mk = marks.findIndex((m) => m.row === r && m.col === c);
+    if (rk >= 0) { setSel(rk); setSelMark(null); setPut(null); return; }
+    if (mk >= 0) { setSelMark(mk); setSel(null); setPut(null); return; }
+    if (put) { edit(setMarks, (x) => (x.length >= 30 ? x : [...x, { kind: put, row: r, col: c }])); setPut(null); return; }
+    if (selMark !== null) { edit(setMarks, (x) => x.map((m, k) => (k === selMark ? { ...m, row: r, col: c } : m))); return; }
+    if (sel !== null) setRack(sel, { ...racks[sel], row: r, col: c });
+  };
+  const unplace = () => {
+    if (selMark !== null) { edit(setMarks, (x) => x.filter((_, k) => k !== selMark)); setSelMark(null); }
+    else if (sel !== null) edit(setRacks, (x) => x.map((v, k) => { if (k !== sel) return v; const { row: _r, col: _c, ...rest } = v; void _r; void _c; return rest; }));
+  };
+  const arrange = () => { // every rack without a square goes to the next empty one, wall by wall
+    const used = taken(); const order = ["N", "W", "E", "S"].flatMap((p) => areas.filter((a) => a.pos === p));
+    const rank = (r: Rk) => { const k = order.findIndex((a) => key(a) === r.area); return k < 0 ? 99 : k; };
+    const todo = racks.map((r, i) => ({ r, i })).filter(({ r }) => r.row === undefined).sort((a, b) => rank(a.r) - rank(b.r) || a.i - b.i);
+    let rows = grid.rows; const put2: Record<number, { row: number; col: number }> = {}; let r0 = 0, c0 = 0;
+    for (const { i } of todo) {
+      while (used.has(r0 + "," + c0)) { c0++; if (c0 >= grid.cols) { c0 = 0; r0++; } }
+      put2[i] = { row: r0, col: c0 }; used.add(r0 + "," + c0); rows = Math.max(rows, r0 + 2);
+    }
+    if (todo.length) { edit(setRacks, (x) => x.map((v, k) => (put2[k] ? { ...v, ...put2[k] } : v))); setGrid({ ...grid, rows: Math.min(40, rows) }); }
+  };
   const addRack = (wall: Ar) => {
     if (racks.length >= 100) return;
-    edit(setRacks, (x) => [...x, { name: nextNumber(), area: key(wall), type: "RACK" as const, levels: ["A", "B", "C"].map((name) => ({ name })) }]);
-    setSel(racks.length);
+    const at = freeSquare();
+    edit(setRacks, (x) => [...x, { name: nextNumber(), area: key(wall), type: "RACK" as const, row: at.row, col: at.col, levels: ["A", "B", "C"].map((name) => ({ name })) }]);
+    setSel(racks.length); setSelMark(null);
   };
   const removeRack = (i: number) => { edit(setRacks, (x) => x.filter((_, k) => k !== i)); setSel(null); };
   const wall = (pos: string) => areas.find((a) => a.pos === pos);
@@ -92,6 +128,29 @@ export function StoreRoomSection() {
         <div className="sr-wall sr-lone"><b className="sr-wallname">{t("Racks with no wall")}</b>
           <div className="sr-boxes">{loneRacks.map(({ r, i }) => <button key={r.id || "n" + i} type="button" className={"sr-box" + (sel === i ? " on" : "")} aria-pressed={sel === i} onClick={() => setSel(sel === i ? null : i)}>{r.name || "?"}</button>)}</div></div>
       )}
+      <div className="fp-ed" role="group" aria-label={t("Floor plan")}>
+        <div className="fp-bar">
+          <b>{t("Floor plan")}</b>
+          <button type="button" className={"button secondary small" + (put === "IN" ? " on" : "")} onClick={() => { setPut(put === "IN" ? null : "IN"); setSel(null); setSelMark(null); }}>+ {t("IN")}</button>
+          <button type="button" className={"button secondary small" + (put === "OUT" ? " on" : "")} onClick={() => { setPut(put === "OUT" ? null : "OUT"); setSel(null); setSelMark(null); }}>+ {t("OUT")}</button>
+          <button type="button" className={"button secondary small" + (put === "STAGING" ? " on" : "")} onClick={() => { setPut(put === "STAGING" ? null : "STAGING"); setSel(null); setSelMark(null); }}>+ {t("Staging")}</button>
+          <button type="button" className="button secondary small" disabled={grid.rows >= 40} onClick={() => setGrid({ ...grid, rows: grid.rows + 1 })}>+ {t("Row")}</button>
+          <button type="button" className="button secondary small" disabled={grid.cols >= 12} onClick={() => setGrid({ ...grid, cols: grid.cols + 1 })}>+ {t("Column")}</button>
+          {racks.some((r) => r.row === undefined) && <button type="button" className="button secondary small" onClick={arrange}>{t("Place all racks")}</button>}
+          {((sel !== null && racks[sel]?.row !== undefined) || selMark !== null) && <button type="button" className="button secondary small" onClick={unplace}>{selMark !== null ? t("Remove") : t("Take off the plan")}</button>}
+        </div>
+        <small className="ws-hint">{put ? t("Tap an empty square to put it there.") : selMark !== null || sel !== null ? t("Tap an empty square to move the selected one there.") : t("Tap a rack, then an empty square, to place it. Empty squares are aisles.")}</small>
+        <div className="fp-scroll"><div className="fp-grid" style={{ gridTemplateColumns: "repeat(" + grid.cols + ", minmax(58px, 1fr))" }}>
+          {Array.from({ length: grid.rows * grid.cols }, (_, n) => {
+            const r = Math.floor(n / grid.cols), c = n % grid.cols;
+            const ri = racks.findIndex((x) => x.row === r && x.col === c), mi = marks.findIndex((m) => m.row === r && m.col === c);
+            if (ri >= 0) { const zi = areas.findIndex((a) => key(a) === racks[ri].area); return <button key={n} type="button" className={"fp-cell rack z" + (zi < 0 ? "x" : zi) + (sel === ri ? " on" : "")} aria-pressed={sel === ri} onClick={() => tapSquare(r, c)}>{racks[ri].name || "?"}</button>; }
+            if (mi >= 0) return <button key={n} type="button" className={"fp-cell mark" + (selMark === mi ? " on" : "")} aria-pressed={selMark === mi} onClick={() => tapSquare(r, c)}>{t(MARK_TEXT[marks[mi].kind])}</button>;
+            return <button key={n} type="button" className={"fp-cell empty" + (put || sel !== null || selMark !== null ? " target" : "")} aria-label={t("Empty square")} onClick={() => tapSquare(r, c)} />;
+          })}
+        </div></div>
+        {racks.some((r) => r.row === undefined) && <p className="fp-unplaced">{t("Not on the plan yet")}: {racks.map((r, i) => (r.row === undefined ? <button key={r.id || "n" + i} type="button" className={"sr-box" + (sel === i ? " on" : "")} onClick={() => { setSel(sel === i ? null : i); setSelMark(null); setPut(null); }}>{r.name || "?"}</button> : null))}</p>}
+      </div>
       {cur && sel !== null && (
         <div className="sr-panel">
           <div className="sr-panel-head">
@@ -134,7 +193,7 @@ export function ModulesBox() {
   if (!s) return null;
   const flip = async (k: "store_room_on" | "counter_on" | "store_room_phone" | "counter_web", on: boolean) => {
     setBusy(true);
-    try { const next = { ...s, [k]: on }; await api("/api/workshop/settings", { method: "PUT", body: JSON.stringify(next) }, crypto.randomUUID()); setS(next); setModules(next); toast(t("Saved")); }
+    try { const latest = await api<Record<string, unknown>>("/api/workshop/settings"); const next = { ...latest, [k]: on }; await api("/api/workshop/settings", { method: "PUT", body: JSON.stringify(next) }, crypto.randomUUID()); setS(next); setModules(next); toast(t("Saved")); }
     catch (e) { toast((e as Error).message, { bad: true }); } finally { setBusy(false); }
   };
   return (

@@ -100,14 +100,14 @@ export function Vehicles() {
 export function VehiclePage({ id }: { id: string }) {
   const { go, business } = useWs();
   const { data: v, error, reload } = useLoad<Vehicle>("/api/workshop/vehicles/" + id);
-  const [edit, setEdit] = useState(false), [f, setF] = useState({ owner: "", phone: "", make: "", notes: "" }), [msg, setMsg] = useState("");
+  const [edit, setEdit] = useState(false), [f, setF] = useState({ owner: "", phone: "", make: "", notes: "" }), [base, setBase] = useState({ owner: "", phone: "", make: "", notes: "" }), [msg, setMsg] = useState("");
   const [sold, setSold] = useState(false), [nw, setNw] = useState({ owner: "", phone: "" });
   const command = useCommand();
   if (!v) return <Loading error={error} />;
-  const startEdit = () => { setF({ owner: v.owner || "", phone: v.phone || "", make: v.make || "", notes: v.notes || "" }); setEdit(true); setMsg(""); };
+  const startEdit = () => { const now = { owner: v.owner || "", phone: v.phone || "", make: v.make || "", notes: v.notes || "" }; setF(now); setBase(now); setEdit(true); setMsg(""); };
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    try { await command("/api/workshop/vehicles/" + id, f, "PATCH"); setEdit(false); await reload(); } catch (err) { setMsg((err as Error).message); }
+    try { await command("/api/workshop/vehicles/" + id, { ...f, base }, "PATCH"); setEdit(false); await reload(); } catch (err) { setMsg((err as Error).message); }
   };
   const saveOwner = async (e: React.FormEvent) => {
     e.preventDefault();

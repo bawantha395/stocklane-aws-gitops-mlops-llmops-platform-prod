@@ -12,7 +12,7 @@ import "./glass.css";
 import "./theme.css";
 import "./tokens.css";
 import { ToastHost, ConfirmHost, askConfirm, applyTheme, getTheme, toast } from "./ui";
-import { setBusinessName, setDefaultReorder, useBusinessName } from "./businessName";
+import { setBusinessName, setDefaultMarkup, setDefaultReorder, useBusinessName } from "./businessName";
 import { t, useLang, setLang, setSinhalaAllowed, useSinhalaAllowed } from "./i18n";
 import { Walkthrough } from "./Walkthrough";
 import { QuickMove } from "./QuickMove";
@@ -272,7 +272,7 @@ function App() {
       setSession(s);
       try { const dl = sessionStorage.getItem("lifta.deeplink"); if (dl) { sessionStorage.removeItem("lifta.deeplink"); openWorkshop({ name: "job", id: dl }); } } catch { /* ignore */ }
       setStatus(v);
-      api<{ name: string; default_reorder_level?: number; sinhala?: boolean; store_room_on?: boolean; counter_on?: boolean; store_room_phone?: boolean; counter_web?: boolean }>("/api/workshop/settings").then((b) => { setModules(b); setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); setSinhalaAllowed(!!b.sinhala); }).catch(() => undefined);
+      api<{ name: string; default_reorder_level?: number; default_markup_pct?: number; sinhala?: boolean; store_room_on?: boolean; counter_on?: boolean; store_room_phone?: boolean; counter_web?: boolean }>("/api/workshop/settings").then((b) => { setModules(b); setBusinessName(b.name); setDefaultReorder(b.default_reorder_level); setDefaultMarkup(b.default_markup_pct); setSinhalaAllowed(!!b.sinhala); }).catch(() => undefined);
       const key = "stocklane.tasks.v2." + s.name;
       if (storageKey.current !== key) {
         storageKey.current = key;

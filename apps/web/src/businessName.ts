@@ -26,3 +26,15 @@ export function useBusinessName(): string {
 let reorder = 5;
 export const setDefaultReorder = (n: unknown) => { const v = Number(n); if (Number.isFinite(v) && v >= 0) reorder = v; };
 export const getDefaultReorder = () => reorder;
+
+/** The shop's default markup on cost (a Settings value, owner and people who see cost only). The part form and the bulk price tool start from it,
+ *  so a price worked out anywhere uses the same percentage as Price review. 0 means the shop has not set one. */
+let markup = 0;
+export const setDefaultMarkup = (n: unknown) => { const v = Number(n); markup = Number.isFinite(v) && v > 0 ? v : 0; };
+export const getDefaultMarkup = () => markup;
+
+/** Cost plus markup %, rounded UP to the next `step` rupees (5 by default). The same rule as the server's suggested price in Price review. */
+export const priceFromCost = (cost: number, markupPct: number, step = 5) => {
+  const raw = Math.round(cost * (1 + markupPct / 100) * 10000) / 10000;  // 4 decimals first, so 1300.0000000000002 is not pushed up to 1305
+  return Math.ceil(raw / step - 1e-9) * step;
+};

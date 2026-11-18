@@ -19,7 +19,7 @@ import uuid
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from . import bills, inventory, photos
+from . import bills, cashup, inventory, photos
 from .core import PerShop
 from .core import COLOMBO, ApiError, bad, batch_get, check, command, conflict, delete, emails, get, missing, now, num, public, put, query, update
 
@@ -29,7 +29,7 @@ METHODS = ('CASH', 'CARD', 'BANK', 'OTHER')
 CHANGED = 'Someone changed this just now. Reload it and try again.'
 DEFAULT_BUSINESS = {'name': 'Workshop Suite', 'address': '', 'phone': '', 'email': '', 'reg_no': '', 'bank': '',
                     'footer': 'Thank you for your business.', 'tax_name': 'VAT', 'tax_rate': ZERO, 'mechanic_discount_pct': Decimal('10'),
-                    'payment_terms_days': 0, 'warranty': '', 'qr_url': '', 'qr_bits': '', 'invoice_prefix': 'INV', 'default_reorder_level': 5, 'sinhala': False, 'store_room_on': True, 'counter_on': True, 'store_room_phone': False, 'counter_web': False, 'default_markup_pct': ZERO,
+                    'payment_terms_days': 0, 'warranty': '', 'qr_url': '', 'qr_bits': '', 'invoice_prefix': 'INV', 'default_reorder_level': 5, 'sinhala': False, 'store_room_on': True, 'counter_on': True, 'store_room_phone': False, 'counter_web': False, 'cash_up_on': False, 'day_lock_on': False, 'default_markup_pct': ZERO,
                     'labour_items': [], 'mechanics': [], 'logo': None}
 
 
@@ -147,7 +147,7 @@ def stamp_parts(new, old):
         same = next((o for o in left if (o.get('product_id') and o.get('product_id') == line.get('product_id')) or (not line.get('product_id') and not o.get('product_id') and o.get('name') == line['name'])), None)
         if same:
             left.remove(same)
-        for k in ('added_at', 'part_no', 'cost_each'):
+        for k in ('added_at', 'part_no', 'cost_each', 'cost_at', 'no_cost'):
             if same and same.get(k) is not None and same.get(k) != '':
                 line[k] = same[k]
         given = line.pop('_given', [])
@@ -268,7 +268,7 @@ def shop_lists(b):
             raise bad('"%s" is in the mechanics list twice' % name)
         seen.add(name.lower())
         names.append(name)
-    return {'invoice_prefix': prefix, 'default_reorder_level': level, 'labour_items': labour, 'mechanics': names, 'sinhala': b.get('sinhala') is True, 'store_room_on': b.get('store_room_on') is not False, 'counter_on': b.get('counter_on') is not False, 'store_room_phone': b.get('store_room_phone') is True, 'counter_web': b.get('counter_web') is True, 'default_markup_pct': markup_pct(b.get('default_markup_pct'), 'Default markup')}
+    return {'invoice_prefix': prefix, 'default_reorder_level': level, 'labour_items': labour, 'mechanics': names, 'sinhala': b.get('sinhala') is True, 'store_room_on': b.get('store_room_on') is not False, 'counter_on': b.get('counter_on') is not False, 'store_room_phone': b.get('store_room_phone') is True, 'counter_web': b.get('counter_web') is True, 'cash_up_on': b.get('cash_up_on') is True, 'day_lock_on': b.get('day_lock_on') is True and b.get('cash_up_on') is True, 'default_markup_pct': markup_pct(b.get('default_markup_pct'), 'Default markup')}
 
 
 def save_logo(key, who, body):
@@ -322,7 +322,7 @@ def save_business(key, who, body):
         stored = get('WSET', 'business') or {}
         if 'default_markup_pct' not in b:  # someone who cannot see cost cannot send it: keep what is stored
             b = dict(b, default_markup_pct=stored.get('default_markup_pct'))
-        for flag, default in (('store_room_on', True), ('counter_on', True), ('store_room_phone', False), ('counter_web', False)):  # a screen that does not send a switch keeps it as it was
+        for flag, default in (('store_room_on', True), ('counter_on', True), ('store_room_phone', False), ('counter_web', False), ('cash_up_on', False), ('day_lock_on', False)):  # a screen that does not send a switch keeps it as it was
             if flag not in b:
                 b = dict(b, **{flag: stored.get(flag, default)})
         item = {'pk': 'WSET', 'sk': 'business', 'logo': stored.get('logo'), **shop_lists(b), 'payment_terms_days': int(terms), 'warranty': lines_text(b.get('warranty'), 'Warranty note', 200), 'qr_url': text(b.get('qr_url'), 'QR link', 200), 'qr_bits': qr_bits(b.get('qr_url'), b.get('qr_bits')), 'name': text(b.get('name'), 'Business name', 60, True),
@@ -363,6 +363,17 @@ def next_job_no():
     row = {'pk': 'WSET', 'sk': 'jobseq', 'n': n, 'updated_at': now()}
     op = put(row, ConditionExpression='n = :o', ExpressionAttributeValues={':o': seq['n']}) if seq else put(row, ConditionExpression='attribute_not_exists(pk)')
     return 'JOB-%04d' % n, op
+
+
+def next_invoice_no(prefix):
+    """The next bill number, in one unbroken run (INV-0001, INV-0002...). The counter row changes in the same transaction as the bill, and only if
+    nobody took that number first, so a bill that fails to save never uses a number and two people never get the same one. A voided bill keeps
+    its number: the run has no holes, which is what an auditor looks for."""
+    seq = get('WSET', 'invseq')
+    n = int(seq['n']) + 1 if seq else 1
+    row = {'pk': 'WSET', 'sk': 'invseq', 'n': n, 'updated_at': now()}
+    op = put(row, ConditionExpression='n = :o', ExpressionAttributeValues={':o': seq['n']}) if seq else put(row, ConditionExpression='attribute_not_exists(pk)')
+    return '%s-%04d' % (prefix, n), op
 
 
 def vehicle_put(key, fields, always=(), fill_only=()):
@@ -450,6 +461,16 @@ def vehicle(key):
             'average_gap_days': round(sum(gaps) / len(gaps)) if gaps else None}
 
 
+def stale(stored, base, fields):
+    """A form sends what the fields held when it was opened (`base`). If one of them has been changed by someone else since, saving would
+    silently undo that change, so it is refused. (The vehicle's own revision moves with every job, so it cannot be used here.)"""
+    if not isinstance(base, dict):
+        return
+    for name in fields:
+        if name in base and str(stored.get(name) or '') != str(base[name] or ''):
+            raise conflict(CHANGED)
+
+
 def edit_vehicle(key, idem, who, body):
     key = regkey(key)
 
@@ -467,6 +488,7 @@ def edit_vehicle(key, idem, who, body):
             fields['chassis'] = chassis_no(b['chassis'])
         if not fields:
             raise bad('Nothing to change')
+        stale(get('VEHICLE', key), b.get('base'), fields)
         cops, always = [], ()
         if 'phone' in fields or 'owner' in fields:
             from . import customers
@@ -798,8 +820,7 @@ def use_stock(job_id, key, who, body):
                 parts.append({'name': line_name(product), 'quantity': qty, 'unit_price': product['selling_price'], 'product_id': product['id'],
                               'part_no': (product.get('part_number') or product['sku'])[:60], 'added_at': today().isoformat()})
                 line = parts[-1]
-            if product.get('last_cost') is not None:
-                line['cost_each'] = product['last_cost']  # what the part cost the shop when it left the shelf (never shown to staff without the permission)
+            stamp_cost(line, product, qty)  # what the part cost the shop when it left the shelf (never shown to staff without the permission)
         else:
             if not line:
                 raise conflict('This part was not taken from stock for this job')
@@ -856,8 +877,7 @@ def use_stock_batch(job_id, key, who, body):
                 parts.append({'name': line_name(product), 'quantity': qty, 'unit_price': product['selling_price'], 'product_id': product['id'],
                               'part_no': (product.get('part_number') or product['sku'])[:60], 'added_at': today().isoformat()})
                 line = parts[-1]
-            if product.get('last_cost') is not None:
-                line['cost_each'] = product['last_cost']
+            stamp_cost(line, product, qty)
             done.append({'product_id': product['id'], 'name': product['name'], 'quantity': qty, 'balance': balance})
         j = clean(dict(current, parts=parts, revision=int(current['revision']) + 1, updated_at=now()))
         rate = business()['tax_rate']
@@ -1029,6 +1049,25 @@ def overdue_days(i, terms=None):
     return max(0, age_days(i['created_at']) - due_days(i, terms))
 
 
+def stamp_cost(line, product, qty):
+    """Pin what a part cost the shop to the bill line when it leaves the shelf, so a bill's profit never moves with later deliveries.
+    cost_at names the delivery (its time) that set that cost: correcting that delivery's price later finds this line again.
+    A part with no known cost is marked no_cost: it stays 'unknown' until the owner adds the cost of a delivery (see inventory.restate_bills)."""
+    cost, at, had, before = product.get('last_cost'), product.get('last_cost_at'), line.get('cost_each'), line['quantity'] - qty
+    if cost is None:
+        if had is None:
+            line['no_cost'] = True
+        return
+    if before <= 0:
+        line['cost_each'], line['cost_at'] = cost, at
+        line.pop('no_cost', None)
+    elif had is None:  # some of this line was taken with no known cost: it stays unknown rather than guess for those units
+        line['no_cost'] = True
+    elif line.get('cost_at') != at:  # more of the same part from a dearer or cheaper delivery: the line carries the average
+        line['cost_each'] = ((Decimal(str(had)) * before + Decimal(str(cost)) * qty) / line['quantity']).quantize(Decimal('0.0001'))
+        line['cost_at'] = 'mixed'
+
+
 def settled(i):
     """Old bills saved before the REFUNDED status: all money given back and nothing left paid, so show REFUNDED, not 'unpaid'."""
     if not i.get('paid') and any(p.get('refund') for p in i.get('payments') or ()):
@@ -1055,7 +1094,7 @@ def finalise(job_id, key, who, body):
         rate = shop['tax_rate']
         stamped = dict(current, tax_rate=rate)
         t, created, invoice_id = totals(stamped), now(), str(uuid.uuid4())
-        number = shop['invoice_prefix'] + '-' + datetime.now(COLOMBO).strftime('%Y%m%d') + '-' + invoice_id[:6].upper()
+        number, counter = next_invoice_no(shop['invoice_prefix'])
         keep = ('registration', 'vehicle_key', 'customer', 'address', 'phone', 'vehicle', 'odometer', 'summary', 'mechanic', 'parts', 'labour',
                 'next_service_date', 'next_service_km', 'brought_by', 'brought_phone', 'warranty_until', 'warranty_km', 'warranty_job',
                 'job_no', 'chassis', 'invoice_type', 'customer_id')
@@ -1068,8 +1107,8 @@ def finalise(job_id, key, who, body):
         op = put(j, ConditionExpression='revision = :r and #s = :open', ExpressionAttributeNames={'#s': 'status'},
                  ExpressionAttributeValues={':r': current['revision'], ':open': 'OPEN'})
         fields = {**vehicle_fields(j), 'next_service_date': j.get('next_service_date'), 'next_service_km': j.get('next_service_km')}
-        ops = [op, put(invoice), vehicle_put(j['vehicle_key'], fields, always=('next_service_date', 'next_service_km'), fill_only=FROM_JOBS), history_put(j)]
-        return ops, [CHANGED, None, None, None], public(invoice)
+        ops = [op, put(invoice), vehicle_put(j['vehicle_key'], fields, always=('next_service_date', 'next_service_km'), fill_only=FROM_JOBS), history_put(j), counter]
+        return ops, [CHANGED, None, None, None, None], public(invoice)
     return command(key, 'finalise:' + job_id, who, body, build)
 
 
@@ -1158,6 +1197,7 @@ def pay(invoice_id, key, who, body):
         current, b = invoice(invoice_id), body or {}
         if current['status'] == 'VOID':
             raise conflict('This invoice was voided')
+        cashup.guard(now())  # money taken today cannot join a day that is already closed
         amount, method = money(b.get('amount'), 'Amount'), str(b.get('method') or 'CASH').upper()
         if amount <= 0 or method not in METHODS:
             raise bad('Enter an amount and pick how it was paid')
@@ -1183,6 +1223,7 @@ def refund(invoice_id, key, who, body):
         current, b = invoice(invoice_id), body or {}
         if current['status'] == 'VOID':
             raise conflict('This invoice was voided')
+        cashup.guard(now())
         amount, method = money(b.get('amount'), 'Amount'), str(b.get('method') or 'CASH').upper()
         if amount <= 0 or method not in METHODS:
             raise bad('Enter the amount and how it was given back')
@@ -1209,6 +1250,7 @@ def void_invoice(invoice_id, key, who, body):
             raise conflict('This invoice is already voided')
         if current['paid'] > 0:
             raise conflict('This invoice has payments. Void is only for unpaid invoices')
+        cashup.guard(current['created_at'])  # a bill of a closed day keeps its figures
         reason = text((body or {}).get('reason'), 'Reason', 180, True)  # the owner's report shows who voided what, and why
         j = job(current['job_id'])
         new = dict(current, status='VOID', revision=int(current['revision']) + 1, voided_by=who, voided_at=now(), voided_reason=reason)
@@ -1240,6 +1282,7 @@ def return_parts(invoice_id, key, who, body):
         current, b = invoice(invoice_id), body or {}
         if current['status'] == 'VOID':
             raise conflict('This invoice was voided')
+        cashup.guard(now())
         asked = b.get('lines')
         if not isinstance(asked, list) or not asked:
             raise bad('Select the parts being returned')
@@ -1399,7 +1442,7 @@ def profit_of(doc, costs=None):
         sale = line_total(dict(p, quantity=qty))
         sales += sale
         each = p.get('outside_cost') if p.get('outside') else p.get('cost_each')
-        if each is None and p.get('product_id'):
+        if each is None and p.get('product_id') and not p.get('no_cost'):  # only bills from before costs were pinned fall back to the part's current cost
             if p['product_id'] not in costs:
                 row = get('PRODUCT', p['product_id'])
                 costs[p['product_id']] = row.get('last_cost') if row else None

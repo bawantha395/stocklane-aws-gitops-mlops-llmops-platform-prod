@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRightLeft, Boxes, CalendarDays, ClipboardCheck, Layers, LayoutGrid, List, Plus, Printer, Search, TriangleAlert, X } from "lucide-react";
+import { ArrowRightLeft, Boxes, ClipboardCheck, DoorOpen, Layers, LayoutGrid, List, MoreHorizontal, Plus, Printer, Search, TriangleAlert, X } from "lucide-react";
 import { can } from "./perms";
 import { toast } from "./ui";
 import { api } from "./api";
@@ -10,8 +10,8 @@ import { Empty, Loading, useLoad } from "./workshop/common";
 import { Photo } from "./workshop/Photos";
 
 type Level = { id: string; name: string; photo_id?: string };
-type Rack = { id: string; photo_id?: string; name: string; area_id?: string | null; type: "RACK" | "CUPBOARD" | "FLOOR"; levels: Level[] };
-type Layout = { counted?: Record<string, Record<string, { at: string; by?: string }>>; areas: { id: string; name: string; pos?: string }[]; racks: Rack[]; counts: Record<string, Record<string, number>>; not_shelved: number };
+type Rack = { id: string; photo_id?: string; row?: number; col?: number; name: string; area_id?: string | null; type: "RACK" | "CUPBOARD" | "FLOOR"; levels: Level[] };
+type Layout = { marks?: { id: string; kind: "IN" | "OUT" | "STAGING"; row: number; col: number }[]; counted?: Record<string, Record<string, { at: string; by?: string }>>; areas: { id: string; name: string; pos?: string }[]; racks: Rack[]; counts: Record<string, Record<string, number>>; not_shelved: number };
 type Part = { id: string; sku: string; name: string; brand?: string; part_number?: string; unit: string; quantity: number; reorder_level?: number; location?: string; level_id?: string | null; image_id?: string };
 type Item = { id: string; sku: string; name: string; brand?: string; part_number?: string; location?: string; quantity: number; unit: string; category?: string };
 type Sel = { rack: string; level: string; label: string };
@@ -50,7 +50,9 @@ export function StoreMap({ items }: { items: Item[] }) {
   const [sel, setSel] = useState<Sel | null>(null), [start, setStart] = useState<"" | "count" | "transfer">(""), [q, setQ] = useState(""), [look, setLook] = useState<{ rack: Rack; wall: string } | null>(null);
   // Move: parts ticked on a shelf page, then the shelf they go to is tapped on the map
   const [moving, setMoving] = useState<string[] | null>(null), [ver, setVer] = useState(0), [busyMove, setBusyMove] = useState(false);
-  const [attn, setAttn] = useState(false), [openWalls, setOpenWalls] = useState<Record<string, boolean>>({});
+  const [attn, setAttn] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { const f = (e: KeyboardEvent) => { const el = e.target as HTMLElement | null; if (e.key === "/" && !e.ctrlKey && !e.metaKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName || "") && !el?.isContentEditable) { e.preventDefault(); searchRef.current?.focus(); } }; window.addEventListener("keydown", f); return () => window.removeEventListener("keydown", f); }, []);
   const [layoutView, setLayoutView] = useState<"map" | "list">(() => { try { return localStorage.getItem("lifta.storeView") === "list" ? "list" : "map"; } catch { return "map"; } });
   const chooseView = (v: "map" | "list") => { setLayoutView(v); try { localStorage.setItem("lifta.storeView", v); } catch { /* ignore */ } };
   // a movement made elsewhere (quick box, batch) changes the counts: load the layout again
@@ -107,13 +109,13 @@ export function StoreMap({ items }: { items: Item[] }) {
   const hasHit = (r: Rack) => (r.levels.length === 0 ? shown(r) : r.levels.some((l) => shown(r, l)));
   const tile = (r: Rack, wallName: string) => {
     const c = data.counts[r.id], on = sel?.rack === r.id;
+    const zi = data.areas.findIndex((a) => a.id === r.area_id), used = r.levels.length ? r.levels.filter((l) => (c?.[l.id] || 0) > 0).length : total(c) > 0 ? 1 : 0, pct = Math.round((used / (r.levels.length || 1)) * 100);
     return (
-      <div key={r.id} className={"sm-rack" + (total(c) === 0 ? " empty" : "") + (staleRacks.has(r.id) ? " stale" : "") + (attn ? (staleRacks.has(r.id) ? " flag" : " dim") : "") + (on || look?.rack.id === r.id ? " on" : "") + (hasHit(r) ? " lit" : "")}>
+      <div key={r.id} className={"sm-rack z" + (zi < 0 ? "x" : zi) + (total(c) === 0 ? " empty" : "") + (staleRacks.has(r.id) ? " stale" : "") + (attn ? (staleRacks.has(r.id) ? " flag" : " dim") : "") + (on || look?.rack.id === r.id ? " on" : "") + (hasHit(r) ? " lit" : "")}>
         <button className="sm-rack-head" aria-pressed={on && !sel?.level} disabled={!!moving && r.levels.length > 0} title={t("Quick look") + " · " + t(TYPE[r.type] || "Rack")} onClick={() => openRack(r, wallName)}>
-          {r.photo_id && <Photo id={r.photo_id} className="sm-rack-ph" />}
-          <b>{rackTitle(r.name)}</b>
+          <span className="sm-rk-top"><Boxes size={15} aria-hidden="true" /><b>{rackTitle(r.name)}</b><i className={"sm-dot " + (total(c) === 0 ? "empty" : staleRacks.has(r.id) ? "stale" : "ok")} title={total(c) === 0 ? t("Empty") : staleRacks.has(r.id) ? t("Not counted for 3 months") : ""} aria-hidden="true" /></span>
           <span className="sm-rk-sub">{total(c) > 0 ? total(c) + " " + (total(c) === 1 ? t("part") : t("parts")) : t("Empty")}</span>
-          <span className="sm-rk-bars" aria-hidden="true">{(r.levels.length ? r.levels.slice(0, 8) : [undefined]).map((l, i) => <i key={i} className={(c?.[l?.id || ""] || 0) > 0 ? "f" : ""} />)}</span>
+          <span className="sm-util" title={pct + "% " + t("of shelves in use")}><span className="sm-track"><i className={pct > 85 ? "r" : pct > 60 ? "a" : "g"} style={{ width: pct + "%" }} /></span><em>{pct}%</em></span>
         </button>
         {!!moving && r.levels.map((l) => (
           <button key={l.id} className={"sm-level" + (sel?.level === l.id ? " on" : "") + (shown(r, l) ? " lit" : "")} aria-pressed={sel?.level === l.id} onClick={() => pick(r, l)}>
@@ -123,55 +125,44 @@ export function StoreMap({ items }: { items: Item[] }) {
       </div>
     );
   };
-  const CAP = 12;
-  const WallBox = ({ pos, wall, racks }: { pos: string; wall: { id: string; name: string; pos?: string }; racks: Rack[] }) => {
-    const key = wall.id || pos;
-    const auto = racks.some((r) => hasHit(r) || look?.rack.id === r.id || (attn && staleRacks.has(r.id)));
-    const open = !!openWalls[key] || auto || racks.length <= CAP;
-    const parts = racks.reduce((n, r) => n + total(data.counts[r.id]), 0);
-    return (
-      <div className={"sm-wallbox sm-wall-" + pos.toLowerCase()}>
-        <div className="sm-wall-head">
-          <h3 className="sm-wall"><span className="sm-dir" aria-hidden="true">{{ N: "↑", S: "↓", W: "←", E: "→", X: "" }[pos]}</span> {wall.name}</h3>
-          <small>{racks.length} {racks.length === 1 ? t("rack") : t("racks")} · {parts} {parts === 1 ? t("part") : t("parts")}</small>
-        </div>
-        <div className="sm-rgrid">{(open ? racks : racks.slice(0, CAP)).map((r) => tile(r, wall.name))}</div>
-        {racks.length > CAP && !auto && <button type="button" className="sm-more" onClick={() => setOpenWalls({ ...openWalls, [key]: !openWalls[key] })}>{openWalls[key] ? t("Show fewer") : t("Show all {n} racks", { n: racks.length })}</button>}
-      </div>
-    );
-  };
-  const wallsList = (["N", "W", "E", "S"] as const).flatMap((pos) => { const w = data.areas.find((a) => a.pos === pos); const rs = w ? data.racks.filter((r) => r.area_id === w.id) : []; return w && rs.length > 0 ? [{ pos, wall: w, racks: rs }] : []; });
-  const shownWalls = new Set(wallsList.map((x) => x.wall.id));
-  const looseRacks = data.racks.filter((r) => !shownWalls.has(r.area_id || ""));
-  const byPos = Object.fromEntries(wallsList.map((x) => [x.pos, x]));
+  const wallsList = (["N", "W", "E", "S"] as const).flatMap((pos) => { const w = data.areas.find((a) => a.pos === pos); return w ? [w] : []; });
+  const wallOf = (r: Rack) => data.areas.find((a) => a.id === r.area_id)?.name || "";
+  const flatRacks = [...wallsList.flatMap((w) => data.racks.filter((r) => r.area_id === w.id)), ...data.racks.filter((r) => !wallsList.some((w) => w.id === r.area_id))];
   const view = moving ? "map" : layoutView;
-  const roomView = (
-    <div className={"sm-room" + (data.racks.length > 24 ? " dense" : "")} aria-label={t("Store room map")}>
-      {byPos.N && <Fragment key="N">{WallBox(byPos.N)}</Fragment>}
-      {(byPos.W || byPos.E) && <div className={"sm-sides" + (byPos.W && byPos.E ? " two" : "")}>{byPos.W && <Fragment key="W">{WallBox(byPos.W)}</Fragment>}{byPos.E && <Fragment key="E">{WallBox(byPos.E)}</Fragment>}</div>}
-      {byPos.S && <Fragment key="S">{WallBox(byPos.S)}</Fragment>}
-      {looseRacks.length > 0 && WallBox({ pos: "X", wall: { id: "", name: t("No wall"), pos: "X" }, racks: looseRacks })}
+  const placed = flatRacks.filter((r) => r.row !== undefined), marks = data.marks || [];
+  const planned = (placed.length > 0 || marks.length > 0) && !moving;
+  const rows = Math.max(0, ...placed.map((r) => (r.row as number) + 1), ...marks.map((m) => m.row + 1)), cols = Math.max(0, ...placed.map((r) => (r.col as number) + 1), ...marks.map((m) => m.col + 1));
+  const unplaced = flatRacks.filter((r) => r.row === undefined);
+  const zoneUse = data.areas.map((a, i) => ({ a, i })).filter(({ a }) => placed.some((r) => r.area_id === a.id));
+  const planView = (
+    <div className="sm-plan">
+      {zoneUse.length > 1 && <p className="sm-legend" aria-label={t("Walls")}>{zoneUse.map(({ a, i }) => <span key={a.id}><i className={"z" + i} aria-hidden="true" /> {a.name}</span>)}</p>}
+      <div className="sm-scroll"><div className={"sm-fp" + (data.racks.length > 24 ? " dense" : "")} style={{ gridTemplateColumns: "repeat(" + cols + ", minmax(0, 1fr))" }} aria-label={t("Store room map")}>
+        {Array.from({ length: rows * cols }, (_, n) => {
+          const r = Math.floor(n / cols), c = n % cols;
+          const rk = placed.find((x) => x.row === r && x.col === c), mk = marks.find((m) => m.row === r && m.col === c);
+          if (rk) return <Fragment key={n}>{tile(rk, wallOf(rk))}</Fragment>;
+          if (mk) return <div key={n} className={"sm-mark " + mk.kind.toLowerCase()}>{mk.kind === "STAGING" ? <Layers size={14} aria-hidden="true" /> : <DoorOpen size={14} aria-hidden="true" />}<b>{mk.kind === "STAGING" ? t("Staging") : t(mk.kind)}</b></div>;
+          return <span key={n} className="sm-aisle" aria-hidden="true" />;
+        })}
+      </div></div>
+      {unplaced.length > 0 && <><p className="sm-unplaced">{t("Not on the floor plan yet")}</p><div className={"sm-flat" + (data.racks.length > 24 ? " dense" : "")}>{unplaced.map((r) => tile(r, wallOf(r)))}</div></>}
     </div>
   );
-  const listGroups = [...wallsList.map((x) => ({ name: x.wall.name, racks: x.racks })), ...(looseRacks.length ? [{ name: t("No wall"), racks: looseRacks }] : [])];
+  const roomView = planned ? planView : <div className={"sm-flat" + (data.racks.length > 24 ? " dense" : "")} aria-label={t("Store room map")}>{flatRacks.map((r) => tile(r, wallOf(r)))}</div>;
   const listView = (
     <div className="sm-list" aria-label={t("Racks")}>
-      {listGroups.map((g) => (
-        <Fragment key={g.name}>
-          <div className="sm-list-h">{g.name} <small>{g.racks.length}</small></div>
-          {g.racks.map((r) => {
-            const c = data.counts[r.id], newest = r.levels.map((l) => data.counted?.[r.id]?.[l.id]?.at).filter(Boolean).sort().pop();
-            return (
-              <button key={r.id} type="button" className={"sm-row" + (total(c) === 0 ? " empty" : "") + (look?.rack.id === r.id ? " on" : "") + (hasHit(r) ? " lit" : "")} onClick={() => openRack(r, g.name)}>
-                <b>{rackTitle(r.name)}</b>
-                <span>{r.levels.length} {r.levels.length === 1 ? t("shelf") : t("shelves")}</span>
-                <span>{total(c)} {total(c) === 1 ? t("part") : t("parts")}</span>
-                <span className={staleRacks.has(r.id) ? "old" : ""}>{staleRacks.has(r.id) ? <TriangleAlert size={12} aria-hidden="true" /> : null} {newest ? ago(newest as string) : t("Not counted yet")}</span>
-              </button>
-            );
-          })}
-        </Fragment>
-      ))}
+      {flatRacks.map((r) => {
+        const c = data.counts[r.id], newest = r.levels.map((l) => data.counted?.[r.id]?.[l.id]?.at).filter(Boolean).sort().pop();
+        return (
+          <button key={r.id} type="button" className={"sm-row" + (total(c) === 0 ? " empty" : "") + (look?.rack.id === r.id ? " on" : "") + (hasHit(r) ? " lit" : "")} onClick={() => openRack(r, wallOf(r))}>
+            <b>{rackTitle(r.name)}</b>
+            <span>{r.levels.length} {r.levels.length === 1 ? t("shelf") : t("shelves")}</span>
+            <span>{total(c)} {total(c) === 1 ? t("part") : t("parts")}</span>
+            <span className={staleRacks.has(r.id) ? "old" : ""}>{staleRacks.has(r.id) ? <TriangleAlert size={12} aria-hidden="true" /> : null} {newest ? ago(newest as string) : t("Not counted yet")}</span>
+          </button>
+        );
+      })}
     </div>
   );
   return (
@@ -186,17 +177,17 @@ export function StoreMap({ items }: { items: Item[] }) {
           {can("lists") && data.racks.length > 0 && <button type="button" className="button secondary small" onClick={() => printLabels(data)}><Printer size={14} aria-hidden="true" /> {t("Print shelf labels")}</button>}
         </div>
       </div>
-      <div className="sm-stats">
-        <div className="sm-stat"><span className="sm-stat-ico g"><Boxes size={20} /></span><span><small>{t("Racks")}</small><b>{data.racks.length}</b></span></div>
-        <div className="sm-stat"><span className="sm-stat-ico v"><Layers size={20} /></span><span><small>{t("Part types on shelves")}</small><b>{Object.values(data.counts).reduce((a, c) => a + total(c), 0)}</b></span></div>
-        <button type="button" className={"sm-stat" + (sel?.rack === "none" ? " on" : "")} onClick={() => { setStart(""); setSel({ rack: "none", level: "", label: t("Not on a shelf yet") }); }}><span className="sm-stat-ico a"><TriangleAlert size={20} /></span><span><small>{t("Not on a shelf yet")}</small><b>{data.not_shelved}</b></span></button>
-      </div>
+      <p className="sm-sum" aria-label={t("Summary")}>
+        <span><b>{data.racks.length}</b> {data.racks.length === 1 ? t("rack") : t("racks")}</span>
+        <span><b>{Object.values(data.counts).reduce((a, c) => a + total(c), 0)}</b> {t("Part types on shelves")}</span>
+        <button type="button" className={"sm-sum-b" + (sel?.rack === "none" ? " on" : "") + (data.not_shelved > 0 ? " warn" : "")} onClick={() => { setStart(""); setSel({ rack: "none", level: "", label: t("Not on a shelf yet") }); }}><b>{data.not_shelved}</b> {t("Not on a shelf yet")}</button>
+        {old.length > 0 && !moving && <button type="button" className={"sm-sum-b warn" + (attn ? " on" : "")} aria-pressed={attn} onClick={() => setAttn(!attn)}><TriangleAlert size={13} aria-hidden="true" /> <b>{old.length}</b> {t("Not counted for 3 months")}</button>}
+      </p>
       <div className={"sm-split" + (wide ? " wide" : "")}>
       <div className="sm-left">
       <div className="sm-bar">
-      <label className="sm-search"><Search size={16} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Find a part: name or part number")} aria-label={t("Find a part")} /></label>
+      <label className="sm-search"><Search size={16} /><input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Find a part: name or part number") + "  ( / )"} aria-label={t("Find a part")} /></label>
         {!moving && <div className="sm-seg" role="group" aria-label={t("View")}><button type="button" aria-pressed={view === "map"} onClick={() => chooseView("map")}><LayoutGrid size={15} aria-hidden="true" /> {t("Map")}</button><button type="button" aria-pressed={view === "list"} onClick={() => chooseView("list")}><List size={15} aria-hidden="true" /> {t("List")}</button></div>}
-        {old.length > 0 && !moving && <button type="button" className={"sm-chip" + (attn ? " on" : "")} aria-pressed={attn} onClick={() => setAttn(!attn)}><TriangleAlert size={14} aria-hidden="true" /> {t("Not counted for 3 months")} ({old.length})</button>}
       </div>
       {attn && !moving && <p className="sm-stale-list">{old.map(({ r, l }) => <button key={r.id + (l?.id || "")} type="button" className="shelf-chip" onClick={() => setSel({ rack: r.id, level: l?.id || "", label: label(r, l) })}>{label(r, l)}</button>)}</p>}
       {words.length > 0 && (
@@ -310,7 +301,7 @@ function QuickLook({ rack, wall, counts, counted, docked, fresh, onClose, onOpen
   const { data, error, reload } = useLoad<{ parts: Part[] }>("/api/inventory/stores/shelf?rack=" + encodeURIComponent(rack.id) + (lv ? "&level=" + encodeURIComponent(lv) : ""));
   const firstFresh = useRef(true);
   useEffect(() => { if (firstFresh.current) { firstFresh.current = false; return; } void reload(); }, [fresh]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [fq, setFq] = useState("");
+  const [fq, setFq] = useState(""), [more, setMore] = useState(false);
   const [cards, setCards] = useState(() => { try { return localStorage.getItem("lifta.itemCards") === "1"; } catch { return false; } });
   const pickCards = (v: boolean) => { setCards(v); try { localStorage.setItem("lifta.itemCards", v ? "1" : "0"); } catch { /* ignore */ } };
   const lowFirst = (data?.parts || []).slice().sort((a, b) => Number(Number(b.quantity) <= Number(b.reorder_level ?? -1)) - Number(Number(a.quantity) <= Number(a.reorder_level ?? -1)) || a.name.localeCompare(b.name));
@@ -326,25 +317,20 @@ function QuickLook({ rack, wall, counts, counted, docked, fresh, onClose, onOpen
   return wrap(
     <>
         <header className="rk-head">
-          <div className="rk-title"><span className="rk-ico">{rack.photo_id ? <Photo id={rack.photo_id} className="rk-rack-ph" /> : <Boxes size={22} />}</span><div><h2>{rackTitle(rack.name)}</h2><span className="sm-wallchip">{wall}</span></div></div>
+          <div className="rk-title"><div><h2>{rackTitle(rack.name)}</h2><span className="rk-sum">{[wall, rack.levels.length + " " + (rack.levels.length === 1 ? t("shelf") : t("shelves")), total(counts) + " " + t("Part types"), t("Last counted") + " " + ago(newest as string | undefined)].filter(Boolean).join(" · ")}</span></div></div>
           <button type="button" className="rk-x" aria-label={t("Close")} onClick={onClose}><X size={18} /></button>
         </header>
-        <div className="rk-kpis">
-          <div><Layers size={18} aria-hidden="true" /><span><small>{t("Shelves")}</small><b>{rack.levels.length}</b></span></div>
-          <div><Boxes size={18} aria-hidden="true" /><span><small>{t("Part types")}</small><b>{total(counts)}</b></span></div>
-          <div><CalendarDays size={18} aria-hidden="true" /><span><small>{t("Last counted")}</small><b>{ago(newest as string | undefined)}</b></span></div>
-        </div>
-        <div className="rk-body">
-          <div className="rk-shelves">
+        {rack.photo_id && total(counts) > 0 && <Photo id={rack.photo_id} size="full" className="rk-rack-photo" />}
+        <div className="rk-body rk-body2">
+          <div className="rk-tabs" role="tablist" aria-label={t("Shelves")}>
             {rack.levels.map((l) => { const w = when(l), n = counts[l.id] || 0; return (
-              <button key={l.id} type="button" className={"rk-shelf" + (lv === l.id ? " on" : "") + (w.old && n > 0 ? " old" : "")} aria-pressed={lv === l.id} onClick={() => setLv(l.id)}>
-                {l.photo_id && <Photo id={l.photo_id} className="rk-shelf-ph" />}
-                <span className="rk-shelf-top"><b>{label(rack, l)}</b><span className="rk-n">{n}</span></span>
-                <small>{w.old && n > 0 ? <TriangleAlert size={12} aria-hidden="true" /> : null} {w.text}</small>
+              <button key={l.id} type="button" role="tab" className={"rk-tab" + (lv === l.id ? " on" : "") + (w.old && n > 0 ? " old" : "")} aria-selected={lv === l.id} title={w.text} onClick={() => setLv(l.id)}>
+                {w.old && n > 0 ? <TriangleAlert size={12} aria-hidden="true" /> : null}<b>{l.name}</b><span className="rk-n">{n}</span>
               </button>
             ); })}
           </div>
           <div className="rk-items">
+            {level && <p className={"rk-counted" + (when(level).old && (counts[level.id] || 0) > 0 ? " old" : "")}>{when(level).text}</p>}
             <div className="rk-items-head"><b>{shelf}</b>{data && <small>{data.parts.length} {data.parts.length === 1 ? t("part") : t("parts")}</small>}<span className="sm-seg sm-seg-s" role="group" aria-label={t("View")}><button type="button" aria-pressed={!cards} aria-label={t("List")} onClick={() => pickCards(false)}><List size={14} /></button><button type="button" aria-pressed={cards} aria-label={t("Cards")} onClick={() => pickCards(true)}><LayoutGrid size={14} /></button></span></div>
             {data && data.parts.length > 6 && <label className="rk-find"><Search size={14} aria-hidden="true" /><input value={fq} onChange={(e) => setFq(e.target.value)} placeholder={t("Find on this shelf")} aria-label={t("Find on this shelf")} /></label>}
             {!data ? <Loading error={error} /> : data.parts.length === 0 ? <p className="muted rk-empty">{t("Nothing on this shelf.")}</p> : visible.length === 0 ? <p className="muted rk-empty">{t("No part like that.")}</p> : (
@@ -366,9 +352,13 @@ function QuickLook({ rack, wall, counts, counted, docked, fresh, onClose, onOpen
           {can("stock_in") && <button type="button" className="button primary small" onClick={() => { after(); putIn(shelf); }}><Plus size={14} aria-hidden="true" /> {t("Receive to {shelf}", { shelf })}</button>}
           {can("stock_count") && <button type="button" className="button secondary small" onClick={() => onOpen(level, "count")}><ClipboardCheck size={14} aria-hidden="true" /> {t("Stock count")}</button>}
           {can("shelf_move") && <button type="button" className="button secondary small" onClick={() => onOpen(level, "transfer")}><ArrowRightLeft size={14} aria-hidden="true" /> {t("Transfer")}</button>}
-          <span className="rk-sp" />
-          {can("lists") && <button type="button" className="button secondary small" onClick={() => printLabelsInPage([{ title: shelf, sub: t("Shelf"), code: shelfCode(rack.id, level?.id || "") }])}><Printer size={14} aria-hidden="true" /> {t("Print label")}</button>}
-          <button type="button" className="button secondary small" onClick={() => onOpen(level)}>{t("Open shelf page")}</button>
+          <span className="rk-more">
+            <button type="button" className="button secondary small" aria-haspopup="menu" aria-expanded={more} aria-label={t("More")} onClick={() => setMore(!more)}><MoreHorizontal size={16} aria-hidden="true" /></button>
+            {more && <span className="rk-menu" role="menu">
+              {can("lists") && <button type="button" role="menuitem" onClick={() => { setMore(false); printLabelsInPage([{ title: shelf, sub: t("Shelf"), code: shelfCode(rack.id, level?.id || "") }]); }}><Printer size={14} aria-hidden="true" /> {t("Print label")}</button>}
+              <button type="button" role="menuitem" onClick={() => { setMore(false); onOpen(level); }}>{t("Open shelf page")}</button>
+            </span>}
+          </span>
         </div>
         {noCamera() && !docked && <p className="muted sm-nocam">{t("No camera here. Camera scan stays on the phone Counter.")}</p>}
     </>,
