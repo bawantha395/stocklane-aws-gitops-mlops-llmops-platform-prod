@@ -890,16 +890,6 @@ html[data-glass] .stock-shell textarea:focus, html[data-glass] .sw-field input:f
 .sw-field { display: grid; gap: 6px; margin-top: 12px; font-weight: 600; }
 .ws-seg { margin-bottom: 12px; }
 
-/* Desktop screens: lay everything out the way the browser does at 80% zoom (smaller type, more on the screen). Phones and tablets keep their size. */
-@media (min-width: 1024px) {
-  html { zoom: 0.8; }
-  /* a zoomed page counts screen units (vh, vw) at 80%, so the ones that must fill the screen are stretched back */
-  .stock-shell { min-height: 125vh; }
-  .stock-side, .stock-sidebar, aside.stock-nav { height: 125vh; }
-  .stock-shell, .stock-main { max-width: none; }
-  .rk-panel.docked { max-height: calc(125vh - 20px); }
-}
-
 /* Job and quote pages on a wide screen: a part is one row (name, quantity, price, discount, amount, remove), not two. */
 @media (min-width: 900px) {
   .ws-job .ws-line:not(.labour):not(.from-stock) { grid-template-columns: minmax(0, 1fr) 90px 130px 90px 120px 44px; grid-template-areas: "name qty price off total del"; align-items: end; gap: 10px; }
