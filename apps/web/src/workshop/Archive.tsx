@@ -5,7 +5,7 @@ import { Empty, Loading, dateOnly, lkr, useCommand, useLoad, useWs, type Job } f
 
 type Entry = { sk: string; action: string; job_id: string; registration: string; customer: string; actor: string; actor_email?: string | null; reason?: string };
 const ACTION: Record<string, string> = {
-  ARCHIVED: "Deleted", RESTORED: "Restored", UNDONE: "Undone", CANCELLED: "Cancelled", DELETE_REQUESTED: "Delete requested", REQUEST_REJECTED: "Request rejected", INVOICE_VOIDED: "Invoice voided",
+  ARCHIVED: "Deleted", RESTORED: "Restored", UNDONE: "Undone", CANCELLED: "Cancelled", DELETE_REQUESTED: "Delete requested", REQUEST_REJECTED: "Request rejected", INVOICE_VOIDED: "Invoice voided", INVOICE_REFUND: "Invoice refunded",
 };
 
 /** Owner only: jobs that were deleted (kept, never destroyed), with a restore button, and the log of who did what. */
@@ -39,10 +39,10 @@ export function Archive() {
       </div>
       <div className="ws-section-head"><h3>Log</h3></div>
       <div className="ws-card ws-logcard">
-        {data.log.map((a) => (
-          <div className="ws-log" key={a.sk}>
-            <small>{a.sk ? new Date(a.sk.split("#")[0]!).toLocaleString("en-GB", { timeZone: "Asia/Colombo", dateStyle: "medium", timeStyle: "short" }) : ""}</small>
-            <span><b>{ACTION[a.action] || a.action}</b> {a.registration} <em>{a.customer}</em></span>
+        {data.log.map((a, i) => (
+          <div className="ws-log" key={a.sk || i}>
+            <small className="ws-log-date">{a.sk ? new Date(a.sk.split("#")[0]!).toLocaleString("en-GB", { timeZone: "Asia/Colombo", dateStyle: "medium", timeStyle: "short" }) : "—"}</small>
+            <span><b>{ACTION[a.action] || a.action}</b>{" "}<button className="ws-log-ref" onClick={() => go({ name: "job", id: a.job_id })}>{a.registration}</button>{" "}<em>{a.customer}</em></span>
             <small>{a.actor_email || a.actor}{a.reason ? ": " + a.reason : ""}</small>
           </div>
         ))}
