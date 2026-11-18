@@ -1096,6 +1096,8 @@ html[data-theme="dark"] .pick-list .pl-rows li.low { background: #2e1210; }
 .ws .ws-set-nav button:hover { background: var(--wash-2, #eef0ee); }
 .ws .ws-set-nav button.on { background: #e3f0ea; color: #0f5a43; }
 html[data-theme="dark"] .ws .ws-set-nav button.on { background: #1f3a2f; color: #bfe9d6; }
+/* dark mode + glass: counter-step cards (Receive stock, counters) must stay dark — saturate(200%) blur amplifies gradient shell and makes them look light grey */
+html[data-theme="dark"][data-glass] .counter-step { background: rgba(28,30,29,.92); border: 1px solid rgba(255,255,255,.08); -webkit-backdrop-filter: saturate(140%) blur(20px); backdrop-filter: saturate(140%) blur(20px); }
 @media (min-width: 900px) { .ws .ws-set-nav { padding: 12px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); } }
 @media (max-width: 899px) { .ws .ws-set-nav { padding-bottom: 8px; } .ws .ws-set-navgroup { padding-right: 14px; border-right: 1px solid var(--line); } .ws .ws-set-navgroup:last-child { border-right: 0; } .ws .ws-set-nav button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; } .ws .ws-set-nav button.on { border-color: transparent; } }
 
