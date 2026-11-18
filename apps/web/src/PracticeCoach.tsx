@@ -20,10 +20,10 @@ const NAV = (k: string) => '[data-tour="nav-' + k + '"]';
 const TAB = (k: string) => '[data-tour="ws-tab-' + k + '"]';
 
 function missionsFor(owner: boolean): Mission[] {
-  const counter: Step = { id: "counter", title: t("Open the Parts counter"), body: t("This is where parts come in and go out. Tap Parts counter."), target: NAV("counter"), hit: true, done: () => probe.view === "counter" };
-  const giveTab: Step = { id: "give-tab", title: t("Switch to Part went out"), body: t("Use this when a part leaves the shelf. Tap Part went out."), target: '[data-tour="tab-give"]', go: { sel: NAV("counter"), label: t("Parts counter") }, hit: true, done: (c) => c.has('[data-tour="tab-give"][aria-selected="true"]') };
+  const counter: Step = { id: "counter", title: t("Open Receive & Issue"), body: t("Parts are received and issued here. Tap Receive & Issue."), target: NAV("counter"), hit: true, done: () => probe.view === "counter" };
+  const giveTab: Step = { id: "give-tab", title: t("Switch to Issue stock"), body: t("Use this when a part leaves the shelf. Tap Issue stock."), target: '[data-tour="tab-give"]', go: { sel: NAV("counter"), label: t("Receive & Issue") }, hit: true, done: (c) => c.has('[data-tour="tab-give"][aria-selected="true"]') };
   const give: Mission = {
-    id: "give", icon: "↗", title: t("Part went out"), blurb: t("A mechanic takes a part off the shelf."), minutes: 1,
+    id: "give", icon: "↗", title: t("Issue stock"), blurb: t("A mechanic takes a part off the shelf."), minutes: 1,
     steps: [
       giveTab,
       { id: "give-find", title: t("Find the part"), body: t("Type oil in the box, then tap a part in the list."), target: ".counter-step", done: (c) => c.has(".counter-chosen") || c.ev("api:out") },
@@ -40,11 +40,11 @@ function missionsFor(owner: boolean): Mission[] {
         ],
       },
       {
-        id: "receive", icon: "↘", title: t("Receive a part"), blurb: t("A part came in. Add it to the stock."), minutes: 1,
+        id: "receive", icon: "↘", title: t("Receive a part"), blurb: t("Receive stock. Add the delivered part to the inventory."), minutes: 1,
         steps: [
           counter,
-          { id: "rcv-find", title: t("Find the part that came in"), body: t("Type oil filter in the box, then tap the part."), target: ".counter-step", done: (c) => c.has(".counter-chosen") || c.ev("api:in") },
-          { id: "rcv-do", title: t("Confirm what came in"), body: t("Set how many, then press the button. Lifta adds it to the stock."), target: ".counter-confirm", done: (c) => c.ev("api:in") },
+          { id: "rcv-find", title: t("Find the part to receive"), body: t("Type oil filter in the box, then tap the part."), target: ".counter-step", done: (c) => c.has(".counter-chosen") || c.ev("api:in") },
+          { id: "rcv-do", title: t("Confirm the receipt"), body: t("Set how many, then press the button. Lifta adds it to the stock."), target: ".counter-confirm", done: (c) => c.ev("api:in") },
         ],
       },
       give,
@@ -55,13 +55,13 @@ function missionsFor(owner: boolean): Mission[] {
       id: "add", icon: "＋", title: t("Add a new part"), blurb: t("Photo, AI reads the label, save, receive."), minutes: 2,
       steps: [
         counter,
-        { id: "add-cam", title: t("Open the camera"), body: t("To add a new part, take a photo of it. Tap Open camera."), target: '[data-tour="open-camera"]', go: { sel: NAV("counter"), label: t("Parts counter") }, hit: true },
+        { id: "add-cam", title: t("Open the camera"), body: t("To add a new part, take a photo of it. Tap Open camera."), target: '[data-tour="open-camera"]', go: { sel: NAV("counter"), label: t("Receive & Issue") }, hit: true },
         { id: "add-photo", title: t("Take the photo"), body: t("In real use this is your phone camera. Here, tap Use sample photo."), target: '[data-tour="sample-photo"]', hit: true },
         { id: "add-new", title: t("Read the label"), body: t("Lifta did not know this part. Tap Add as a new item and it reads the label."), target: '[data-tour="add-new"]', hit: true, done: (c) => c.has(".stock-modal") },
         { id: "add-form", title: t("AI filled the form"), body: t("The blue fields were filled by AI. Check each one, fix anything wrong, or press × to clear it. Nothing is saved until you press Save item."), target: ".stock-modal .stock-form-grid", manual: true },
         { id: "add-save", title: t("Save the part"), body: t("Looks right? Press Save item."), target: ".stock-modal .sticky-actions .button.primary", done: (c) => c.ev("api:product") },
         { id: "add-qr", title: t("The QR label"), body: t("Every part gets a QR label. You print it and stick it on the part, so scanning finds it next time. Press × to close."), target: ".stock-label-dialog .stock-close", done: (c) => c.ev("saw:qr") && !c.has(".stock-label-dialog") },
-        { id: "add-in", title: t("How many came in?"), body: t("The new part is selected. Set how many came in with the + button, then press the green button."), target: ".counter-confirm", done: (c) => c.ev("api:in") },
+        { id: "add-in", title: t("Quantity received"), body: t("The new part is selected. Set the quantity received with the + button, then press the green button."), target: ".counter-confirm", done: (c) => c.ev("api:in") },
       ],
     },
     give,

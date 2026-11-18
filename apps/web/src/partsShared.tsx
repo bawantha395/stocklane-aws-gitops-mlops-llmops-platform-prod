@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import QRCode from "qrcode";
 import { Package, X } from "lucide-react";
-import { api, config, headers, type Product } from "./api";
+import { api, config, headers, openPdf, type Product } from "./api";
 import { t } from "./i18n";
 import { isPractice, samplePhotoBlob } from "./practice";
 
@@ -159,20 +159,41 @@ export async function apiPhoto(id: string) {
   return r.blob();
 }
 /** Several parts on one A4 sheet: QR, name and shelf for each. Opens in a new tab and offers to print. */
-export async function printLabelSheet(items: Item[]) {
-  const popup = window.open("", "_blank");
-  if (!popup) throw new Error("Allow a new window to print the labels.");
-  try {
-    const esc = (v: string) => (v || "").replace(/[<&>"]/g, "");
-    const cells: string[] = [];
-    for (const item of items) {
-      const qr = await QRCode.toDataURL("stocklane:v1:" + item.id, { width: 300, margin: 1 });
-      cells.push('<div class="c"><img src="' + qr + '"><b>' + esc(item.name) + "</b><span>" + esc(item.part_number || item.sku) + "</span><span>" + esc(item.location || "") + "</span></div>");
-    }
-    popup.document.write("<!doctype html><title>Stock labels</title><style>body{font:12px sans-serif;margin:10mm}.g{display:grid;grid-template-columns:repeat(2,1fr);gap:6mm}.c{border:1px dashed #888;padding:5mm;text-align:center;break-inside:avoid}.c img{width:100%;max-width:68mm}.c b{display:block;font-size:20pt}.c span{display:block;font-size:15pt}button{margin:10px;padding:10px}@media print{button{display:none}}</style><button onclick='print()'>Print / Save as PDF</button><div class=g>" + cells.join("") + "</div>");
-    popup.document.close();
-  } catch (error) {
-    popup.close();
-    throw error;
+/** The QR as "N:" plus N*N zeros and ones; the server draws it in the PDF (the same way the invoice QR is drawn). */
+export function qrPacked(text: string) {
+  const m = QRCode.create(text, { errorCorrectionLevel: "M" }).modules;
+  let b = "";
+  for (let r = 0; r < m.size; r++) for (let c = 0; c < m.size; c++) b += m.get(r, c) ? "1" : "0";
+  return m.size + ":" + b;
+}
+/** Labels print the way bills do: a PDF opens in a new tab and the browser's own viewer prints it. */
+export async function printLabelsPdf(labels: { title: string; sub?: string; code: string }[]) {
+  for (let i = 0; i < labels.length; i += 150) {
+    const part = labels.slice(i, i + 150).map((l) => ({ title: l.title, sub: l.sub || "", bits: qrPacked(l.code) }));
+    await openPdf("/api/inventory/labels/pdf", "labels.pdf", { method: "POST", body: JSON.stringify({ labels: part }) });
   }
+}
+
+const escHtml = (v: string) => v.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
+function qrSvg(text: string) {
+  const m = QRCode.create(text, { errorCorrectionLevel: "M" }).modules, n = m.size;
+  let d = "";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (m.get(r, c)) d += "M" + c + " " + r + "h1v1h-1z";
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 ' + (n + 4) + " " + (n + 4) + '" shape-rendering="crispEdges"><path d="' + d + '"/></svg>';
+}
+/** Labels print the way a bill does: the sheet is drawn in this page and the browser's own print window opens (no new tab). Everything else is hidden while printing. */
+export function printLabelsInPage(labels: { title: string; sub?: string; code: string }[]) {
+  if (!labels.length) return;
+  document.getElementById("label-print")?.remove();
+  const host = document.createElement("div");
+  host.id = "label-print";
+  host.innerHTML = labels.map((l) => '<figure class="lp-cell">' + qrSvg(l.code) + "<b>" + escHtml(l.title) + "</b>" + (l.sub ? "<small>" + escHtml(l.sub) + "</small>" : "") + "</figure>").join("");
+  document.body.appendChild(host);
+  document.body.classList.add("printing-labels");
+  const done = () => { document.body.classList.remove("printing-labels"); host.remove(); };
+  window.addEventListener("afterprint", done, { once: true });
+  setTimeout(() => window.print(), 60);
+}
+export async function printLabelSheet(items: Item[]) {
+  printLabelsInPage(items.map((item) => ({ title: item.name, sub: [item.part_number || item.sku, item.location].filter(Boolean).join("  "), code: "stocklane:v1:" + item.id })));
 }

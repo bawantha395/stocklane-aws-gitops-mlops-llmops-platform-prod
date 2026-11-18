@@ -48,7 +48,7 @@ export function MovementPdf({ range }: { range?: { from: string; to: string } })
   };
   return (
     <div className="report-move" data-tour="stock-movement-pdf">
-      <div><strong>{t("Stock movement PDF")}</strong><p className="stock-help">For the dates you pick: every item, how many came in, went out and came back, with the opening and closing stock.</p></div>
+      <div><strong>{t("Stock movement PDF")}</strong><p className="stock-help">For the dates you pick: every item, how many were received, issued and returned, with the opening and closing stock.</p></div>
       <label>{t("From")} <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
       <label>To <input type="date" value={to} min={from} max={end} onChange={(e) => setTo(e.target.value)} /></label>
       <button className="button primary" disabled={busy} onClick={() => void go()}>{busy ? "Preparing…" : "Download PDF"}</button>
@@ -109,7 +109,7 @@ export function StockReport() {
             ))}
           </tbody>
         </table>
-        {!shown.length && <div className="stock-empty">{lines.length ? "No items match." : "No parts yet. Add your first part at the Parts counter, then this report fills itself."}</div>}
+        {!shown.length && <div className="stock-empty">{lines.length ? "No items match." : "No parts yet. Add your first part at Receive & Issue, then this report fills itself."}</div>}
       </div>
     </section>
   );

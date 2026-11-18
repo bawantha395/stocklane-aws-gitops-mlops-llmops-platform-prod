@@ -294,3 +294,16 @@ def test_phone_and_computer_extras_default_off_and_stay_when_not_sent(api):
     body = {k: v for k, v in t2.items() if k not in ('store_room_phone', 'counter_web')}
     ok(api('PUT', '/api/workshop/settings', body))
     assert ok(api('GET', '/api/workshop/settings'))['counter_web'] is True
+
+
+def test_a_rack_can_hold_a_photo(api):
+    a = ok(save(api, {'areas': [], 'racks': [{'name': 'R1', 'levels': ['A']}]}))
+    pid = 'b' * 32
+    r = a['racks'][0]
+    b = ok(save(api, {'areas': [], 'racks': [dict(r, photo_id=pid)]}))
+    assert b['racks'][0]['photo_id'] == pid
+    c = ok(save(api, {'areas': [], 'racks': [{k: v for k, v in b['racks'][0].items() if k != 'photo_id'}]}))  # no photo field: kept
+    assert c['racks'][0]['photo_id'] == pid
+    d = ok(save(api, {'areas': [], 'racks': [dict(c['racks'][0], photo_id='')]}))  # empty: removed
+    assert 'photo_id' not in d['racks'][0]
+    assert save(api, {'areas': [], 'racks': [dict(r, photo_id='nope')]})[0] == 400

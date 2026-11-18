@@ -202,7 +202,7 @@ function App() {
   const task = tasks[direction],
     active = items.find((item) => item.id === selected),
     owner = !!session?.roles.includes("ROLE_OWNER");
-  // "Part came in / went out" from Home: find the part first, then the quick box opens by itself
+  // "Receive / Issue" from Home: find the part first, then the quick box opens by itself
   const goFind = (mode: "give" | "receive") => { setSelected(""); setIntent(mode); navigate("find"); };
   useEffect(() => { if (view !== "find") { setIntent(null); return; } if (intent && active) { setQuick({ part: active, mode: intent }); setIntent(null); } }, [view, intent, active]);
   const visibleMoves = moves.filter((movement) => {
@@ -676,7 +676,7 @@ function App() {
     document.querySelectorAll("details[open]").forEach((d) => d.removeAttribute("open"));
     if (value && Number(p.quantity) !== 0) {
       // the reason used to appear only at the top of the page, out of sight: say it where the person is looking
-      toast(t("{name} still has {n} in stock. Record them as went out (Parts counter) first, then archive.", { name: p.name, n: String(p.quantity) }), { bad: true });
+      toast(t("{name} still has {n} in stock. Issue them first (Receive & Issue), then archive.", { name: p.name, n: String(p.quantity) }), { bad: true });
       return;
     }
     if (
@@ -765,7 +765,7 @@ function App() {
     ...(can("jobs_view") ? [{ group: t("WORKSHOP MANAGEMENT") }, { key: "workshop" as View, full: t("Jobs & Invoices"), short: t("Jobs"), sub: t("Job cards, vehicles and bills"), Icon: Wrench, main: true }] : []),
     { group: t("STOCK MANAGEMENT") },
     { key: "stock", full: t("Parts list"), short: t("Parts"), sub: owner ? t("All parts, photos and QR labels") : t("See what is in stock"), Icon: Package, main: true },
-    ...(counterOn && canAny("stock_in", "stock_out") ? [{ key: "counter" as View, full: t("Parts counter"), short: t("Counter"), sub: t("A part came in or went out"), Icon: ScanLine, main: true }] : []),
+    ...(counterOn && canAny("stock_in", "stock_out") ? [{ key: "counter" as View, full: t("Receive & Issue"), short: t("Counter"), sub: t("Receive or issue stock"), Icon: ScanLine, main: true }] : []),
     ...(roomOn ? [{ key: "shelf" as View, full: t("Store room"), short: t("Store room"), sub: t("Where every part sits"), Icon: Warehouse }] : []),
     { key: "activity", full: t("History"), short: t("History"), sub: t("Every part in and out"), Icon: Activity },
     ...(can("orders") ? [{ key: "orders" as View, full: t("To order"), short: t("To order"), sub: t("Parts to buy, and WhatsApp orders"), Icon: ListChecks }] : []),
@@ -900,16 +900,16 @@ function App() {
         <NumPadHost />
       {roomBatch && (
         <div className="stock-modal-shade" onClick={() => setRoomBatch(false)}>
-          <section className="stock-modal room-batch" role="dialog" aria-modal="true" aria-label="Parts came in" onClick={(e) => e.stopPropagation()}>
-            <header className="sm-look-top"><h2>Parts came in</h2><button type="button" className="button secondary small" onClick={() => setRoomBatch(false)}>Close</button></header>
+          <section className="stock-modal room-batch" role="dialog" aria-modal="true" aria-label="Receive stock" onClick={(e) => e.stopPropagation()}>
+            <header className="sm-look-top"><h2>Receive stock</h2><button type="button" className="button secondary small" onClick={() => setRoomBatch(false)}>Close</button></header>
             <BatchIn manual items={items as never} photo={(p) => <ItemPhoto item={p as Item} peek />} onChanged={() => void refresh()} />
           </section>
         </div>
       )}
       {roomBatchOut && (
         <div className="stock-modal-shade" onClick={() => setRoomBatchOut(false)}>
-          <section className="stock-modal room-batch" role="dialog" aria-modal="true" aria-label="Parts went out" onClick={(e) => e.stopPropagation()}>
-            <header className="sm-look-top"><h2>Parts went out</h2><button type="button" className="button secondary small" onClick={() => setRoomBatchOut(false)}>Close</button></header>
+          <section className="stock-modal room-batch" role="dialog" aria-modal="true" aria-label="Issue stock" onClick={(e) => e.stopPropagation()}>
+            <header className="sm-look-top"><h2>Issue stock</h2><button type="button" className="button secondary small" onClick={() => setRoomBatchOut(false)}>Close</button></header>
             <BatchOut manual items={items as never} photo={(p) => <ItemPhoto item={p as Item} peek />} onChanged={() => void refresh()} />
           </section>
         </div>
@@ -1062,7 +1062,7 @@ function App() {
               >
                 <ArrowDownLeft size={30} />
                 <span>
-                  <strong>{t("Part came in")}</strong>
+                  <strong>{t("Receive stock")}</strong>
                   <small>{t("Find the part, then say how many")}</small>
                 </span>
               </button>
@@ -1073,7 +1073,7 @@ function App() {
               >
                 <ArrowUpRight size={30} />
                 <span>
-                  <strong>{t("Part went out")}</strong>
+                  <strong>{t("Issue stock")}</strong>
                   <small>{t("Find the part, then say how many")}</small>
                 </span>
               </button>
@@ -1175,7 +1175,7 @@ function App() {
                 </h1>
                 <p>
                   {view === "find"
-                    ? (intent ? (intent === "receive" ? "Pick the part that came in." : "Pick the part that went out.") : isDesk && !counterOn ? "Type the name, part number or shelf." : "Search by part number, scan a QR or identify a photo.")
+                    ? (intent ? (intent === "receive" ? "Pick the part to receive." : "Pick the part to issue.") : isDesk && !counterOn ? "Type the name, part number or shelf." : "Search by part number, scan a QR or identify a photo.")
                     : "Build your list first. Stock changes only when you confirm."}
                 </p>
               </div>
@@ -1516,13 +1516,13 @@ function App() {
                             className="button primary"
                             onClick={() => setQuick({ part: active, mode: "receive" })}
                           >
-                            Receive this item
+                            Receive stock
                           </button>}
                           {can("stock_out") && <button
                             className="button secondary"
                             onClick={() => setQuick({ part: active, mode: "give" })}
                           >
-                            Give this item
+                            Issue stock
                           </button>}
                           <button
                             className="button secondary"
@@ -1727,8 +1727,8 @@ function App() {
                 <Plus size={18} /> {t("Register item")}
               </button>}
               {canAny("item_add", "price_edit") && <button className="button secondary" onClick={() => setBulkOpen(true)}>{t("Bulk tools")}</button>}
-              {can("stock_in") && <button className="button secondary" onClick={() => window.dispatchEvent(new Event("lifta:batch-in"))}>{t("Several came in")}</button>}
-              {can("stock_out") && <button className="button secondary" onClick={() => window.dispatchEvent(new Event("lifta:batch-out"))}>{t("Take out several")}</button>}
+              {can("stock_in") && <button className="button secondary" onClick={() => window.dispatchEvent(new Event("lifta:batch-in"))}>{t("Batch receive")}</button>}
+              {can("stock_out") && <button className="button secondary" onClick={() => window.dispatchEvent(new Event("lifta:batch-out"))}>{t("Batch issue")}</button>}
             </div>
             <section className="stock-panel">
               <div className="stock-tools">
@@ -1843,7 +1843,7 @@ function App() {
                   <p>
                     {query
                       ? t("Try the manufacturer part number.")
-                      : t("This is the list of every part you keep. Go to the Parts counter, take a photo of a part and Lifta reads the label. Then print its QR label.")}
+                      : t("This is the list of every part you keep. Go to Receive & Issue, take a photo of a part and Lifta reads the label. Then print its QR label.")}
                   </p>
                 </div>
               )}
@@ -1908,9 +1908,9 @@ function App() {
                 <select value={activityKind} onChange={(event) => setActivityKind(event.target.value)}>
                   <option value="ALL">{t("All movements")}</option>
                   <option value="RECEIVED">{t("Received")}</option>
-                  <option value="ISSUED">{t("Issued to workshop")}</option>
+                  <option value="ISSUED">{t("Issued to a job")}</option>
                   <option value="RETURNED">{t("Returned from job")}</option>
-                  <option value="GIVEN">{t("Given out")}</option>
+                  <option value="GIVEN">{t("Issued without a job")}</option>
                   <option value="COUNTED">{t("Counted")}</option>
                   <option value="IN">{t("All coming in")}</option>
                   <option value="OUT">{t("All going out")}</option>
@@ -1961,10 +1961,10 @@ function App() {
                               : "in")
                           }
                         >
-                          {m.kind === "SHELF_MOVE" ? t("Moved to another shelf") : m.kind === "SUPPLIER_RETURN" ? t("Sent back to supplier") : m.kind === "COUNT_IN" ? t("Count: found extra") : m.kind === "COUNT_OUT" ? t("Count: found missing") : m.kind === "STOCK_OUT" || m.kind === "ISSUE"
+                          {m.kind === "SHELF_MOVE" ? t("Transferred to another shelf") : m.kind === "SUPPLIER_RETURN" ? t("Sent back to supplier") : m.kind === "COUNT_IN" ? t("Count: found extra") : m.kind === "COUNT_OUT" ? t("Count: found missing") : m.kind === "STOCK_OUT" || m.kind === "ISSUE"
                             ? m.kind === "ISSUE"
-                              ? "Issued to workshop"
-                              : "Given out"
+                              ? "Issued to a job"
+                              : "Issued without a job"
                             : m.kind === "RECEIPT" || m.kind === "OPENING"
                               ? "Received"
                               : m.kind === "RETURN"
@@ -2002,7 +2002,7 @@ function App() {
               </table>
               {visibleMoves.length > movesShown && <p className="list-more"><button type="button" className="button secondary" onClick={() => setMovesShown((n) => n + 50)}>{t("Show more")} ({visibleMoves.length - movesShown})</button></p>}
               {!visibleMoves.length && (
-                <div className="stock-empty"><h3>{t("No history yet")}</h3><p>{t("Every part you receive or give out will be listed here, with who did it and when.")}</p></div>
+                <div className="stock-empty"><h3>{t("No history yet")}</h3><p>{t("Every part you receive or issue will be listed here, with who did it and when.")}</p></div>
               )}
             </section>
           </>

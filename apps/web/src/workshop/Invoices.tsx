@@ -57,7 +57,7 @@ export function Invoices() {
   );
 }
 
-/** One Refund panel. Tick the parts that came back (they go into stock again, the bill goes down and any extra money paid is given back),
+/** One Refund panel. Tick the parts being returned (they go into stock again, the bill goes down and any extra money paid is given back),
  *  or leave the parts empty and give an amount back without any parts. */
 function ReturnParts({ inv, onClose, onDone }: { inv: Invoice; onClose: () => void; onDone: () => Promise<void> }) {
   const command = useCommand();
@@ -68,8 +68,8 @@ function ReturnParts({ inv, onClose, onDone }: { inv: Invoice; onClose: () => vo
   const hasParts = inv.parts.some((_, i) => left(i) > 0), paid = num(inv.paid);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!picked.length && paid <= 0) { setErr(t("Pick the parts that came back")); return; }
-    if (!picked.length && hasParts && !(await askConfirm(t("The parts do NOT go back into stock. Only the money is given back. If the parts came back, cancel and put the numbers above."), { title: t("Refund money only?"), confirm: t("Refund money only") }))) return;
+    if (!picked.length && paid <= 0) { setErr(t("Select the parts being returned")); return; }
+    if (!picked.length && hasParts && !(await askConfirm(t("The parts do NOT go back into stock. Only the money is given back. If parts are being returned, cancel and enter the quantities above."), { title: t("Refund money only?"), confirm: t("Refund money only") }))) return;
     setBusy(true); setErr("");
     try {
       if (picked.length) await command("/api/workshop/invoices/" + inv.id + "/return", { lines: picked, reason, refundMethod: method });
@@ -80,7 +80,7 @@ function ReturnParts({ inv, onClose, onDone }: { inv: Invoice; onClose: () => vo
   return (
     <form className="ws-card ws-pay ws-return" onSubmit={submit} data-tour="return-parts">
       <h3>{t("Refund")} <small>{inv.invoice_number}{paid > 0 ? " · " + t("Paid so far") + " LKR " + lkr(paid) : ""}</small></h3>
-      {hasParts && <p className="muted">{t("Parts that came back: put the number here. They go back into stock by themselves and the bill goes down.")} <button type="button" className="button secondary small" onClick={() => setQty(Object.fromEntries(inv.parts.map((_, i) => [i, left(i) > 0 ? String(left(i)) : ""]).filter(([, v]) => v)))}>{t("All parts came back")}</button></p>}
+      {hasParts && <p className="muted">{t("Enter the quantity returned for each part. Returned parts go back into stock and the bill is reduced.")} <button type="button" className="button secondary small" onClick={() => setQty(Object.fromEntries(inv.parts.map((_, i) => [i, left(i) > 0 ? String(left(i)) : ""]).filter(([, v]) => v)))}>{t("Return all to stock")}</button></p>}
       {inv.parts.map((p, i) => left(i) > 0 && (
         <label className="ws-field ws-return-line" key={i}>
           <span>{p.name}{p.product_id ? "" : " (" + t("not from stock") + ")"} <small>{t("up to")} {left(i)}</small></span>
@@ -89,7 +89,7 @@ function ReturnParts({ inv, onClose, onDone }: { inv: Invoice; onClose: () => vo
       ))}
       {!picked.length && paid > 0 && (
         <>
-          <p className="muted">{hasParts ? t("No parts came back? Give an amount back instead.") : t("After a full refund you can void this invoice and correct the job.")}</p>
+          <p className="muted">{hasParts ? t("No parts returned? Refund an amount instead.") : t("After a full refund you can void this invoice and correct the job.")}</p>
           <label className="ws-field">{t("Amount (LKR)")}<input inputMode="decimal" value={amount} placeholder={String(paid)} onChange={(e) => setAmount(e.target.value)} /></label>
         </>
       )}

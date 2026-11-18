@@ -1242,18 +1242,18 @@ def return_parts(invoice_id, key, who, body):
             raise conflict('This invoice was voided')
         asked = b.get('lines')
         if not isinstance(asked, list) or not asked:
-            raise bad('Pick the parts that came back')
+            raise bad('Select the parts being returned')
         reason = text(b.get('reason'), 'Reason', 180, True)
         parts = [dict(p) for p in current['parts']]
         credit, per_product, credited = ZERO, {}, []
         seen = set()
         for row in asked:
             if not isinstance(row, dict):
-                raise bad('Pick the parts that came back')
+                raise bad('Select the parts being returned')
             try:
                 index = int(row.get('index'))
             except (TypeError, ValueError):
-                raise bad('Pick the parts that came back') from None
+                raise bad('Select the parts being returned') from None
             if index in seen or not 0 <= index < len(parts):
                 raise bad('Pick each part once')
             seen.add(index)
@@ -1623,3 +1623,18 @@ def report_pdf(start='', end=''):
     r = report(start, end)
     r['printed'] = today().isoformat()
     return bills.report(r, business()), r['from'] + '_' + r['until']
+
+
+def labels_pdf(body):
+    """QR labels as a PDF (the browser makes each QR picture, the same way the invoice QR is made)."""
+    rows = (body or {}).get('labels')
+    if not isinstance(rows, list) or not rows:
+        raise bad('Pick what to print')
+    if len(rows) > 150:
+        raise bad('Print at most 150 labels at a time')
+    out = []
+    for r in rows:
+        if not isinstance(r, dict):
+            raise bad('Pick what to print')
+        out.append({'title': str(r.get('title') or '')[:80], 'sub': str(r.get('sub') or '')[:80], 'bits': qr_bits('x', r.get('bits'))})
+    return bills.label_sheet(out), 'labels'

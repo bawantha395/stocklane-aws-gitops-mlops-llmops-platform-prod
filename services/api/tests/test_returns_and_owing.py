@@ -459,3 +459,12 @@ def test_part_bought_outside_keeps_its_cost_for_the_owner_only(api):
     assert out['lines'] == 1 and out['cost'] == 2850 and out['sales'] == 4500 and out['margin'] == 1650 and out['without_cost'] == 0
     assert out['by_shop'][0]['shop'] == 'Fort Auto' and out['by_shop'][0]['cost'] == 2850
     assert api('GET', '/api/workshop/report', role='MECHANIC')[0] == 403
+
+
+def test_label_sheet_pdf(api):
+    bits = '21:' + '10' * 220 + '1'
+    assert len(bits) == 3 + 441
+    pdf = ok(api('POST', '/api/inventory/labels/pdf', {'labels': [{'title': 'Rack 1-A', 'sub': 'Left wall', 'bits': bits}] * 20}, role='MECHANIC'))['pdf']
+    assert pdf
+    assert api('POST', '/api/inventory/labels/pdf', {'labels': []})[0] == 400
+    assert api('POST', '/api/inventory/labels/pdf', {'labels': [{'title': 'x', 'bits': 'nope'}]})[0] == 400

@@ -470,7 +470,7 @@ async function route(path: string, options: RequestInit = {}): Promise<any> {
       }
       if (seg[4] === "return" && method === "POST") {
         const asked = (body.lines || []) as { index: number; quantity: number }[];
-        if (!asked.length || !String(body.reason || "").trim()) throw new ApiError("Pick the parts that came back and give a reason", 400);
+        if (!asked.length || !String(body.reason || "").trim()) throw new ApiError("Select the parts being returned and give a reason", 400);
         let credit = 0;
         for (const r of asked) {
           const p = inv.parts[r.index]; const qty = Number(r.quantity);

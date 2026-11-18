@@ -104,7 +104,7 @@ export function BatchOut({ items, onChanged, photo, manual }: { manual?: boolean
       }
       setResult(done); setOrdered({});
       const parts = done.reduce((n, r) => n + r.lines.length, 0);
-      toast(t("{n} parts taken out.", { n: parts }), { ms: 8000, action: { label: t("Undo"), run: () => { void undo(done); } } });
+      toast(t("{n} parts issued.", { n: parts }), { ms: 8000, action: { label: t("Undo"), run: () => { void undo(done); } } });
     } catch (e) {
       setError((e as Error).message + (done.length ? " " + t("{n} save(s) went through. The rest of the list is still here: press Save to continue.", { n: done.length }) : " " + t("Nothing was saved. Press Save to try again.")));
       if (done.length) setResult(done);
@@ -185,7 +185,7 @@ export function BatchOut({ items, onChanged, photo, manual }: { manual?: boolean
         )}
         {lines.length > per && <p className="stock-help" role="status">{d.who === "JOB" ? t("A job takes {n} parts at a time: this saves in {g} steps.", { n: per, g: Math.ceil(lines.length / per) }) : t("More than {n} parts: this saves as {g} notes, one after the other.", { n: per, g: Math.ceil(lines.length / per) })}</p>}
         <button className="button primary counter-confirm" disabled={busy || !lines.length || anyShort || !target || lines.some((l) => !(l.qty > 0))} onClick={() => void save()}>
-          {busy ? <><Loader2 size={18} className="spin" /> {t("Saving…")}</> : t("Take out {n} parts", { n: lines.length })}
+          {busy ? <><Loader2 size={18} className="spin" /> {t("Saving…")}</> : t("Issue {n} parts", { n: lines.length })}
         </button>
         {lines.length > 0 && !busy && <button type="button" className="stock-link" onClick={() => setD(empty())}>{t("Clear the list")}</button>}
       </div>

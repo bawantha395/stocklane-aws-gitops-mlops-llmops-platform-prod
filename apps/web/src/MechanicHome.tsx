@@ -7,8 +7,8 @@ export function MechanicHome({ onFind, onIn, onOut, onJob, onCount, onOrder, onL
   useLang();
   const tiles = [
     { cls: "find", Icon: Search, title: t("Find a part"), sub: t("Look up a part, photo or shelf."), go: onFind },
-    { cls: "in", Icon: ArrowDownLeft, title: t("Part came in"), sub: t("Find the part, then say how many"), go: onIn },
-    { cls: "out", Icon: ArrowUpRight, title: t("Part went out"), sub: t("Find the part, then say how many"), go: onOut },
+    { cls: "in", Icon: ArrowDownLeft, title: t("Receive stock"), sub: t("Find the part, then say how many"), go: onIn },
+    { cls: "out", Icon: ArrowUpRight, title: t("Issue stock"), sub: t("Find the part, then say how many"), go: onOut },
     { cls: "job", Icon: PlusCircle, title: t("Start a job"), sub: t("A vehicle comes in for work"), go: onJob },
     { cls: "count", Icon: ClipboardCheck, title: t("Count a shelf"), sub: t("Check what is really on a shelf"), go: onCount },
   ].filter((x) => x.go);  // a tile this role may not use is simply not there

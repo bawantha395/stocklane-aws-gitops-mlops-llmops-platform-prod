@@ -32,7 +32,7 @@ export function BatchIn({ items, picked, onNewItem, onChanged, photo, manual }: 
   const [camera, setCamera] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [lost, setLost] = useState<string[]>([]);
   const [search, setSearch] = useState(""), [which, setWhich] = useState<{ photoId: string; candidates: Item[] } | null>(null), [last, setLast] = useState("");
   const [notes, setNotes] = useState<Note[]>([]);
-  // "Part came in here" on the store room map: new lines go to that shelf
+  // "Receive stock here" on the store room map: new lines go to that shelf
   const [here, setHere] = useState(() => { try { const v = sessionStorage.getItem("lifta.putaway") || ""; sessionStorage.removeItem("lifta.putaway"); return v; } catch { return ""; } });
   const { list: suppliers } = useSuppliers();
   const { data: stores } = useLoad<{ shelves: string[] }>("/api/inventory/stores");

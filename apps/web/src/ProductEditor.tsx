@@ -313,7 +313,7 @@ export function ProductEditor({
         <form ref={formEl} onSubmit={(e) => void save(e)}>
           {inTask && (
             <p className="stock-help">
-              Save the item first, then confirm how many came in.
+              Save the item first, then confirm the quantity received.
             </p>
           )}
           <div className="stock-form-grid">
@@ -406,7 +406,7 @@ export function ProductEditor({
             {item && can("price_edit") && <PriceBox item={item} />}
             <details className="product-more" open={moreOpen} onToggle={(e) => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}>
               <summary>{t("More details")}</summary>
-              <div className="stock-field"><SupplierPick id={supplierId} name={supplierName} label={t("Usual supplier") + " (" + t("optional") + ")"} hint={t("Part came in fills this in for you.")} onChange={(v) => { setSupplierId(v.id); setSupplierName(v.name); }} /></div>
+              <div className="stock-field"><SupplierPick id={supplierId} name={supplierName} label={t("Usual supplier") + " (" + t("optional") + ")"} hint={t("Receiving stock fills this in for you.")} onChange={(v) => { setSupplierId(v.id); setSupplierName(v.name); }} /></div>
               <label className={"stock-field" + (filled.grade ? " filled-" + filled.grade : "")}>
                 {t("Specification")}
                 <span className="input-wrap"><input

@@ -65,6 +65,7 @@ route('GET', '/api/inventory/products/([^/]+)/price-history', P('price_edit'), l
 route('GET', '/api/inventory/price-review', P('see_cost'), lambda e, p, b, k: inventory.price_review())
 route('POST', '/api/inventory/price-review', P('price_edit'), lambda e, p, b, k: inventory.apply_prices(k, actor(e), b))
 route('POST', '/api/inventory/products/([^/]+)/archive', P('item_edit'), lambda e, p, b, k: inventory.archive_product(k, p[0], actor(e), b))
+route('POST', '/api/inventory/labels/pdf', STAFF, lambda e, p, b, k: ('pdf',) + workshop.labels_pdf(b))
 route('GET', '/api/inventory/movements/([^/]+)/note.pdf', STAFF, lambda e, p, b, k: ('pdf',) + workshop.stock_note_pdf(p[0], sees_cost(e) and q(e, 'cost') == '1'))
 route('GET', '/api/inventory/stores/shelf', STAFF, lambda e, p, b, k: inventory.shelf_parts(q(e, 'rack'), q(e, 'level')))
 route('GET', '/api/inventory/stores/layout', STAFF, lambda e, p, b, k: inventory.layout_view())

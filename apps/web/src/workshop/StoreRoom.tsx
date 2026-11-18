@@ -9,9 +9,9 @@ import { setModules } from "../modules";
 import { counterStartIsAuto, getCounterStart, setCounterStart } from "../counterStart";
 
 type Lv = { id?: string; name: string; photo_id?: string };
-type Rk = { id?: string; name: string; area: string; type: "RACK" | "CUPBOARD" | "FLOOR"; levels: Lv[] };
+type Rk = { id?: string; photo_id?: string; name: string; area: string; type: "RACK" | "CUPBOARD" | "FLOOR"; levels: Lv[] };
 type Ar = { id?: string; name: string; pos?: string };
-type Layout = { areas: { id: string; name: string; pos?: string }[]; racks: { id: string; name: string; area_id: string | null; type: Rk["type"]; levels: Lv[] }[]; counts: Record<string, Record<string, number>>; not_shelved: number; revision: number };
+type Layout = { areas: { id: string; name: string; pos?: string }[]; racks: { id: string; photo_id?: string; name: string; area_id: string | null; type: Rk["type"]; levels: Lv[] }[]; counts: Record<string, Record<string, number>>; not_shelved: number; revision: number };
 const TYPE: Record<Rk["type"], string> = { RACK: "Rack", CUPBOARD: "Cupboard", FLOOR: "Floor" };
 const move = <T,>(list: T[], i: number, d: number) => { const j = i + d; if (j < 0 || j >= list.length) return list; const c = [...list]; [c[i], c[j]] = [c[j], c[i]]; return c; };
 
@@ -22,7 +22,7 @@ export function StoreRoomSection() {
   const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState(""), [loaded, setLoaded] = useState(false), [dirty, setDirty] = useState(false);
   const adopt = (l: Layout) => {
     setAreas(l.areas.map((a) => ({ id: a.id, name: a.name, pos: a.pos }))); setCounts(l.counts); setLoose(l.not_shelved); setRevision(l.revision); setDirty(false);
-    setRacks(l.racks.map((r) => ({ id: r.id, name: r.name, area: r.area_id || "", type: r.type, levels: r.levels.map((x) => ({ ...x })) })));
+    setRacks(l.racks.map((r) => ({ id: r.id, photo_id: r.photo_id, name: r.name, area: r.area_id || "", type: r.type, levels: r.levels.map((x) => ({ ...x })) })));
   };
   const load = () => api<Layout>("/api/inventory/stores/layout").then((l) => { adopt(l); setLoaded(true); }).catch((e) => setError((e as Error).message));
   useEffect(() => { void load(); }, []);
@@ -32,7 +32,7 @@ export function StoreRoomSection() {
     setBusy(true); setError("");
     try {
       const body = { revision, areas: areas.map((a) => ({ ...(a.id ? { id: a.id } : {}), ...(a.pos ? { pos: a.pos } : {}), name: a.name.trim() })).filter((a) => a.name),
-        racks: racks.filter((r) => r.name.trim()).map((r) => ({ ...(r.id ? { id: r.id } : {}), name: r.name.trim(), type: r.type, area_id: r.area ? (areas.find((a) => (a.id || a.name) === r.area)?.id || areas.find((a) => a.name === r.area)?.name || null) : null,
+        racks: racks.filter((r) => r.name.trim()).map((r) => ({ ...(r.id ? { id: r.id } : {}), name: r.name.trim(), type: r.type, photo_id: r.photo_id || "", area_id: r.area ? (areas.find((a) => (a.id || a.name) === r.area)?.id || areas.find((a) => a.name === r.area)?.name || null) : null,
           levels: r.levels.filter((l) => l.name.trim()).map((l) => ({ ...(l.id ? { id: l.id } : {}), name: l.name.trim(), ...(l.photo_id ? { photo_id: l.photo_id } : { photo_id: "" }) })) })) };
       const res = await api<Layout & { moved: number }>("/api/inventory/stores/layout", { method: "PUT", body: JSON.stringify(body) }, crypto.randomUUID());
       adopt(res); window.dispatchEvent(new Event("lifta:stock-changed"));
@@ -99,9 +99,10 @@ export function StoreRoomSection() {
             <input aria-label={t("Rack name")} className="sr-name" value={cur.name} maxLength={40} onChange={(e) => setRack(sel, { ...cur, name: e.target.value })} />
             <select aria-label={t("Type")} value={cur.type} onChange={(e) => setRack(sel, { ...cur, type: e.target.value as Rk["type"] })}>{(Object.keys(TYPE) as Rk["type"][]).map((k) => <option key={k} value={k}>{t(TYPE[k])}</option>)}</select>
             <select aria-label={t("Wall")} value={cur.area} onChange={(e) => setRack(sel, { ...cur, area: e.target.value })}><option value="">{t("No wall")}</option>{areas.map((a) => <option key={key(a)} value={key(a)}>{a.name || t(WALL_TEXT[a.pos || ""] || "Wall")}</option>)}</select>
+            <ShelfPhoto label={t("Rack photo")} id={cur.photo_id} onId={(pid) => setRack(sel, { ...cur, photo_id: pid })} />
             <button type="button" className="ws-l-del" aria-label={t("Move up")} title={t("Earlier on the wall")} onClick={() => swapRack(sel, -1)}>←</button>
             <button type="button" className="ws-l-del" aria-label={t("Move down")} title={t("Later on the wall")} onClick={() => swapRack(sel, 1)}>→</button>
-            <button type="button" className="ws-l-del" aria-label={t("Remove")} disabled={used(cur) > 0} title={used(cur) ? t("Move parts first") : t("Remove this rack")} onClick={() => removeRack(sel)}>×</button>
+            <button type="button" className="ws-l-del" aria-label={t("Remove")} disabled={used(cur) > 0} title={used(cur) ? t("Transfer parts first") : t("Remove this rack")} onClick={() => removeRack(sel)}>×</button>
           </div>
           <div className="sr-cols"><span>{t("Columns")}:</span>
             {cur.levels.map((l, j) => (
@@ -111,7 +112,7 @@ export function StoreRoomSection() {
                 <ShelfPhoto id={l.photo_id} onId={(pid) => setRack(sel, { ...cur, levels: cur.levels.map((v, k) => (k === j ? { ...v, photo_id: pid } : v)) })} />
                 <button type="button" className="ws-l-del" aria-label={t("Move up")} onClick={() => setRack(sel, { ...cur, levels: move(cur.levels, j, -1) })}>‹</button>
                 <button type="button" className="ws-l-del" aria-label={t("Move down")} onClick={() => setRack(sel, { ...cur, levels: move(cur.levels, j, 1) })}>›</button>
-                <button type="button" className="ws-l-del" aria-label={t("Remove")} disabled={used(cur, l) > 0} title={used(cur, l) ? t("Move parts first") : ""} onClick={() => setRack(sel, { ...cur, levels: cur.levels.filter((_, k) => k !== j) })}>×</button>
+                <button type="button" className="ws-l-del" aria-label={t("Remove")} disabled={used(cur, l) > 0} title={used(cur, l) ? t("Transfer parts first") : ""} onClick={() => setRack(sel, { ...cur, levels: cur.levels.filter((_, k) => k !== j) })}>×</button>
               </span>
             ))}
             {cur.levels.length < 20 && <button type="button" className="sr-col sr-addcol" onClick={() => setRack(sel, { ...cur, levels: [...cur.levels, { name: String.fromCharCode(65 + Math.min(cur.levels.length, 25)) }] })}>+ {t("column")}</button>}
@@ -153,7 +154,7 @@ export function ModulesBox() {
   );
 }
 
-function ShelfPhoto({ id, onId }: { id?: string; onId: (id: string) => void }) {
+function ShelfPhoto({ id, onId, label }: { id?: string; onId: (id: string) => void; label?: string }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const send = async (file?: File) => {
@@ -164,7 +165,7 @@ function ShelfPhoto({ id, onId }: { id?: string; onId: (id: string) => void }) {
   return (
     <>
       {id && <button type="button" className="ws-shelf-ph" aria-label={t("Remove photo")} title={t("Remove photo")} onClick={() => onId("")}><Photo id={id} /></button>}
-      <button type="button" className="ws-l-del" aria-label={t("Shelf photo")} disabled={busy} onClick={() => input.current?.click()}><Camera size={14} /></button>
+      <button type="button" className="ws-l-del" aria-label={label || t("Shelf photo")} title={label || t("Shelf photo")} disabled={busy} onClick={() => input.current?.click()}><Camera size={14} /></button>
       <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void send(e.target.files?.[0])} />
     </>
   );

@@ -29,7 +29,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
   useLang();
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<Mode>(initialMode);
-  // "Part came in" one by one, or a whole delivery as a batch. The batch list lives on this phone until it is saved.
+  // "Receive stock" one by one, or a whole delivery as a batch. The batch list lives on this phone until it is saved.
   const [style, setStyleNow] = useState<"one" | "batch">(() => { try { return batchSize() > 0 || batchOutSize() > 0 || localStorage.getItem("lifta.counter.style") === "batch" ? "batch" : "one"; } catch { return "one"; } });
   const [leaving, setLeaving] = useState(false);
   const setStyle = (v: "one" | "batch") => { setStyleNow(v); setLeaving(false); try { localStorage.setItem("lifta.counter.style", v); } catch { /* ignore */ } };
@@ -61,7 +61,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
   const pickSupplier = (v: { id: string; name: string }) => { setSupplierId(v.id); setSupplier(v.name); const s = (supplierList || []).find((x) => x.id === v.id); setTerms(s && s.credit_days > 0 ? "CREDIT" : "PAID"); };
   useEffect(() => { if (part?.supplier) { setSupplier(part.supplier); setSupplierId(part.supplier_id || ""); } }, [part?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const commandKey = useRef(key());
-  // "Part went out" can put the part straight on an open repair job: the job's bill and the stock change together
+  // "Issue stock" can put the part straight on an open repair job: the job's bill and the stock change together
   type OpenJob = { id: string; registration: string; customer: string };
   const [jobs, setJobs] = useState<OpenJob[]>([]), [jobId, setJobId] = useState("");
   useEffect(() => {
@@ -130,8 +130,8 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
         try { await api("/api/vision/references", { method: "POST", body: JSON.stringify({ productId: part.id, imageId: photoId }) }); } catch { /* the movement is already recorded */ }
       }
       const left = Number(part.quantity) - quantity, undoQty = quantity, undoPart = part;
-      onChanged(); reset(t("Recorded: {q} × {name} taken out.", { q: amount(quantity), name: part.name }) + (job ? " " + t("Added to the bill of {job}.", { job: job.registration }) : "") + (low(part, left) ? " " + t("Running low: {n} left.", { n: amount(Math.max(0, left)) }) : ""));
-      offerUndo(t("{q} × {name} taken out.", { q: amount(undoQty), name: undoPart.name }), () => job
+      onChanged(); reset(t("Recorded: {q} × {name} issued.", { q: amount(quantity), name: part.name }) + (job ? " " + t("Added to the bill of {job}.", { job: job.registration }) : "") + (low(part, left) ? " " + t("Running low: {n} left.", { n: amount(Math.max(0, left)) }) : ""));
+      offerUndo(t("{q} × {name} issued.", { q: amount(undoQty), name: undoPart.name }), () => job
         ? api("/api/workshop/jobs/" + job.id + "/stock", { method: "POST", body: JSON.stringify({ productId: undoPart.id, quantity: undoQty, op: "return" }) }, key())
         : api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "RECEIPT", productId: undoPart.id, quantity: undoQty, note: "Undo of a counter entry" }) }, key()));
     } catch (e) {
@@ -177,7 +177,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
       }
       const undoQty = quantity, undoPart = part;
       onChanged(); reset(t("Recorded: {q} × {name} added to stock.", { q: amount(quantity), name: part.name }));
-      offerUndo(t("{q} × {name} added.", { q: amount(undoQty), name: undoPart.name }), () => api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: undoPart.id, quantity: undoQty, note: "Undo of a counter entry" }) }, key()));
+      offerUndo(t("{q} × {name} received.", { q: amount(undoQty), name: undoPart.name }), () => api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: undoPart.id, quantity: undoQty, note: "Undo of a counter entry" }) }, key()));
     } catch (e) { setError((e as Error).message); commandKey.current = key(); }
     finally { setBusy(false); }
   };
@@ -204,9 +204,9 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
   const shownList = search.trim().length >= 2 ? matches : listOpen ? browse : [];
   const choosePart = (item: Item) => { setListOpen(false); setSearch(""); setPart(item); setCandidates([]); setPhotoId(""); setError(""); };
   return (
-    <section className="counter-screen" aria-label={t("Parts counter")}>
+    <section className="counter-screen" aria-label={t("Receive & Issue")}>
       <div className="counter-modes" role="tablist">
-        {(([["receive", t("Part came in")], ["give", t("Part went out")]]) as [Mode, string][]).map(([m, label]) => (
+        {(([["receive", t("Receive stock")], ["give", t("Issue stock")]]) as [Mode, string][]).map(([m, label]) => (
           <button key={m} data-tour={"tab-" + m} role="tab" aria-selected={mode === m} className={mode === m ? "chosen " + m : m} onClick={() => switchMode(m)}>{label}</button>
         ))}
       </div>
@@ -219,7 +219,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
         </div>
       )}
       {(
-        <div className="ws-seg counter-style" role="group" aria-label={t("How parts come in")} data-tour="counter-style">
+        <div className="ws-seg counter-style" role="group" aria-label={t("How stock is received")} data-tour="counter-style">
           {([["one", t("One by one")], ["batch", t("Batch")]] as ["one" | "batch", string][]).map(([k, l]) => <button type="button" key={k} className={style === k ? "on" : ""} aria-pressed={style === k} onClick={() => chooseStyle(k)}>{l}</button>)}
         </div>
       )}
@@ -236,7 +236,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
       {!batching && (
         <>
           <div className="counter-step">
-            <h2><span>1</span> {mode === "receive" ? t("Which part came in?") : t("Which part?")}</h2>
+            <h2><span>1</span> {mode === "receive" ? t("Which part was received?") : t("Which part?")}</h2>
             {part ? (
               <div className="counter-chosen"><strong>{part.name}{low(part, Number(part.quantity)) && <span className="counter-lowchip" data-testid="counter-low">{t("Running low")}</span>}</strong><small>{t("Part no.")} {part.part_number || t("Not set")} · {t("System no.")} {part.sku} · {amount(Number(part.quantity))} {t("in stock")}{part.location ? " · " + part.location : ""}</small><button onClick={() => { setPart(null); setPhotoId(""); }}>{t("Change")}</button></div>
             ) : (
@@ -254,7 +254,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
                 )}
                 {recent.length > 0 && !search.trim() && (
                   <div className="counter-recent" data-testid="counter-recent">
-                    <p>{mode === "receive" ? t("Recently added") : t("Recently taken out")}</p>
+                    <p>{mode === "receive" ? t("Recently added") : t("Recently issued")}</p>
                     <div>
                       {recent.map((r) => (
                         <button key={r.item.id} type="button" className="counter-recent-chip" disabled={busy} onClick={() => choosePart(r.item)}>
@@ -295,7 +295,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
             <div className="counter-step counter-job">
               <h2><span>3</span> {t("Which job is it for?")} <small>({t("optional")})</small></h2>
               <select aria-label={t("Which job is it for?")} value={jobId} disabled={busy} onChange={(e) => setJobId(e.target.value)}>
-                <option value="">{t("No job, just take it out of stock")}</option>
+                <option value="">{t("No job, just issue it from stock")}</option>
                 {jobs.map((j) => <option key={j.id} value={j.id}>{j.registration} · {j.customer}</option>)}
               </select>
               <small className="stock-help">{jobId ? t("The part goes on this job's bill at its selling price.") : t("No recipient details are required. Confirm the quantity leaving the storeroom.")}</small>
@@ -320,7 +320,7 @@ export function Counter({ moves = [], items, initialMode = "receive", picked = n
           )}
           {part && mode === "receive" && (
             <button className="button primary counter-confirm" disabled={busy || !(quantity > 0) || (mode === "receive" && !!supplierId && can("see_cost") && terms === "CREDIT" && !cost.trim())} onClick={() => void receive()}>
-              {busy ? t("Saving…") : t("Add {q} × {name} to stock", { q: amount(quantity), name: part.name })}
+              {busy ? t("Saving…") : t("Receive {q} × {name}", { q: amount(quantity), name: part.name })}
             </button>
           )}
           {part && mode === "give" && (

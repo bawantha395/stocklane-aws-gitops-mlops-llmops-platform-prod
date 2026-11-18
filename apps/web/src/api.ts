@@ -44,8 +44,8 @@ export async function api<T=any>(path:string,options:RequestInit={},key?:string)
  if(response.status===204)return undefined as T;
  return response.json();
 }
-async function pdfBlob(path:string,name:string):Promise<{blob:Blob;name:string}>{
- const file=await api<{filename?:string;pdf:string}>(path);
+async function pdfBlob(path:string,name:string,init?:RequestInit):Promise<{blob:Blob;name:string}>{
+ const file=await api<{filename?:string;pdf:string}>(path,init);
  const bytes=Uint8Array.from(atob(file.pdf),c=>c.charCodeAt(0));
  return {blob:new Blob([bytes],{type:'application/pdf'}),name:file.filename||name};
 }
@@ -55,12 +55,12 @@ export async function download(path:string,name:string){
  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=file;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
 /** Open a PDF in a new tab so the browser's own viewer can print it on A4. */
-export async function openPdf(path:string,name:string){
+export async function openPdf(path:string,name:string,init?:RequestInit){
  const tab=window.open('','_blank');
  try{
   if(tab)tab.document.body.innerHTML='<p style="font:16px sans-serif;padding:24px">Preparing the document…</p>';
   
-  const {blob}=await pdfBlob(path,name);const url=URL.createObjectURL(blob);
+  const {blob}=await pdfBlob(path,name,init);const url=URL.createObjectURL(blob);
   if(tab)tab.location.href=url;else{const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove();}
   setTimeout(()=>URL.revokeObjectURL(url),30*60*1000);
  }catch(e){tab?.close();throw e;}

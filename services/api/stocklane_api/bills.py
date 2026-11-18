@@ -608,3 +608,21 @@ def statement(data, business):
               ['l', 'l', 'l', 'r'], [MARGIN + 6, MARGIN + 76, 300, R - 6], [66, 210, 90, 90])
     return d.render()
 
+
+
+def label_sheet(labels):
+    """A4 sheet of QR labels (parts or shelves), three across. Each label has a title, a small line and the QR made by the browser."""
+    d = Doc(footer='Labels')
+    cols, cw, ch, size = 3, (W - 2 * MARGIN) / 3.0, 156, 104
+    per_page = cols * 5
+    for k, lab in enumerate(labels):
+        if k and k % per_page == 0:
+            d.new_page()
+        i = k % per_page
+        x, y = MARGIN + (i % cols) * cw, MARGIN + (i // cols) * ch
+        d.rect(x + 3, y + 3, cw - 6, ch - 6, None, LINE)
+        d.qr(x + (cw - size) / 2.0, y + 12, size, lab['bits'])
+        d.text(x + cw / 2.0, y + size + 28, fit(lab['title'], cw - 18, 10, True), 10, True, 'c')
+        if lab.get('sub'):
+            d.text(x + cw / 2.0, y + size + 42, fit(lab['sub'], cw - 18, 8.5), 8.5, False, 'c', MUTED)
+    return d.render()

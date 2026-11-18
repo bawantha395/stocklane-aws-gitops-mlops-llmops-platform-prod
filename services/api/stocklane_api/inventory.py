@@ -327,7 +327,11 @@ def clean_stores(body, old_racks=(), old_areas=()):
             if photo:
                 level['photo_id'] = photo
             levels.append(level)
-        racks.append({'id': rid, 'name': name, 'area_id': area or None, 'type': rtype, 'levels': levels})
+        rack = {'id': rid, 'name': name, 'area_id': area or None, 'type': rtype, 'levels': levels}
+        rphoto = photos_one(r.get('photo_id')) if 'photo_id' in r else (was or {}).get('photo_id')
+        if rphoto:
+            rack['photo_id'] = rphoto
+        racks.append(rack)
     cats, cseen = [], set()
     raw = body.get('categories') if 'categories' in body else None
     if raw is None:
@@ -518,7 +522,7 @@ def layout_view(row=None):
     for c in query('SHELFCOUNT'):
         counted.setdefault(c['rack_id'], {})[c.get('level_id') or ''] = {'at': c['at'], 'by': c.get('by')}
     return {'areas': _clean_areas(None, row.get('areas') or []), 'categories': row.get('categories') or [], 'revision': int(row.get('revision') or 0), 'not_shelved': loose, 'counts': counts, 'counted': counted,
-            'racks': [{'id': r['id'], 'name': r['name'], 'area_id': r.get('area_id'), 'type': r.get('type') or 'RACK',
+            'racks': [{'id': r['id'], 'name': r['name'], 'area_id': r.get('area_id'), 'type': r.get('type') or 'RACK', **({'photo_id': r['photo_id']} if r.get('photo_id') else {}),
                        'levels': [{'id': l['id'], 'name': l['name'], **({'photo_id': l['photo_id']} if l.get('photo_id') else {})} for l in r.get('levels') or []]} for r in racks]}
 
 

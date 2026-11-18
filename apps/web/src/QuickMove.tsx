@@ -4,7 +4,7 @@ import { t, useLang } from "./i18n";
 import { toast } from "./ui";
 import { SupplierPick, useSuppliers } from "./Suppliers";
 import { can } from "./perms";
-import { api, type Product } from "./api";
+import { api, openPdf, type Product } from "./api";
 import { enqueue, isOfflineError } from "./offline";
 
 type Item = Product & { part_number?: string; location?: string };
@@ -45,30 +45,30 @@ export function QuickMove({ part, mode, onClose, onChanged }: { part: Item; mode
   const needPerson = mode === "give" && who === "PERSON" && !personId;
   const needCost = mode === "receive" && seeCost && !!supplierId && terms === "CREDIT" && !cost.trim();
 
+  const [done, setDone] = useState<{ text: string; noteId: string; noteNo: string; undo: () => Promise<unknown> } | null>(null);
   const save = async () => {
-    if (!ok || busy || needCost || needPerson) return;
+    if (!ok || busy || needCost || needPerson || done) return;
     setBusy(true); setError("");
     try {
-      let noteNo = "", jobName = "";
+      let noteId = "", noteNo = "", jobName = "";
       if (mode === "give") {
         const job = who === "JOB" ? jobs.find((x) => x.id === jobId) : undefined;
         if (job) { await api("/api/workshop/jobs/" + job.id + "/stock", { method: "POST", body: JSON.stringify({ productId: part.id, quantity: q, op: "use" }) }, cmd.current); jobName = job.registration; try { sessionStorage.setItem("lifta.counter.job", JSON.stringify({ id: job.id, at: Date.now() })); } catch { /* ignore */ } }
         else {
           const out = await api<{ id: string; doc_no?: string }>("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: part.id, quantity: q, note: "Issued from the parts list", ...(who === "PERSON" && personId ? { receiverId: personId } : {}) }) }, cmd.current);
-          noteNo = out?.doc_no || "";
+          noteId = out?.id || ""; noteNo = out?.doc_no || "";
           try { sessionStorage.removeItem("lifta.counter.job"); } catch { /* ignore */ }
         }
       } else {
         const res = await api<{ id: string; doc_no?: string }>("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "RECEIPT", productId: part.id, quantity: q, note: "Received from the parts list", ...(supplierId ? { supplierId, terms } : { supplier: supplier.trim() || undefined }), reference: reference.trim() || undefined, unitCost: seeCost ? cost.trim() || undefined : undefined }) }, cmd.current);
-        noteNo = res?.doc_no || "";
+        noteId = res?.id || ""; noteNo = res?.doc_no || "";
         try { if (supplier.trim()) { sessionStorage.setItem("lifta.supplier", supplier.trim()); sessionStorage.setItem("lifta.supplierId", supplierId); } } catch { /* ignore */ }
       }
       onChanged();
       const undo = () => (mode === "give"
         ? (jobId ? api("/api/workshop/jobs/" + jobId + "/stock", { method: "POST", body: JSON.stringify({ productId: part.id, quantity: q, op: "return" }) }, key()) : api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "RECEIPT", productId: part.id, quantity: q, note: "Undo of a stock-out" }) }, key()))
         : api("/api/inventory/movements", { method: "POST", body: JSON.stringify({ kind: "STOCK_OUT", productId: part.id, quantity: q, note: "Undo of a receipt" }) }, key()));
-      toast((mode === "give" ? t("{q} × {name} taken out.", { q: amount(q), name: part.name }) : t("{q} × {name} added.", { q: amount(q), name: part.name })) + (jobName ? " " + t("Added to the bill of {job}.", { job: jobName }) : "") + (noteNo ? " " + noteNo : ""), { ms: 8000, action: { label: t("Undo"), run: () => { undo().then(() => { onChanged(); toast(t("Undone.")); }).catch((e) => toast((e as Error).message, { bad: true })); } } });
-      onClose();
+      setDone({ text: (mode === "give" ? t("{q} × {name} issued.", { q: amount(q), name: part.name }) : t("{q} × {name} received.", { q: amount(q), name: part.name })) + (jobName ? " " + t("Added to the bill of {job}.", { job: jobName }) : ""), noteId, noteNo, undo });
     } catch (e) {
       if (mode === "give" && isOfflineError(e)) {
         // no internet: write the take-out down on this phone; it goes through when the connection is back (same key, so never twice)
@@ -84,8 +84,18 @@ export function QuickMove({ part, mode, onClose, onChanged }: { part: Item; mode
 
   return (
     <div className="stock-modal-shade" onClick={onClose}>
-      <section className="stock-modal quick-move" role="dialog" aria-modal="true" aria-label={mode === "give" ? t("Take out") : t("Put in")} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "SELECT" && (e.target as HTMLElement).tagName !== "BUTTON") { e.preventDefault(); void save(); } }}>
-        <header className="sm-look-top"><h2>{mode === "give" ? t("Take out") : t("Put in")}</h2><button type="button" className="button secondary small" onClick={onClose}>{t("Close")}</button></header>
+      <section className="stock-modal quick-move" role="dialog" aria-modal="true" aria-label={mode === "give" ? t("Issue stock") : t("Receive stock")} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "SELECT" && (e.target as HTMLElement).tagName !== "BUTTON") { e.preventDefault(); void save(); } }}>
+        <header className="sm-look-top"><h2>{mode === "give" ? t("Issue stock") : t("Receive stock")}</h2><button type="button" className="button secondary small" onClick={onClose}>{t("Close")}</button></header>
+        {done ? (
+          <div className="quick-move-done" role="status">
+            <p><Check size={20} /> {done.text}</p>
+            {done.noteNo && <button type="button" className="doc-link" onClick={() => void openPdf("/api/inventory/movements/" + done.noteId + "/note.pdf", done.noteNo + ".pdf").catch((e) => toast((e as Error).message, { bad: true }))}>{done.noteNo} · {t("Print note")}</button>}
+            <div className="sm-tools">
+              <button type="button" className="button primary" autoFocus onClick={onClose}>{t("Done")}</button>
+              <button type="button" className="button secondary" onClick={() => { done.undo().then(() => { onChanged(); toast(t("Undone.")); onClose(); }).catch((e) => toast((e as Error).message, { bad: true })); }}>{t("Undo")}</button>
+            </div>
+          </div>
+        ) : (<>
         <p className="quick-move-part"><b>{part.name}</b><small>{[part.part_number || part.sku, t("In stock") + " " + amount(Number(part.quantity))].filter(Boolean).join(" · ")}</small></p>
         <div className="counter-stepper">
           <button type="button" aria-label={t("One less")} onClick={() => bump(litre ? -0.5 : -1)}><Minus /></button>
@@ -100,7 +110,7 @@ export function QuickMove({ part, mode, onClose, onChanged }: { part: Item; mode
             <div className="ws-seg">{([["JOB", t("A job")], ["PERSON", t("A person")], ["NONE", t("No one")]] as ["JOB" | "PERSON" | "NONE", string][]).map(([k, l]) => <button type="button" key={k} className={who === k ? "on" : ""} aria-pressed={who === k} disabled={busy} onClick={() => setWho(k)}>{l}</button>)}</div>
             {who === "JOB" && (jobs.length > 0 ? (
               <select aria-label={t("Which job is it for?")} value={jobId} disabled={busy} onChange={(e) => setJobId(e.target.value)}>
-                <option value="">{t("No job, just take it out of stock")}</option>
+                <option value="">{t("No job, just issue it from stock")}</option>
                 {jobs.map((j) => <option key={j.id} value={j.id}>{j.registration} · {j.customer}</option>)}
               </select>
             ) : <small className="muted">{t("No open jobs.")}</small>)}
@@ -130,8 +140,9 @@ export function QuickMove({ part, mode, onClose, onChanged }: { part: Item; mode
         )}
         {error && <p className="stock-error" role="alert">{error}</p>}
         <button type="button" className="button primary counter-confirm" disabled={!ok || busy || needCost || needPerson} onClick={() => void save()}>
-          <Check size={18} /> {busy ? t("Saving…") : mode === "give" ? t("Take out {q} × {name}", { q: amount(q || 0), name: part.name }) : t("Add {q} × {name} to stock", { q: amount(q || 0), name: part.name })}
+          <Check size={18} /> {busy ? t("Saving…") : mode === "give" ? t("Issue {q} × {name}", { q: amount(q || 0), name: part.name }) : t("Receive {q} × {name}", { q: amount(q || 0), name: part.name })}
         </button>
+        </>)}
       </section>
     </div>
   );
